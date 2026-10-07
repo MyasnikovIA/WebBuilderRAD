@@ -5,7 +5,15 @@
 
     var SEL = 'wb-selected', HOV = 'wb-hover';
     var VOID = { IMG:1, INPUT:1, BR:1, HR:1, META:1, LINK:1, AREA:1, BASE:1,
-        COL:1, EMBED:1, SOURCE:1, TRACK:1, WBR:1 };
+        COL:1, EMBED:1, SOURCE:1, TRACK:1, WBR:1, PARAM:1 };
+
+    var VOID_LOWER = { img:1, input:1, br:1, hr:1, meta:1, link:1, area:1, base:1,
+        col:1, embed:1, source:1, track:1, wbr:1, param:1 };
+
+    /* Теги, содержимое которых форматировать нельзя. */
+    var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
+
+    var INDENT = '    ';
 
     function Canvas(iframeEl) {
         this.iframe = iframeEl;
@@ -13,7 +21,19 @@
         this._init();
     }
 
-    /* Стартовый шаблон сцены: только meta charset в head. */
+    /* ------------------------------------------------------------
+       Утилита: убрать пустой атрибут class=""
+       ------------------------------------------------------------ */
+    Canvas.prototype._cleanClass = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        if (typeof el.className === 'string' && el.className.trim() === '') {
+            el.removeAttribute('class');
+        }
+    };
+
+    /* ------------------------------------------------------------
+       Шаблон документа сцены: только meta charset в head
+       ------------------------------------------------------------ */
     Canvas.prototype._templateHtml = function () {
         return '<!DOCTYPE html>' +
             '<html lang="ru">' +
@@ -24,6 +44,9 @@
             '</html>';
     };
 
+    /* ------------------------------------------------------------
+       Служебный IDE-стиль (невидимый в дереве, удаляется при save)
+       ------------------------------------------------------------ */
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         var old = doc.querySelector('style[data-wb-ide="1"]');
@@ -49,6 +72,8 @@
         this._injectIdeStyle();
         this._bind();
 
+        this._cleanClass(this.getBody());
+
         if (global.IDE) global.IDE._canvas = this;
 
         if (global.MutationObserver) {
@@ -69,11 +94,14 @@
 
         setTimeout(function () {
             self._reobserve();
+            self._cleanClass(self.getBody());
             bus.emit('canvas:changed');
         }, 0);
     };
 
-    /* ---------- живые геттеры ---------- */
+    /* ------------------------------------------------------------
+       Живые геттеры
+       ------------------------------------------------------------ */
     Canvas.prototype.getDoc = function () {
         return this.iframe.contentDocument || this.iframe.contentWindow.document;
     };
@@ -121,15 +149,23 @@
 
         this._injectIdeStyle();
         this.pending = null;
+        this._cleanClass(this.getBody());
 
         if (global.IDE) global.IDE._canvas = this;
         this._reobserve();
 
         bus.emit('canvas:refreshed');
         bus.emit('canvas:changed');
-        setTimeout(function () { bus.emit('canvas:changed'); }, 0);
+        var self = this;
+        setTimeout(function () {
+            self._cleanClass(self.getBody());
+            bus.emit('canvas:changed');
+        }, 0);
     };
 
+    /* ------------------------------------------------------------
+       Подписка на события iframe
+       ------------------------------------------------------------ */
     Canvas.prototype._bind = function () {
         var self = this, doc = this.getDoc();
 
@@ -147,8 +183,12 @@
             if (e.target && e.target.nodeType === 1 && !e.target.classList.contains(SEL))
                 e.target.classList.add(HOV);
         }, true);
+
         doc.addEventListener('mouseout', function (e) {
-            if (e.target && e.target.nodeType === 1) e.target.classList.remove(HOV);
+            if (e.target && e.target.nodeType === 1) {
+                e.target.classList.remove(HOV);
+                self._cleanClass(e.target);
+            }
         }, true);
 
         doc.addEventListener('keydown', function (e) {
@@ -190,13 +230,14 @@
         return body;
     };
 
-    /* Универсальная вставка: используется и сценой, и деревом. */
+    /* ------------------------------------------------------------
+       Вставка компонента (общая для сцены и дерева)
+       ------------------------------------------------------------ */
     Canvas.prototype.insertComponent = function (def, target, zone) {
         var doc  = this.getDoc();
         var html = this.getHtml();
         if (!html) return null;
 
-        /* Уникальные компоненты (head, body) — не дублируются. */
         if (def.unique) {
             var existing = doc.querySelector(def.tagName);
             if (existing) {
@@ -210,23 +251,15 @@
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
         el.setAttribute('data-cmptype', def.id);
 
-        /* rootLevel: head и body всегда добавляются в html */
         if (def.rootLevel) {
             html.appendChild(el);
-        }
-        /* headOnly: meta/title/link/script/style/base/noscript/template
-           всегда добавляются в head. Создаём head, если его нет. */
-        else if (def.headOnly) {
+        } else if (def.headOnly) {
             var head = this.getOrCreateHead();
             head.appendChild(el);
-        }
-        /* target — html: кладём в body */
-        else if (target === html || !target || !target.parentNode) {
+        } else if (target === html || !target || !target.parentNode) {
             var body = this.getOrCreateBody();
             if (body) body.appendChild(el);
-        }
-        /* Обычный случай — целевой узел из дерева или сцены */
-        else if (zone === 'before') {
+        } else if (zone === 'before') {
             target.parentNode.insertBefore(el, target);
         } else if (zone === 'after') {
             target.parentNode.insertBefore(el, target.nextSibling);
@@ -238,7 +271,10 @@
         bus.emit('palette:placed');
 
         var prev = doc.querySelectorAll('.' + SEL);
-        for (var i = 0; i < prev.length; i++) prev[i].classList.remove(SEL);
+        for (var i = 0; i < prev.length; i++) {
+            prev[i].classList.remove(SEL);
+            this._cleanClass(prev[i]);
+        }
         el.classList.add(SEL);
 
         bus.emit('canvas:changed');
@@ -253,23 +289,159 @@
     Canvas.prototype.setPending  = function (def) { this.pending = def; };
     Canvas.prototype.getSelected = function () { return this.getDoc().querySelector('.' + SEL); };
 
+    /* ------------------------------------------------------------
+       Выделение
+       ------------------------------------------------------------ */
     Canvas.prototype.select = function (el) {
         if (!el || el.nodeType !== 1) return;
         if (el === this.getHtml()) return;
         var prev = this.getDoc().querySelectorAll('.' + SEL);
-        for (var i = 0; i < prev.length; i++) prev[i].classList.remove(SEL);
+        for (var i = 0; i < prev.length; i++) {
+            prev[i].classList.remove(SEL);
+            this._cleanClass(prev[i]);
+        }
         el.classList.add(SEL);
         bus.emit('selection:changed', { element: el });
     };
 
+    /* ============================================================
+       Форматирование HTML при сохранении
+       ============================================================ */
+
+    /* Сериализовать атрибуты элемента в строку " name=\"value\"..." */
+    Canvas.prototype._formatAttrs = function (el) {
+        var out = '';
+        var attrs = el.attributes;
+        for (var i = 0; i < attrs.length; i++) {
+            var a = attrs[i];
+            var name = a.name;
+            /* Пропускаем служебные */
+            if (name === 'data-cmptype') continue;
+            /* Пустой class="" — тоже пропускаем */
+            if (name === 'class' && (a.value || '').trim() === '') continue;
+
+            var val = a.value == null ? '' : String(a.value);
+            /* Экранирование кавычек и амперсанда */
+            val = val.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            out += ' ' + name + '="' + val + '"';
+        }
+        return out;
+    };
+
+    /* Отфильтровать служебные классы wb-selected / wb-hover из class-атрибута */
+    Canvas.prototype._stripServiceClasses = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        var cls = el.getAttribute('class');
+        if (!cls) return;
+        var parts = cls.split(/\s+/).filter(function (c) {
+            return c && c !== 'wb-selected' && c !== 'wb-hover';
+        });
+        if (parts.length === 0) el.removeAttribute('class');
+        else el.setAttribute('class', parts.join(' '));
+    };
+
+    /* Рекурсивно обойти клон и удалить служебные артефакты IDE. */
+    Canvas.prototype._purgeServiceNodes = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        /* Удалить <style data-wb-ide="1"> */
+        var kids = el.children;
+        for (var i = kids.length - 1; i >= 0; i--) {
+            var child = kids[i];
+            if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') {
+                child.parentNode.removeChild(child);
+                continue;
+            }
+            this._stripServiceClasses(child);
+            if (child.hasAttribute && child.hasAttribute('data-cmptype')) {
+                child.removeAttribute('data-cmptype');
+            }
+            this._purgeServiceNodes(child);
+        }
+    };
+
+    /* Рекурсивный pretty-printer. Возвращает строку с завершающим \n. */
+    Canvas.prototype._formatNode = function (node, level) {
+        var pad = '';
+        for (var k = 0; k < level; k++) pad += INDENT;
+
+        /* Текстовый узел */
+        if (node.nodeType === 3) {
+            var t = node.nodeValue;
+            if (t == null) return '';
+            if (t.trim() === '') return '';
+            /* Нормализуем пробелы: несколько подряд → один */
+            var norm = t.replace(/\s+/g, ' ').trim();
+            return pad + norm + '\n';
+        }
+        /* Комментарий */
+        if (node.nodeType === 8) {
+            return pad + '<!--' + node.nodeValue + '-->\n';
+        }
+        /* Только элементы */
+        if (node.nodeType !== 1) return '';
+
+        var tag = node.tagName.toLowerCase();
+        var attrs = this._formatAttrs(node);
+
+        /* Void-теги — без закрывающего */
+        if (VOID_LOWER[tag]) {
+            return pad + '<' + tag + attrs + '>\n';
+        }
+
+        /* RAW-теги: содержимое как есть */
+        if (RAW_TAGS[tag]) {
+            var raw = node.textContent || '';
+            if (raw === '') return pad + '<' + tag + attrs + '></' + tag + '>\n';
+            return pad + '<' + tag + attrs + '>' + raw + '</' + tag + '>\n';
+        }
+
+        /* Собрать значимых детей (без пустых текстовых узлов) */
+        var children = [];
+        var childNodes = node.childNodes;
+        for (var i = 0; i < childNodes.length; i++) {
+            var c = childNodes[i];
+            if (c.nodeType === 3 && (c.nodeValue == null || c.nodeValue.trim() === '')) continue;
+            if (c.nodeType === 8) continue; // комментарии в вывод не идут
+            children.push(c);
+        }
+
+        /* Единственный текстовый ребёнок — в одну строку */
+        if (children.length === 1 && children[0].nodeType === 3) {
+            var txt = children[0].nodeValue.replace(/\s+/g, ' ').trim();
+            return pad + '<' + tag + attrs + '>' + txt + '</' + tag + '>\n';
+        }
+
+        /* Нет детей — пустая пара тегов */
+        if (children.length === 0) {
+            return pad + '<' + tag + attrs + '></' + tag + '>\n';
+        }
+
+        /* Многострочный блок */
+        var out = pad + '<' + tag + attrs + '>\n';
+        for (var j = 0; j < children.length; j++) {
+            out += this._formatNode(children[j], level + 1);
+        }
+        out += pad + '</' + tag + '>\n';
+        return out;
+    };
+
+    /* ============================================================
+       Сохранение: чистим артефакты и форматируем
+       ============================================================ */
     Canvas.prototype.cleanHtml = function () {
-        var html = '<!DOCTYPE html>\n' + this.getHtml().outerHTML;
-        html = html.replace(/ class="wb-selected"/g, '')
-            .replace(/ class="wb-hover"/g, '')
-            .replace(/ data-cmptype="[^"]*"/g, '')
-            .replace(/<style data-wb-ide="1">[\s\S]*?<\/style>/g, '')
-            .replace(/ data-wb-ide="1"/g, '');
-        return html;
+        var htmlEl = this.getHtml();
+        if (!htmlEl) return '';
+
+        /* Клон — чтобы не портить живой документ */
+        var clone = htmlEl.cloneNode(true);
+
+        /* Удалить style[data-wb-ide="1"] и все служебные атрибуты/классы */
+        this._purgeServiceNodes(clone);
+
+        /* Сформировать HTML с отступами */
+        var body = this._formatNode(clone, 0);
+
+        return '<!DOCTYPE html>\n' + body;
     };
 
     global.Canvas = Canvas;

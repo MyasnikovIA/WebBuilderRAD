@@ -79,6 +79,11 @@
 
     DomTree.prototype._build = function (el, parentUl) {
         if (!el || el.nodeType !== 1) return;
+
+        /* Служебные элементы IDE (style, link, script от редактора)
+           не показываем в дереве. */
+        if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
+
         var self = this;
         var li = $('<li></li>');
 
@@ -91,7 +96,12 @@
         var nid = this._nid(el);
 
         var kids = [];
-        for (var i = 0; i < el.children.length; i++) kids.push(el.children[i]);
+        for (var i = 0; i < el.children.length; i++) {
+            var child = el.children[i];
+            /* Пропускаем служебный IDE-стиль внутри head */
+            if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
+            kids.push(child);
+        }
         var hasKids = kids.length > 0;
         var collapsed = !!this._collapsed[nid];
 
@@ -180,7 +190,7 @@
         }
         var id  = el.id ? '#' + el.id : '';
         var cls = '';
-        if (typeof el.className === 'string' && el.className) {
+        if (typeof el.className === 'string' && el.className && el.className.trim() !== '') {
             var parts = el.className.split(/\s+/).filter(function (c) {
                 return c && c !== 'wb-selected' && c !== 'wb-hover';
             });
@@ -271,7 +281,6 @@
         return 'inside';
     };
 
-    /* Вставка из палитры по клику в дереве — делегирует в canvas.insertComponent. */
     DomTree.prototype._insertFromPalette = function (def, target, zone) {
         if (!this.canvas || !def || !target) return;
         this.canvas.insertComponent(def, target, zone);
@@ -345,16 +354,13 @@
         if (!html) return false;
         if (VOID_TAGS[dst.tagName]) return false;
 
-        /* head и body можно кидать только в html (то есть на верхний уровень) */
         if ((src === head || src === body) && dst !== html) return false;
 
-        /* head-элементы (meta, link, script, style, title, base) — только внутри head */
         var tagLower = src.tagName.toLowerCase();
         var isHeadEl = (tagLower === 'meta' || tagLower === 'link' || tagLower === 'script' ||
             tagLower === 'style' || tagLower === 'title' || tagLower === 'base' ||
             tagLower === 'noscript' || tagLower === 'template');
         if (isHeadEl) {
-            /* допустимо только внутрь head */
             var $targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
             if (!$targetIsHead) return false;
         }
@@ -380,7 +386,10 @@
 
         var doc = this.canvas.getDoc();
         var prev = doc.querySelectorAll('.wb-selected');
-        for (var i = 0; i < prev.length; i++) prev[i].classList.remove('wb-selected');
+        for (var i = 0; i < prev.length; i++) {
+            prev[i].classList.remove('wb-selected');
+            if (this.canvas && this.canvas._cleanClass) this.canvas._cleanClass(prev[i]);
+        }
         src.classList.add('wb-selected');
 
         bus.emit('canvas:changed');
@@ -570,11 +579,21 @@
 
     Inspector.prototype._set = function (tab, f, v) {
         var el = this.element; if (!el) return;
+
+        /* Утилита для снятия class="" после правок */
+        var cleanClass = function (node) {
+            if (node && node.nodeType === 1 && typeof node.className === 'string' && node.className.trim() === '') {
+                node.removeAttribute('class');
+            }
+        };
+
         if (tab === 'properties') {
             if (f.set) f.set(el, v);
             else if (f.type === 'boolean') el[f.name] = !!v;
             else if (f.attr) el.setAttribute(f.name, v);
             else el[f.name] = v;
+
+            if (f.name === 'className') cleanClass(el);
         } else if (tab === 'styles') {
             if (v === '' || v == null) {
                 try { el.style.removeProperty(f.name); } catch (e) { el.style[f.name] = ''; }
