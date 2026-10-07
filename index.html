@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <title>WebBuilder RAD — MiniUI edition</title>
+
+    <!-- CSS -->
     <link rel="stylesheet" href="css/app_ide.css">
-    <script src="lib/boot.js" type="text/javascript"></script>
+    <link rel="stylesheet" href="lib/highlight/styles/dark.css">
+    <link rel="stylesheet" href="lib/miniui/themes/default/miniui.css">
+    <link rel="stylesheet" href="lib/miniui/themes/icons.css">
+
+    <!-- JS: jQuery + MiniUI -->
+    <script src="lib/jquery-1.6.2.min.js"></script>
+    <script src="lib/miniui/miniui.js"></script>
 </head>
 <body>
 
 <div id="layout1" class="mini-layout" borderStyle="border:solid 1px #aaa;" style="width:100%;height:100%">
 
-    <!-- Toolbar -->
     <div region="north" height="34" showHeader="false" showSplit="false">
         <div id="toolbar1" class="mini-toolbar" style="padding:2px;">
             <a class="mini-menubutton" plain="true" menu="#fileMenu">File</a>
@@ -25,7 +32,6 @@
         </div>
     </div>
 
-    <!-- Left: Structure + Palette -->
     <div region="west" width="290" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel" style="height:50%;">
             <div class="wb-panel-head">
@@ -43,12 +49,10 @@
         </div>
     </div>
 
-    <!-- Center: canvas -->
     <div region="center" style="padding:6px;background:#808080;">
         <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
     </div>
 
-    <!-- Right: Inspector -->
     <div id="wb-right" region="east" width="330" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel">
             <div class="wb-panel-head">
@@ -68,9 +72,6 @@
     </div>
 </div>
 
-<!-- =========================================================
-     Выпадающие меню в тулбаре
-     ========================================================= -->
 <ul id="fileMenu" class="mini-menu" style="display:none;">
     <li iconCls="icon-new" onclick="App.cmd('new')">New</li>
     <li class="separator"></li>
@@ -100,16 +101,9 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
-<!-- =========================================================
-     Модальное окно редактора
-     ========================================================= -->
 <div id="wb-window" class="mini-window" title=""
-     showMaxButton="true"
-     showModal="true"
-     showToolbar="false"
-     showFooter="true"
-     allowResize="true"
-     allowDrag="true"
+     showMaxButton="true" showModal="true" showToolbar="false" showFooter="true"
+     allowResize="true" allowDrag="true"
      style="width:70%;height:70%;display:none;">
     <div id="wb-window-body" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:6px;box-sizing:border-box;overflow:auto;"></div>
     <div property="footer" style="text-align:right;padding:6px;">
@@ -118,9 +112,6 @@
     </div>
 </div>
 
-<!-- =========================================================
-     Контекстное меню СЦЕНЫ (ПКМ по элементу в iframe)
-     ========================================================= -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
     <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
@@ -137,9 +128,6 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
-<!-- =========================================================
-     Контекстное меню ДЕРЕВА (ПКМ по узлу в Structure)
-     ========================================================= -->
 <ul id="wb-treemenu" class="mini-contextmenu">
     <li onclick="App.cmd('copy')">Copy</li>
     <li onclick="App.cmd('cut')">Cut</li>
@@ -157,12 +145,12 @@
     <li onclick="App.cmd('back')">Send to Back</li>
 </ul>
 
-<!-- IDE core -->
 <script src="ide/core.js"></script>
+<script src="lib/highlight/highlight.js"></script>
+<script src="ide/code-editor.js"></script>
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 
-<!-- Components -->
 <script src="Component/html-basic.js"></script>
 <script src="Component/html-form.js"></script>
 <script src="Component/html-table.js"></script>
@@ -171,7 +159,6 @@
 <script src="Component/html-head.js"></script>
 <script src="Component/html-data.js"></script>
 
-<!-- Bootstrap app -->
 <script src="ide/app.js"></script>
 
 </body>

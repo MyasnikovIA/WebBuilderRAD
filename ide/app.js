@@ -273,25 +273,29 @@
                 var el = canvas.getSelected();
                 if (!el) return;
 
-                var isCmp = el.hasAttribute && el.hasAttribute('data-wb-tag');
+                /* 1) клон + удаление служебного IDE-стиля и артефактов */
+                var clone = el.cloneNode(true);
+                canvas._purgeServiceNodes(clone);
 
-                var ta = document.createElement('textarea');
-                ta.className = 'wb-code-editor';
+                /* 2) pretty-print для ЛЮБОГО элемента — не только cmp */
+                var code = canvas._formatNode(clone, 0).replace(/\n$/, '');
 
-                if (isCmp) {
-                    ta.value = canvas._formatNode(el, 0).replace(/\n$/, '');
-                } else {
-                    var clone = el.cloneNode(true);
-                    cleanClone(clone);
-                    ta.value = clone.outerHTML;
-                }
+                /* 3) язык подсветки */
+                var tagLower = el.tagName.toLowerCase();
+                var language;
+                if (tagLower === 'script') language = 'javascript';
+                else if (tagLower === 'style') language = 'css';
+                else if (tagLower === 'cmpaction' || tagLower === 'cmpdataset') language = 'mixed-sql';
+                else language = 'xml';
+
+                var editor = new CodeEditor({ value: code, language: language });
 
                 Modal.open({
                     title: 'Edit HTML — ' + canvas._formatTagName(el),
-                    content: ta,
+                    content: editor.el,
                     onOk: function () {
                         try {
-                            var nw = parseHtmlWithCdata(ta.value);
+                            var nw = parseHtmlWithCdata(editor.getValue());
                             if (!nw) return;
                             cleanClone(nw);
                             restoreCmpTags(nw);
@@ -301,6 +305,8 @@
                         } catch (ex) { alert('Некорректный HTML: ' + ex.message); }
                     }
                 });
+
+                setTimeout(function () { editor.focus(); }, 50);
             },
 
             editInnerHtml: function () {

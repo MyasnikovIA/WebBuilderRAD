@@ -74,15 +74,80 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
 .wb-code-btn:hover { background: #e0eefb; }
 .wb-empty { padding: 8px; color: #888; font-style: italic; font-size: 11px; }
 
+/* Простой текстовый редактор (EditInnerHtml, Save HTML, code-поля инспектора) */
 .wb-code-editor {
     width: 100%; height: 100%; min-height: 320px; font-family: Consolas, monospace;
     font-size: 12px; border: 1px solid #c0c0c0; padding: 6px; box-sizing: border-box; resize: none;
 }
-#wb-window-body > .wb-code-editor { height: 100%; }
+#wb-window-body > .wb-code-editor { height: 100%; min-height: 0; }
 
 /* Индикатор Design Mode */
 #wb-canvas.wb-design-mode {
     outline: 3px solid #e53935;
     outline-offset: -3px;
     box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.15);
+}
+
+/* ============================================================
+   Редактор кода с подсветкой (CodeEditor)
+   Двухслойный: <pre><code> под прозрачной <textarea>
+   ============================================================ */
+.wb-code-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 18px;
+    border: 1px solid #c0c0c0;
+    background: #1e1e1e;
+    overflow: hidden;
+    box-sizing: border-box;
+    tab-size: 4;
+    -moz-tab-size: 4;
+}
+
+.wb-code-hl,
+.wb-code-ta {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 8px;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre;
+    overflow: auto;
+    box-sizing: border-box;
+    border: 0;
+    tab-size: 4;
+    -moz-tab-size: 4;
+}
+
+.wb-code-hl {
+    pointer-events: none;
+    z-index: 1;
+    color: #d4d4d4;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.wb-code-hl::-webkit-scrollbar { display: none; }
+
+.wb-code-ta {
+    z-index: 2;
+    background: transparent;
+    color: transparent;
+    caret-color: #fff;
+    resize: none;
+    outline: none;
+}
+.wb-code-ta::selection { background: rgba(100, 150, 255, 0.35); }
+
+/* Когда редактор открывается в модальном окне — растягиваем на всё тело */
+#wb-window-body > .wb-code-wrap {
+    width: 100%;
+    height: 100%;
 }
