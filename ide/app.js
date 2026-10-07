@@ -22,18 +22,16 @@
         EventBus.on('command:undo',   function ()  { History.undo(); });
         EventBus.on('command:redo',   function ()  { History.redo(); });
 
-        /* Контекстное меню сцены (ПКМ по элементу в iframe) */
         EventBus.on('contextmenu:element', function (e) {
             var menu = mini.get('wb-contextmenu');
             menu.showAtPos(e.x, e.y);
         });
 
-        /* Контекстное меню дерева (ПКМ по узлу Structure) */
         EventBus.on('contextmenu:tree', function (e) {
             var menu = mini.get('wb-treemenu');
             menu.showAtPos(e.x, e.y);
         });
-        /* Скрыть любое открытое контекстное меню */
+
         EventBus.on('contextmenu:hide', function () {
             var m1 = mini.get('wb-contextmenu');
             if (m1) m1.hide();
@@ -81,6 +79,8 @@
             EventBus.emit('canvas:changed');
             EventBus.emit('selection:changed', { element: el });
         }
+
+        /* ---------- вспомогательные утилиты ---------- */
 
         function cleanClone(node) {
             if (!node || node.nodeType !== 1) return;
@@ -138,16 +138,7 @@
             for (var i = 0; i < kids.length; i++) restoreCmpTags(kids[i]);
         }
 
-        /* Проверка: можно ли положить клон с описанием def внутрь node */
-        function fitsParent(def, node) {
-            if (!def || !def.parentOnly) return true;
-            var t = node;
-            while (t) {
-                if (t.tagName && t.tagName.toLowerCase() === def.parentOnly) return true;
-                t = t.parentNode;
-            }
-            return false;
-        }
+        /* ---------- команды ---------- */
 
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
@@ -173,6 +164,7 @@
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
 
+            /* ---------- Copy / Cut / Paste / Duplicate / Delete ---------- */
             copy: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -192,7 +184,6 @@
                 if (!el || !clipboard) return;
                 if (el === canvas.getHtml()) return;
 
-                /* Проверка parentOnly */
                 var clipDef = ComponentRegistry.match(clipboard);
                 if (clipDef && clipDef.parentOnly) {
                     if (el.tagName.toLowerCase() !== clipDef.parentOnly) {
@@ -222,7 +213,6 @@
                 if (!el || !clipboard) return;
                 if (el === canvas.getHtml() || !el.parentNode) return;
 
-                /* Проверка parentOnly для вставки соседом */
                 var clipDef = ComponentRegistry.match(clipboard);
                 if (clipDef && clipDef.parentOnly) {
                     var parent = el.parentNode;
@@ -259,6 +249,7 @@
                 EventBus.emit('canvas:changed');
             },
 
+            /* ---------- Edit Text ---------- */
             editText: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -269,26 +260,17 @@
                 EventBus.emit('selection:changed', { element: el });
             },
 
+            /* ---------- Edit HTML: ВСЕГДА XML/HTML-разметка ---------- */
             editHtml: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
 
-                /* 1) клон + удаление служебного IDE-стиля и артефактов */
                 var clone = el.cloneNode(true);
                 canvas._purgeServiceNodes(clone);
 
-                /* 2) pretty-print для ЛЮБОГО элемента — не только cmp */
                 var code = canvas._formatNode(clone, 0).replace(/\n$/, '');
 
-                /* 3) язык подсветки */
-                var tagLower = el.tagName.toLowerCase();
-                var language;
-                if (tagLower === 'script') language = 'javascript';
-                else if (tagLower === 'style') language = 'css';
-                else if (tagLower === 'cmpaction' || tagLower === 'cmpdataset') language = 'mixed-sql';
-                else language = 'xml';
-
-                var editor = new CodeEditor({ value: code, language: language });
+                var editor = new CodeEditor({ value: code, language: 'xml' });
 
                 Modal.open({
                     title: 'Edit HTML — ' + canvas._formatTagName(el),
@@ -309,23 +291,61 @@
                 setTimeout(function () { editor.focus(); }, 50);
             },
 
+            /* ---------- Edit InnerHTML ----------
+               — script    → JS
+               — style     → CSS
+               — cmpAction → SQL (внутренности CDATA без обёртки; при OK оборачиваем обратно)
+               — cmpDataSet→ SQL (то же самое)
+               — остальное → XML/HTML
+            */
             editInnerHtml: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
-                var ta = document.createElement('textarea');
-                ta.className = 'wb-code-editor';
-                ta.value = el.innerHTML;
+
+                var tagLower = el.tagName.toLowerCase();
+                var language = 'xml';
+                var initial  = '';
+                var isCdata  = false;
+
+                if (tagLower === 'cmpaction' || tagLower === 'cmpdataset') {
+                    isCdata  = true;
+                    language = 'sql';
+                    var raw = el.textContent || '';
+                    var m = raw.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/);
+                    initial = m ? m[1] : raw;
+                } else if (tagLower === 'script') {
+                    language = 'javascript';
+                    initial = el.textContent || '';
+                } else if (tagLower === 'style') {
+                    language = 'css';
+                    initial = el.textContent || '';
+                } else {
+                    initial = el.innerHTML;
+                }
+
+                var editor = new CodeEditor({ value: initial, language: language });
+
                 Modal.open({
-                    title: 'Edit InnerHTML — ' + el.tagName.toLowerCase(),
-                    content: ta,
+                    title: 'Edit InnerHTML — ' + canvas._formatTagName(el),
+                    content: editor.el,
                     onOk: function () {
-                        el.innerHTML = ta.value;
+                        var v = editor.getValue();
+                        if (isCdata) {
+                            el.textContent = '<![CDATA[' + v + ']]>';
+                        } else if (tagLower === 'script' || tagLower === 'style') {
+                            el.textContent = v;
+                        } else {
+                            el.innerHTML = v;
+                        }
                         EventBus.emit('canvas:changed');
                         EventBus.emit('selection:changed', { element: el });
                     }
                 });
+
+                setTimeout(function () { editor.focus(); }, 50);
             },
 
+            /* ---------- прочее ---------- */
             designMode: function () { canvas.toggleDesignMode(); },
 
             front: function () {
