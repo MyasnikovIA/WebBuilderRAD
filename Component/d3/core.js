@@ -1,16 +1,20 @@
 /* D3 Framework — общий namespace D3.
    Экспортирует:
-     D3.register(opts)       — регистрирует cmp-компонент в ComponentRegistry
-     D3.cdataProp(caption)   — свойство CDATA для инспектора
-     D3.attrSchema(attrs,cdata) — собирает schema properties
+     D3.register(opts)         — регистрирует cmp-компонент в ComponentRegistry
+     D3.cdataProp(caption)     — свойство CDATA для инспектора
+     D3.attrSchema(attrs,cdata)
      D3.findFirstTextNode(el)
      D3.setCdataOnElement(el, v)
      D3.getCdataFromElement(el)
+     D3.folderOf(tagName)      — 'cmpButton' → 'Button'
+     D3.baseFor(tagName)       — абсолютный URL папки компонента
+     D3.imageFor(tagName, rel) — абсолютный URL картинки внутри папки компонента
 
-   CDATA-содержимое хранится как первый текстовый узел внутри cmp-элемента
-   в виде "<![CDATA[ ... ]]>". Дочерние элементы идут следом.
+   Каждый компонент живёт в своей папке Component/d3/<Имя>/index.js
+   и может иметь подпапки images/, css/, js/.
 
-   parentOnly может быть строкой или массивом (в нижнем регистре). */
+   В opts.icon / opts.previewCss / opts.previewJs указываются ОТНОСИТЕЛЬНЫЕ
+   пути (например 'images/icon.png'); D3.register сделает их абсолютными. */
 (function (global) {
     'use strict';
 
@@ -55,18 +59,53 @@
         return { properties: props, styles: [], events: [] };
     }
 
+    /* 'cmpButton' → 'Button', 'cmpSubActionVar' → 'SubActionVar' */
+    function folderOf(tagName) {
+        var s = String(tagName || '').replace(/^cmp/, '');
+        if (!s) return s;
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function pageBase() {
+        return window.location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, '');
+    }
+
+    function baseFor(tagName) {
+        return pageBase() + 'Component/d3/' + folderOf(tagName) + '/';
+    }
+
+    function imageFor(tagName, rel) {
+        return baseFor(tagName) + String(rel || '').replace(/^\/+/, '');
+    }
+
+    function absolutizeList(tagName, list) {
+        if (!list) return [];
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+            out.push(baseFor(tagName) + String(list[i] || '').replace(/^\/+/, ''));
+        }
+        return out;
+    }
+
     function register(opts) {
         var R = global.ComponentRegistry;
         var tagName = opts.tagName || opts.id.split('.')[1];
-        R.register({
+        var tagLower = tagName.toLowerCase();
+
+        var comp = {
             id: opts.id,
             category: 'D3',
             caption: opts.caption,
-            tagName: tagName.toLowerCase(),
+            tagName: tagLower,
             xmlTag: tagName,
             hidden: !!opts.hidden,
+            folder: folderOf(tagName),
+            /* Опциональные ресурсы из папки компонента */
+            iconUrl:        opts.icon        ? imageFor(tagName, opts.icon)                 : '',
+            previewCssUrls: absolutizeList(tagName, opts.previewCss),
+            previewJsUrls:  absolutizeList(tagName, opts.previewJs),
             create: function (doc) {
-                var el = doc.createElement(tagName.toLowerCase());
+                var el = doc.createElement(tagLower);
                 el.setAttribute('data-wb-tag', tagName);
                 if (opts.attrs) {
                     for (var k in opts.attrs) el.setAttribute(k, opts.attrs[k]);
@@ -80,7 +119,9 @@
             parentOnly: opts.parentOnly,
             unique: opts.unique,
             schema: attrSchema(opts.properties, opts.cdataSchema)
-        });
+        };
+        R.register(comp);
+        return comp;
     }
 
     global.D3 = {
@@ -89,7 +130,10 @@
         attrSchema: attrSchema,
         findFirstTextNode: findFirstTextNode,
         setCdataOnElement: setCdataOnElement,
-        getCdataFromElement: getCdataFromElement
+        getCdataFromElement: getCdataFromElement,
+        folderOf: folderOf,
+        baseFor: baseFor,
+        imageFor: imageFor
     };
 
 })(window);

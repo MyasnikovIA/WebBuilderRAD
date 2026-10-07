@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.dependences', tagName: 'cmpDependences', caption: 'Dependences',
+        icon: 'images/icon.png',
         attrs: { required: '', depend: '' },
         preview: function (el, doc) {
             var span = doc.createElement('span');

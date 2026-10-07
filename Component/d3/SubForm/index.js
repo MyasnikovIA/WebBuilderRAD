@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.subform', tagName: 'cmpSubForm', caption: 'SubForm',
+        icon: 'images/icon.png',
         attrs: { path: '' },
         preview: function (el, doc) {
             var wrap = doc.createElement('div');

@@ -8,6 +8,7 @@
     D3.register({
         id: 'd3.form', tagName: 'cmpForm', caption: 'Form',
         unique: true, hidden: true,
+        icon: 'images/icon.png',
         attrs: { 'class': 'd3form formBackground' },
         preview: function (el, doc) {
             var wrap = doc.createElement('div');

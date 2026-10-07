@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.action', tagName: 'cmpAction', caption: 'Action',
+        icon: 'images/icon.png',
         attrs: { name: 'ActionName' },
         cdata: 'begin\n  null;\nend;\n',
         cdataSchema: { caption: 'PL/SQL' },

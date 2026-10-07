@@ -537,9 +537,22 @@
             visible.forEach(function (c) {
                 var cli = $('<li></li>');
                 cli.append($('<span class="wb-toggle wb-leaf"></span>'));
-                var comp = $('<span class="wb-tree-label wb-comp-label wb-palette-btn"></span>')
-                    .text(c.caption)
+
+                var comp = $('<span></span>')
+                    .addClass('wb-tree-label wb-comp-label wb-palette-btn')
                     .attr('data-comp-id', c.id);
+
+                if (c.iconUrl) {
+                    /* jQuery 1.6.2: .on() отсутствует — используем .bind() */
+                    var $img = $('<img/>')
+                        .addClass('wb-palette-icon')
+                        .attr('alt', '')
+                        .attr('src', c.iconUrl)
+                        .bind('error', function () { $(this).remove(); });
+                    comp.append($img);
+                }
+                comp.append(document.createTextNode(c.caption));
+
                 comp.click(function () { self._select(c, comp); });
                 cli.append(comp);
                 cul.append(cli);

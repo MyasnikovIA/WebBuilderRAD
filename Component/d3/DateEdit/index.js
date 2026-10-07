@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.dateedit', tagName: 'cmpDateEdit', caption: 'DateEdit',
+        icon: 'images/icon.png',
         attrs: { name: '', width: '120px' },
         preview: function (el, doc) {
             var wrap = doc.createElement('span');

@@ -1,4 +1,4 @@
-/* cmpActionVar — переменная/параметр действия.
+/* cmpActionVar — переменная действия.
    Разрешена внутри cmpAction ИЛИ cmpSubAction. */
 (function (global) {
     'use strict';
@@ -6,6 +6,7 @@
 
     D3.register({
         id: 'd3.actionvar', tagName: 'cmpActionVar', caption: 'ActionVar',
+        icon: 'images/icon.png',
         parentOnly: ['cmpaction', 'cmpsubaction'],
         attrs: { name: '', src: '', srctype: 'var' },
         properties: [

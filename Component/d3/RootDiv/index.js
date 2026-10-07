@@ -7,6 +7,11 @@
     R.register({
         id: 'd3.rootdiv', category: 'D3', caption: 'RootDiv',
         tagName: 'div', hidden: true,
+        folder: 'RootDiv',
+        iconUrl: (function () {
+            var base = window.location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, '');
+            return base + 'Component/d3/RootDiv/images/icon.png';
+        })(),
         create: function (doc) {
             var el = doc.createElement('div');
             el.setAttribute('class', 'formBackground');

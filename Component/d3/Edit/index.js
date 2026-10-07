@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.edit', tagName: 'cmpEdit', caption: 'Edit',
+        icon: 'images/icon.png',
         attrs: { name: '', width: '200px' },
         preview: function (el, doc) {
             var wrap = doc.createElement('span');

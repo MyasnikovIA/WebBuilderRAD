@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.hyperlink', tagName: 'cmpHyperLink', caption: 'HyperLink',
+        icon: 'images/icon.png',
         attrs: { caption: 'Link' },
         preview: function (el, doc) {
             var a = doc.createElement('a');

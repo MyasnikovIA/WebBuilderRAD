@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.unitedit', tagName: 'cmpUnitEdit', caption: 'UnitEdit',
+        icon: 'images/icon.png',
         attrs: { name: '', unit: '', width: '100%' },
         preview: function (el, doc) {
             var wrap = doc.createElement('span');

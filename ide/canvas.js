@@ -1,4 +1,6 @@
-/* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode. */
+/* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
+   Поддерживает три режима корневого контейнера: 'html', 'cmpForm', 'div'.
+   Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs). */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -14,7 +16,10 @@
 
     var CDATA_CONTAINERS = { cmpaction:1, cmpdataset:1, cmpscript:1, cmpsubaction:1 };
 
-    var XML_SELF_CLOSE = { cmpactionvar:1, cmpdatasetvar:1, cmpcomboitem:1, cmpsubactionvar:1 };
+    var XML_SELF_CLOSE = {
+        cmpactionvar:1, cmpdatasetvar:1, cmpcomboitem:1, cmpsubactionvar:1,
+        'wb-image':1
+    };
 
     var CMP_TAGS = {
         'cmpaction':      'cmpAction',
@@ -74,6 +79,7 @@
             '</html>';
     };
 
+    /* Стили и правила IDE внутри iframe. */
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         var old = doc.querySelector('style[data-wb-ide="1"]');
@@ -89,12 +95,47 @@
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
             'wb-cdata { display: none !important; }' +
+            'wb-images, wb-image { display: none !important; }' +
             '[data-wb-preview] { display: inline-block; outline: 1px dotted #b0bec5;' +
             '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
             '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
         if (doc.head) doc.head.appendChild(style);
+    };
+
+    /* Подключение CSS/JS-ресурсов превью, объявленных D3-компонентами.
+       Компонент может указать D3.register({ previewCss: [...], previewJs: [...] }),
+       относительные пути автоматически преобразуются в абсолютные URL
+       из папки Component/d3/<Имя>/ (см. d3/core.js). */
+    Canvas.prototype._injectComponentAssets = function () {
+        var doc = this.getDoc();
+        if (!doc || !doc.head) return;
+
+        /* Удалить прежние ресурсы превью (переустановка). */
+        var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
+        for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
+
+        if (!global.ComponentRegistry) return;
+        var list = global.ComponentRegistry.all();
+        for (var i = 0; i < list.length; i++) {
+            var comp = list[i];
+            var cssList = comp.previewCssUrls || [];
+            for (var c = 0; c < cssList.length; c++) {
+                var link = doc.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = cssList[c];
+                link.setAttribute('data-wb-comp-asset', '1');
+                doc.head.appendChild(link);
+            }
+            var jsList = comp.previewJsUrls || [];
+            for (var j = 0; j < jsList.length; j++) {
+                var script = doc.createElement('script');
+                script.src = jsList[j];
+                script.setAttribute('data-wb-comp-asset', '1');
+                doc.head.appendChild(script);
+            }
+        }
     };
 
     Canvas.prototype._init = function () {
@@ -105,6 +146,7 @@
         doc.close();
 
         this._injectIdeStyle();
+        this._injectComponentAssets();
         this._bind();
         this._cleanClass(this.getBody());
 
@@ -275,6 +317,7 @@
         doc.close();
 
         this._injectIdeStyle();
+        this._injectComponentAssets();
         this.pending = null;
         this.designMode = false;
         this._rootType = 'html';
@@ -423,8 +466,7 @@
         return body;
     };
 
-    /* Найти ближайшего родителя из массива def.parentOnly (или одного тега).
-       Идёт вверх от target, затем fallback — первый подходящий в документе. */
+    /* Найти ближайшего родителя из массива def.parentOnly (или одного тега). */
     Canvas.prototype._findParentFor = function (def, target) {
         var doc = this.getDoc();
         var html = this.getHtml();
@@ -550,6 +592,17 @@
         }
     };
 
+    /* Перерисовать превью элемента И его ближайшего родителя с data-wb-tag.
+       Нужно для comboItem → comboBox, datasetVar → dataset и т.п. */
+    Canvas.prototype.refreshPreviewAndParent = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        this.refreshPreview(el);
+        var p = el.parentNode;
+        if (p && p.nodeType === 1 && p.getAttribute && p.getAttribute('data-wb-tag')) {
+            this._renderPreview(p);
+        }
+    };
+
     Canvas.prototype._place = function (def, target) {
         this.insertComponent(def, target, 'inside');
     };
@@ -592,6 +645,7 @@
             if (name === 'data-wb-tag') continue;
             if (name === 'data-wb-preview') continue;
             if (name === 'data-wb-root') continue;
+            if (name === 'data-wb-comp-asset') continue;
 
             var val = a.value == null ? '' : String(a.value);
 
@@ -739,7 +793,22 @@
         var tagName  = this._formatTagName(node);
         var attrs    = this._formatAttrs(node);
 
+        /* Служебный контейнер CDATA — не выводим */
         if (tagLower === 'wb-cdata') return '';
+
+        /* Служебный контейнер картинок — выводим как есть */
+        if (tagLower === 'wb-images') {
+            var outImg = '';
+            var kidsImg = node.children;
+            for (var ii = 0; ii < kidsImg.length; ii++) {
+                outImg += this._formatNode(kidsImg[ii], level + 1);
+            }
+            if (!outImg) return '';
+            return pad + '<' + tagName + attrs + '>\n' + outImg + pad + '</' + tagName + '>\n';
+        }
+        if (tagLower === 'wb-image') {
+            return pad + '<' + tagName + attrs + '/>\n';
+        }
 
         if (node.getAttribute && node.getAttribute('data-wb-tag')) {
             return this._formatCmpNode(node, level, tagName);
@@ -769,6 +838,7 @@
             if (c.nodeType === 1) {
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
                 children.push(c);
             } else if (c.nodeType === 3) {
                 if (c.nodeValue == null || c.nodeValue.trim() === '') continue;
@@ -821,17 +891,6 @@
 
         var bodyStr = this._formatNode(clone, 0);
         return '<!DOCTYPE html>\n' + bodyStr;
-    };
-
-    /* Перерисовать preview элемента И его D3-родителя.
-       Нужно для comboItem → comboBox, datasetVar → dataset и т.п. */
-    Canvas.prototype.refreshPreviewAndParent = function (el) {
-        if (!el || el.nodeType !== 1) return;
-        this.refreshPreview(el);
-        var p = el.parentNode;
-        if (p && p.nodeType === 1 && p.getAttribute && p.getAttribute('data-wb-tag')) {
-            this._renderPreview(p);
-        }
     };
 
     Canvas.CMP_TAGS = CMP_TAGS;

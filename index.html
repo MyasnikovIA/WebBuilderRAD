@@ -18,6 +18,7 @@
 
 <div id="layout1" class="mini-layout" borderStyle="border:solid 1px #aaa;" style="width:100%;height:100%">
 
+    <!-- Toolbar -->
     <div region="north" height="34" showHeader="false" showSplit="false">
         <div id="toolbar1" class="mini-toolbar" style="padding:2px;">
             <a class="mini-menubutton" plain="true" menu="#fileMenu">File</a>
@@ -32,6 +33,7 @@
         </div>
     </div>
 
+    <!-- Left: Structure + Palette -->
     <div region="west" width="290" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel" style="height:50%;">
             <div class="wb-panel-head">
@@ -49,10 +51,12 @@
         </div>
     </div>
 
+    <!-- Center: canvas -->
     <div region="center" style="padding:6px;background:#808080;">
         <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
     </div>
 
+    <!-- Right: Inspector -->
     <div id="wb-right" region="east" width="330" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel">
             <div class="wb-panel-head">
@@ -72,6 +76,9 @@
     </div>
 </div>
 
+<!-- =========================================================
+     Выпадающие меню в тулбаре
+     ========================================================= -->
 <ul id="fileMenu" class="mini-menu" style="display:none;">
     <li iconCls="icon-new" onclick="App.cmd('new')">New</li>
     <li class="separator"></li>
@@ -101,6 +108,9 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
+<!-- =========================================================
+     Модальное окно редактора
+     ========================================================= -->
 <div id="wb-window" class="mini-window" title=""
      showMaxButton="true" showModal="true" showToolbar="false" showFooter="true"
      allowResize="true" allowDrag="true"
@@ -112,6 +122,9 @@
     </div>
 </div>
 
+<!-- =========================================================
+     Контекстное меню СЦЕНЫ (ПКМ по элементу в iframe)
+     ========================================================= -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
     <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
@@ -128,6 +141,9 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
+<!-- =========================================================
+     Контекстное меню ДЕРЕВА (ПКМ по узлу в Structure)
+     ========================================================= -->
 <ul id="wb-treemenu" class="mini-contextmenu">
     <li onclick="App.cmd('copy')">Copy</li>
     <li onclick="App.cmd('cut')">Cut</li>
@@ -145,20 +161,27 @@
     <li onclick="App.cmd('back')">Send to Back</li>
 </ul>
 
+<!-- =========================================================
+     Контекстное меню КОРНЯ (ПКМ по html / cmpForm / div)
+     ========================================================= -->
 <ul id="wb-rootmenu" class="mini-contextmenu">
     <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
     <li onclick="App.cmd('setRootCmpForm')">Root: cmpForm (D3 Form)</li>
     <li onclick="App.cmd('setRootDiv')">Root: div</li>
 </ul>
 
-<!-- IDE core -->
+<!-- =========================================================
+     IDE core
+     ========================================================= -->
 <script src="ide/core.js"></script>
 <script src="lib/highlight/highlight.js"></script>
 <script src="ide/code-editor.js"></script>
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 
-<!-- HTML / UI components -->
+<!-- =========================================================
+     HTML / UI components
+     ========================================================= -->
 <script src="Component/html-basic.js"></script>
 <script src="Component/html-form.js"></script>
 <script src="Component/html-table.js"></script>
@@ -166,37 +189,41 @@
 <script src="Component/ui-components.js"></script>
 <script src="Component/html-head.js"></script>
 
-<!-- D3 core (обязательно первым) -->
+<!-- =========================================================
+     D3 core (обязательно первым)
+     ========================================================= -->
 <script src="Component/d3/core.js"></script>
 
 <!-- D3 form-контейнеры -->
-<script src="Component/d3/form.js"></script>
-<script src="Component/d3/rootdiv.js"></script>
-<script src="Component/d3/subform.js"></script>
+<script src="Component/d3/Form/index.js"></script>
+<script src="Component/d3/RootDiv/index.js"></script>
+<script src="Component/d3/SubForm/index.js"></script>
 
 <!-- D3 controls -->
-<script src="Component/d3/button.js"></script>
-<script src="Component/d3/edit.js"></script>
-<script src="Component/d3/dateedit.js"></script>
-<script src="Component/d3/combobox.js"></script>
-<script src="Component/d3/comboitem.js"></script>
-<script src="Component/d3/unitedit.js"></script>
-<script src="Component/d3/hyperlink.js"></script>
-<script src="Component/d3/dependences.js"></script>
-<script src="Component/d3/mask.js"></script>
+<script src="Component/d3/Button/index.js"></script>
+<script src="Component/d3/Edit/index.js"></script>
+<script src="Component/d3/DateEdit/index.js"></script>
+<script src="Component/d3/ComboBox/index.js"></script>
+<script src="Component/d3/ComboItem/index.js"></script>
+<script src="Component/d3/UnitEdit/index.js"></script>
+<script src="Component/d3/HyperLink/index.js"></script>
+<script src="Component/d3/Dependences/index.js"></script>
+<script src="Component/d3/Mask/index.js"></script>
 
 <!-- D3 data -->
-<script src="Component/d3/script.js"></script>
-<script src="Component/d3/dataset.js"></script>
-<script src="Component/d3/datasetvar.js"></script>
+<script src="Component/d3/Script/index.js"></script>
+<script src="Component/d3/DataSet/index.js"></script>
+<script src="Component/d3/DataSetVar/index.js"></script>
 
 <!-- D3 actions -->
-<script src="Component/d3/action.js"></script>
-<script src="Component/d3/actionvar.js"></script>
-<script src="Component/d3/subaction.js"></script>
-<script src="Component/d3/subactionvar.js"></script>
+<script src="Component/d3/Action/index.js"></script>
+<script src="Component/d3/ActionVar/index.js"></script>
+<script src="Component/d3/SubAction/index.js"></script>
+<script src="Component/d3/SubActionVar/index.js"></script>
 
-<!-- Bootstrap app -->
+<!-- =========================================================
+     Bootstrap app
+     ========================================================= -->
 <script src="ide/app.js"></script>
 
 </body>

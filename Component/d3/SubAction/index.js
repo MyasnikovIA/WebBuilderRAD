@@ -1,12 +1,12 @@
 /* cmpSubAction — вложенное действие.
-   Разрешено внутри cmpAction ИЛИ другого cmpSubAction.
-   Может содержать CDATA и/или детей: cmpActionVar / cmpSubActionVar / cmpSubAction. */
+   Разрешено внутри cmpAction ИЛИ другого cmpSubAction. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
 
     D3.register({
         id: 'd3.subaction', tagName: 'cmpSubAction', caption: 'SubAction',
+        icon: 'images/icon.png',
         parentOnly: ['cmpaction', 'cmpsubaction'],
         attrs: { name: '', repeatername: '', execon: 'each', action: '' },
         properties: [

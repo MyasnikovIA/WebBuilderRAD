@@ -1,12 +1,12 @@
 /* cmpComboBox — выпадающий список.
-   Превью собирает дочерние cmpComboItem и показывает их
-   как <option> в <select>. */
+   Превью собирает дочерние cmpComboItem и показывает их как <option>. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
 
     D3.register({
         id: 'd3.combobox', tagName: 'cmpComboBox', caption: 'ComboBox',
+        icon: 'images/icon.png',
         attrs: { name: '', width: '200px' },
         preview: function (el, doc) {
             var wrap = doc.createElement('span');
