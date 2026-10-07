@@ -1,0 +1,23 @@
+index.html
+app_ide.css
+scripts/
+    jquery-1.6.2.min.js   (как в исходнике)
+    boot.js               (как в исходнике)
+ide/
+    event-bus.js
+    component-registry.js
+    common-schema.js
+    canvas.js
+    dom-tree.js
+    palette.js
+    inspector.js
+    history.js
+    modal.js
+    app.js
+Component/
+    html-basic.js
+    html-form.js
+    html-table.js
+    html-media.js
+    ui-components.js
+README.md
