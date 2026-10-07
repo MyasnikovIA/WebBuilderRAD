@@ -21,11 +21,11 @@
             <a class="mini-button" iconCls="icon-save" onclick="App.cmd('save')">Save HTML</a>
             <a class="mini-button" onclick="App.cmd('undo')" title="Ctrl+Z">Undo</a>
             <a class="mini-button" onclick="App.cmd('redo')" title="Ctrl+Y">Redo</a>
-            <a class="mini-button" onclick="App.cmd('designMode')">Design Mode</a>
+            <a class="mini-button" onclick="App.cmd('designMode')" title="Toggle Design Mode">Design Mode</a>
         </div>
     </div>
 
-    <!-- Left: DOM tree + Palette -->
+    <!-- Left -->
     <div region="west" width="290" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel" style="height:50%;">
             <div class="wb-panel-head">
@@ -43,12 +43,12 @@
         </div>
     </div>
 
-    <!-- Center: canvas -->
+    <!-- Center -->
     <div region="center" style="padding:6px;background:#808080;">
         <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
     </div>
 
-    <!-- Right: Inspector -->
+    <!-- Right -->
     <div id="wb-right" region="east" width="330" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel">
             <div class="wb-panel-head">
@@ -69,7 +69,7 @@
 </div>
 
 <!-- =========================================================
-     Выпадающие меню (mini-menu)
+     Выпадающие меню
      ========================================================= -->
 <ul id="fileMenu" class="mini-menu" style="display:none;">
     <li iconCls="icon-new" onclick="App.cmd('new')">New</li>
@@ -101,7 +101,7 @@
 </ul>
 
 <!-- =========================================================
-     Модальное окно редактора (mini-window)
+     Modal
      ========================================================= -->
 <div id="wb-window" class="mini-window" title=""
      showMaxButton="true"
@@ -118,7 +118,9 @@
     </div>
 </div>
 
-<!-- Контекстное меню -->
+<!-- =========================================================
+     Контекстное меню сцены / дерева
+     ========================================================= -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
     <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
@@ -131,6 +133,8 @@
     <li class="separator"></li>
     <li onclick="App.cmd('front')">Bring to Front</li>
     <li onclick="App.cmd('back')">Send to Back</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
 <!-- IDE core -->

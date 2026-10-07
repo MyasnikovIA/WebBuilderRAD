@@ -1,4 +1,4 @@
-/* Canvas: iframe-холст, выбор элементов, размещение компонентов. */
+/* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -10,7 +10,6 @@
     var VOID_LOWER = { img:1, input:1, br:1, hr:1, meta:1, link:1, area:1, base:1,
         col:1, embed:1, source:1, track:1, wbr:1, param:1 };
 
-    /* Теги, содержимое которых форматировать нельзя. */
     var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
 
     var INDENT = '    ';
@@ -18,6 +17,7 @@
     function Canvas(iframeEl) {
         this.iframe = iframeEl;
         this.pending = null;
+        this.designMode = false;
         this._init();
     }
 
@@ -32,7 +32,7 @@
     };
 
     /* ------------------------------------------------------------
-       Шаблон документа сцены: только meta charset в head
+       Шаблон документа сцены
        ------------------------------------------------------------ */
     Canvas.prototype._templateHtml = function () {
         return '<!DOCTYPE html>' +
@@ -44,9 +44,6 @@
             '</html>';
     };
 
-    /* ------------------------------------------------------------
-       Служебный IDE-стиль (невидимый в дереве, удаляется при save)
-       ------------------------------------------------------------ */
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         var old = doc.querySelector('style[data-wb-ide="1"]');
@@ -84,10 +81,18 @@
                         bus.emit('canvas:changed');
                         return;
                     }
+                    if (m.type === 'characterData') {
+                        bus.emit('canvas:changed');
+                        return;
+                    }
                 }
             });
             var html = this.getHtml();
-            if (html) this._mo.observe(html, { childList: true, subtree: true });
+            if (html) this._mo.observe(html, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
         }
 
         bus.emit('canvas:ready', this);
@@ -138,7 +143,11 @@
         if (!this._mo) return;
         this._mo.disconnect();
         var html = this.getHtml();
-        if (html) this._mo.observe(html, { childList: true, subtree: true });
+        if (html) this._mo.observe(html, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
     };
 
     Canvas.prototype.reset = function () {
@@ -149,6 +158,9 @@
 
         this._injectIdeStyle();
         this.pending = null;
+        this.designMode = false;
+        $(this.iframe).removeClass('wb-design-mode');
+
         this._cleanClass(this.getBody());
 
         if (global.IDE) global.IDE._canvas = this;
@@ -163,6 +175,45 @@
         }, 0);
     };
 
+    /* ============================================================
+       Design Mode
+       ============================================================ */
+    Canvas.prototype.setDesignMode = function (on) {
+        var doc = this.getDoc();
+        this.designMode = !!on;
+        try {
+            doc.designMode = this.designMode ? 'on' : 'off';
+        } catch (e) { /* некоторые браузеры могут не поддержать */ }
+
+        /* Если включаем — снять выделение и подсветку, отменить ожидание палитры */
+        if (this.designMode) {
+            this.pending = null;
+            var sel = doc.querySelectorAll('.' + SEL);
+            for (var i = 0; i < sel.length; i++) {
+                sel[i].classList.remove(SEL);
+                this._cleanClass(sel[i]);
+            }
+            var hov = doc.querySelectorAll('.' + HOV);
+            for (var j = 0; j < hov.length; j++) {
+                hov[j].classList.remove(HOV);
+                this._cleanClass(hov[j]);
+            }
+            /* Поставить фокус в iframe, чтобы сразу можно было печатать */
+            try { this.iframe.contentWindow.focus(); } catch (ex) {}
+        }
+
+        /* Визуальный индикатор — рамка вокруг iframe */
+        if (this.designMode) $(this.iframe).addClass('wb-design-mode');
+        else $(this.iframe).removeClass('wb-design-mode');
+
+        bus.emit('canvas:changed');
+        bus.emit('canvas:selection:reset');
+    };
+
+    Canvas.prototype.toggleDesignMode = function () {
+        this.setDesignMode(!this.designMode);
+    };
+
     /* ------------------------------------------------------------
        Подписка на события iframe
        ------------------------------------------------------------ */
@@ -170,6 +221,9 @@
         var self = this, doc = this.getDoc();
 
         doc.addEventListener('mousedown', function (e) {
+            /* В режиме дизайна клик работает как обычное редактирование текста. */
+            if (self.designMode) return;
+
             if (self.pending) {
                 var target = self._placementTarget(e.target);
                 self._place(self.pending, target);
@@ -180,11 +234,13 @@
         }, true);
 
         doc.addEventListener('mouseover', function (e) {
+            if (self.designMode) return;
             if (e.target && e.target.nodeType === 1 && !e.target.classList.contains(SEL))
                 e.target.classList.add(HOV);
         }, true);
 
         doc.addEventListener('mouseout', function (e) {
+            if (self.designMode) return;
             if (e.target && e.target.nodeType === 1) {
                 e.target.classList.remove(HOV);
                 self._cleanClass(e.target);
@@ -192,6 +248,9 @@
         }, true);
 
         doc.addEventListener('keydown', function (e) {
+            /* В designMode все клавиши уходят на редактирование текста. */
+            if (self.designMode) return;
+
             if (e.keyCode === 46) { bus.emit('command:delete'); e.preventDefault(); }
             else if (e.keyCode >= 37 && e.keyCode <= 40) {
                 bus.emit('command:move', {
@@ -206,7 +265,7 @@
 
         doc.addEventListener('contextmenu', function (e) {
             if (self.pending) { self.pending = null; bus.emit('palette:cancelled'); }
-            if (e.target && e.target.nodeType === 1) self.select(e.target);
+            if (!self.designMode && e.target && e.target.nodeType === 1) self.select(e.target);
             bus.emit('contextmenu:element', { x: e.clientX, y: e.clientY });
             e.preventDefault();
         });
@@ -230,9 +289,6 @@
         return body;
     };
 
-    /* ------------------------------------------------------------
-       Вставка компонента (общая для сцены и дерева)
-       ------------------------------------------------------------ */
     Canvas.prototype.insertComponent = function (def, target, zone) {
         var doc  = this.getDoc();
         var html = this.getHtml();
@@ -289,12 +345,11 @@
     Canvas.prototype.setPending  = function (def) { this.pending = def; };
     Canvas.prototype.getSelected = function () { return this.getDoc().querySelector('.' + SEL); };
 
-    /* ------------------------------------------------------------
-       Выделение
-       ------------------------------------------------------------ */
     Canvas.prototype.select = function (el) {
         if (!el || el.nodeType !== 1) return;
         if (el === this.getHtml()) return;
+        /* В designMode сцену не выделяем — там идёт редактирование текста. */
+        if (this.designMode) return;
         var prev = this.getDoc().querySelectorAll('.' + SEL);
         for (var i = 0; i < prev.length; i++) {
             prev[i].classList.remove(SEL);
@@ -307,28 +362,21 @@
     /* ============================================================
        Форматирование HTML при сохранении
        ============================================================ */
-
-    /* Сериализовать атрибуты элемента в строку " name=\"value\"..." */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
-            /* Пропускаем служебные */
             if (name === 'data-cmptype') continue;
-            /* Пустой class="" — тоже пропускаем */
             if (name === 'class' && (a.value || '').trim() === '') continue;
-
             var val = a.value == null ? '' : String(a.value);
-            /* Экранирование кавычек и амперсанда */
             val = val.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             out += ' ' + name + '="' + val + '"';
         }
         return out;
     };
 
-    /* Отфильтровать служебные классы wb-selected / wb-hover из class-атрибута */
     Canvas.prototype._stripServiceClasses = function (el) {
         if (!el || el.nodeType !== 1) return;
         var cls = el.getAttribute('class');
@@ -340,10 +388,8 @@
         else el.setAttribute('class', parts.join(' '));
     };
 
-    /* Рекурсивно обойти клон и удалить служебные артефакты IDE. */
     Canvas.prototype._purgeServiceNodes = function (el) {
         if (!el || el.nodeType !== 1) return;
-        /* Удалить <style data-wb-ide="1"> */
         var kids = el.children;
         for (var i = kids.length - 1; i >= 0; i--) {
             var child = kids[i];
@@ -359,64 +405,53 @@
         }
     };
 
-    /* Рекурсивный pretty-printer. Возвращает строку с завершающим \n. */
     Canvas.prototype._formatNode = function (node, level) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
 
-        /* Текстовый узел */
         if (node.nodeType === 3) {
             var t = node.nodeValue;
             if (t == null) return '';
             if (t.trim() === '') return '';
-            /* Нормализуем пробелы: несколько подряд → один */
             var norm = t.replace(/\s+/g, ' ').trim();
             return pad + norm + '\n';
         }
-        /* Комментарий */
         if (node.nodeType === 8) {
             return pad + '<!--' + node.nodeValue + '-->\n';
         }
-        /* Только элементы */
         if (node.nodeType !== 1) return '';
 
         var tag = node.tagName.toLowerCase();
         var attrs = this._formatAttrs(node);
 
-        /* Void-теги — без закрывающего */
         if (VOID_LOWER[tag]) {
             return pad + '<' + tag + attrs + '>\n';
         }
 
-        /* RAW-теги: содержимое как есть */
         if (RAW_TAGS[tag]) {
             var raw = node.textContent || '';
             if (raw === '') return pad + '<' + tag + attrs + '></' + tag + '>\n';
             return pad + '<' + tag + attrs + '>' + raw + '</' + tag + '>\n';
         }
 
-        /* Собрать значимых детей (без пустых текстовых узлов) */
         var children = [];
         var childNodes = node.childNodes;
         for (var i = 0; i < childNodes.length; i++) {
             var c = childNodes[i];
             if (c.nodeType === 3 && (c.nodeValue == null || c.nodeValue.trim() === '')) continue;
-            if (c.nodeType === 8) continue; // комментарии в вывод не идут
+            if (c.nodeType === 8) continue;
             children.push(c);
         }
 
-        /* Единственный текстовый ребёнок — в одну строку */
         if (children.length === 1 && children[0].nodeType === 3) {
             var txt = children[0].nodeValue.replace(/\s+/g, ' ').trim();
             return pad + '<' + tag + attrs + '>' + txt + '</' + tag + '>\n';
         }
 
-        /* Нет детей — пустая пара тегов */
         if (children.length === 0) {
             return pad + '<' + tag + attrs + '></' + tag + '>\n';
         }
 
-        /* Многострочный блок */
         var out = pad + '<' + tag + attrs + '>\n';
         for (var j = 0; j < children.length; j++) {
             out += this._formatNode(children[j], level + 1);
@@ -425,22 +460,12 @@
         return out;
     };
 
-    /* ============================================================
-       Сохранение: чистим артефакты и форматируем
-       ============================================================ */
     Canvas.prototype.cleanHtml = function () {
         var htmlEl = this.getHtml();
         if (!htmlEl) return '';
-
-        /* Клон — чтобы не портить живой документ */
         var clone = htmlEl.cloneNode(true);
-
-        /* Удалить style[data-wb-ide="1"] и все служебные атрибуты/классы */
         this._purgeServiceNodes(clone);
-
-        /* Сформировать HTML с отступами */
         var body = this._formatNode(clone, 0);
-
         return '<!DOCTYPE html>\n' + body;
     };
 

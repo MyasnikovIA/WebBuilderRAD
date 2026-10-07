@@ -27,7 +27,16 @@
             menu.showAtPos(e.x, e.y);
         });
 
+        /* Очистка инспектора при включении design mode */
+        EventBus.on('canvas:selection:reset', function () {
+            var win = document.getElementById('wb-inspector-target');
+            if (win) win.textContent = '—';
+        });
+
         $(document).keydown(function (e) {
+            /* Не мешаем клавишам, когда сцена в режиме дизайна и фокус в iframe */
+            if (canvas.designMode && document.activeElement === canvas.iframe) return;
+
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 89) { History.redo(); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 67) { App.cmd('copy');  e.preventDefault(); }
@@ -172,8 +181,7 @@
             },
 
             designMode: function () {
-                var d = canvas.getDoc();
-                d.designMode = d.designMode === 'on' ? 'off' : 'on';
+                canvas.toggleDesignMode();
             },
 
             front: function () {
