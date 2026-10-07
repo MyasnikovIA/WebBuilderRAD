@@ -32,11 +32,15 @@
             menu.showAtPos(e.x, e.y);
         });
 
+        EventBus.on('contextmenu:root', function (e) {
+            var menu = mini.get('wb-rootmenu');
+            menu.showAtPos(e.x, e.y);
+        });
+
         EventBus.on('contextmenu:hide', function () {
-            var m1 = mini.get('wb-contextmenu');
-            if (m1) m1.hide();
-            var m2 = mini.get('wb-treemenu');
-            if (m2) m2.hide();
+            var m1 = mini.get('wb-contextmenu'); if (m1) m1.hide();
+            var m2 = mini.get('wb-treemenu');   if (m2) m2.hide();
+            var m3 = mini.get('wb-rootmenu');   if (m3) m3.hide();
         });
 
         EventBus.on('canvas:selection:reset', function () {
@@ -80,8 +84,6 @@
             EventBus.emit('selection:changed', { element: el });
         }
 
-        /* ---------- вспомогательные утилиты ---------- */
-
         function cleanClone(node) {
             if (!node || node.nodeType !== 1) return;
             node.classList.remove('wb-selected', 'wb-hover');
@@ -122,10 +124,24 @@
         }
 
         var CMP_TAGS = {
-            'cmpaction':    'cmpAction',
-            'cmpactionvar': 'cmpActionVar',
-            'cmpdataset':   'cmpDataSet',
-            'cmpdatasetvar':'cmpDataSetVar'
+            'cmpaction':      'cmpAction',
+            'cmpactionvar':   'cmpActionVar',
+            'cmpdataset':     'cmpDataSet',
+            'cmpdatasetvar':  'cmpDataSetVar',
+            'cmpscript':      'cmpScript',
+            'cmpform':        'cmpForm',
+            'cmpsubform':     'cmpSubForm',
+            'cmpbutton':      'cmpButton',
+            'cmpedit':        'cmpEdit',
+            'cmpdateedit':    'cmpDateEdit',
+            'cmpcombobox':    'cmpComboBox',
+            'cmpcomboitem':   'cmpComboItem',
+            'cmpunitedit':    'cmpUnitEdit',
+            'cmphyperlink':   'cmpHyperLink',
+            'cmpdependences': 'cmpDependences',
+            'cmpmask':        'cmpMask',
+            'cmpsubaction':   'cmpSubAction',
+            'cmpsubactionvar':'cmpSubActionVar'
         };
 
         function restoreCmpTags(root) {
@@ -138,7 +154,13 @@
             for (var i = 0; i < kids.length; i++) restoreCmpTags(kids[i]);
         }
 
-        /* ---------- команды ---------- */
+        /* Проверка parentOnly с поддержкой массива. */
+        function parentMatches(def, node) {
+            if (!def || !def.parentOnly || !node) return false;
+            var allowed = Array.isArray(def.parentOnly) ? def.parentOnly : [def.parentOnly];
+            var tag = node.tagName ? node.tagName.toLowerCase() : '';
+            return allowed.indexOf(tag) >= 0;
+        }
 
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
@@ -164,17 +186,20 @@
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
 
-            /* ---------- Copy / Cut / Paste / Duplicate / Delete ---------- */
             copy: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
                 if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
+                var rc = canvas.getRootContainer();
+                if (canvas.getRootType() !== 'html' && el === rc) return;
                 clipboard = el.cloneNode(true);
             },
             cut: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
                 if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
+                var rc = canvas.getRootContainer();
+                if (canvas.getRootType() !== 'html' && el === rc) return;
                 clipboard = el.cloneNode(true);
                 el.parentNode.removeChild(el);
                 EventBus.emit('canvas:changed');
@@ -186,9 +211,10 @@
 
                 var clipDef = ComponentRegistry.match(clipboard);
                 if (clipDef && clipDef.parentOnly) {
-                    if (el.tagName.toLowerCase() !== clipDef.parentOnly) {
+                    if (!parentMatches(clipDef, el)) {
+                        var allowed = Array.isArray(clipDef.parentOnly) ? clipDef.parentOnly : [clipDef.parentOnly];
                         alert('Component ' + clipDef.caption +
-                            ' can only be placed inside <' + clipDef.parentOnly + '>');
+                            ' can only be placed inside <' + allowed.join('|') + '>');
                         return;
                     }
                 }
@@ -215,11 +241,10 @@
 
                 var clipDef = ComponentRegistry.match(clipboard);
                 if (clipDef && clipDef.parentOnly) {
-                    var parent = el.parentNode;
-                    if (!parent || !parent.tagName ||
-                        parent.tagName.toLowerCase() !== clipDef.parentOnly) {
+                    if (!parentMatches(clipDef, el.parentNode)) {
+                        var allowed = Array.isArray(clipDef.parentOnly) ? clipDef.parentOnly : [clipDef.parentOnly];
                         alert('Component ' + clipDef.caption +
-                            ' can only be placed inside <' + clipDef.parentOnly + '>');
+                            ' can only be placed inside <' + allowed.join('|') + '>');
                         return;
                     }
                 }
@@ -234,6 +259,8 @@
                 var el = canvas.getSelected();
                 if (!el) return;
                 if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
+                var rc = canvas.getRootContainer();
+                if (canvas.getRootType() !== 'html' && el === rc) return;
                 if (!el.parentNode) return;
                 var c = el.cloneNode(true);
                 cleanClone(c);
@@ -245,11 +272,12 @@
                 var el = canvas.getSelected();
                 if (!el) return;
                 if (el === canvas.getHtml()) return;
+                var rc = canvas.getRootContainer();
+                if (canvas.getRootType() !== 'html' && el === rc) return;
                 el.parentNode.removeChild(el);
                 EventBus.emit('canvas:changed');
             },
 
-            /* ---------- Edit Text ---------- */
             editText: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -260,7 +288,6 @@
                 EventBus.emit('selection:changed', { element: el });
             },
 
-            /* ---------- Edit HTML: ВСЕГДА XML/HTML-разметка ---------- */
             editHtml: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -290,14 +317,7 @@
 
                 setTimeout(function () { editor.focus(); }, 50);
             },
- 
-            /* ---------- Edit InnerHTML ----------
-               — script    → JS
-               — style     → CSS
-               — cmpAction → SQL (внутренности CDATA без обёртки; при OK оборачиваем обратно)
-               — cmpDataSet→ SQL (то же самое)
-               — остальное → XML/HTML
-            */
+
             editInnerHtml: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -307,12 +327,12 @@
                 var initial  = '';
                 var isCdata  = false;
 
-                if (tagLower === 'cmpaction' || tagLower === 'cmpdataset') {
+                if (tagLower === 'cmpaction' || tagLower === 'cmpdataset' || tagLower === 'cmpsubaction') {
                     isCdata  = true;
                     language = 'sql';
                     var raw = el.textContent || '';
-                    var m = raw.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/);
-                    initial = m ? m[1] : raw;
+                    var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+                    initial = m ? m[1] : '';
                 } else if (tagLower === 'script') {
                     language = 'javascript';
                     initial = el.textContent || '';
@@ -330,13 +350,28 @@
                     content: editor.el,
                     onOk: function () {
                         var v = editor.getValue();
+
                         if (isCdata) {
-                            el.textContent = '<![CDATA[' + v + ']]>';
+                            var doc = el.ownerDocument;
+                            var cdataText = '<![CDATA[' + v + ']]>';
+                            var firstText = null;
+                            for (var i = 0; i < el.childNodes.length; i++) {
+                                if (el.childNodes[i].nodeType === 3) {
+                                    firstText = el.childNodes[i];
+                                    break;
+                                }
+                            }
+                            if (firstText) {
+                                firstText.nodeValue = cdataText;
+                            } else {
+                                el.insertBefore(doc.createTextNode(cdataText), el.firstChild);
+                            }
                         } else if (tagLower === 'script' || tagLower === 'style') {
                             el.textContent = v;
                         } else {
                             el.innerHTML = v;
                         }
+
                         EventBus.emit('canvas:changed');
                         EventBus.emit('selection:changed', { element: el });
                     }
@@ -345,7 +380,10 @@
                 setTimeout(function () { editor.focus(); }, 50);
             },
 
-            /* ---------- прочее ---------- */
+            setRootHtml:    function () { canvas.setRootType('html'); },
+            setRootCmpForm: function () { canvas.setRootType('cmpForm'); },
+            setRootDiv:     function () { canvas.setRootType('div'); },
+
             designMode: function () { canvas.toggleDesignMode(); },
 
             front: function () {

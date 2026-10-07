@@ -112,6 +112,7 @@
     </div>
 </div>
 
+<!-- Контекстное меню сцены -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
     <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
@@ -128,6 +129,7 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
+<!-- Контекстное меню узла дерева -->
 <ul id="wb-treemenu" class="mini-contextmenu">
     <li onclick="App.cmd('copy')">Copy</li>
     <li onclick="App.cmd('cut')">Cut</li>
@@ -145,20 +147,30 @@
     <li onclick="App.cmd('back')">Send to Back</li>
 </ul>
 
+<!-- Контекстное меню корневого узла: выбор типа контейнера -->
+<ul id="wb-rootmenu" class="mini-contextmenu">
+    <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
+    <li onclick="App.cmd('setRootCmpForm')">Root: cmpForm (D3 Form)</li>
+    <li onclick="App.cmd('setRootDiv')">Root: div</li>
+</ul>
+
+<!-- IDE core -->
 <script src="ide/core.js"></script>
 <script src="lib/highlight/highlight.js"></script>
 <script src="ide/code-editor.js"></script>
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 
+<!-- Components -->
 <script src="Component/html-basic.js"></script>
 <script src="Component/html-form.js"></script>
 <script src="Component/html-table.js"></script>
 <script src="Component/html-media.js"></script>
 <script src="Component/ui-components.js"></script>
 <script src="Component/html-head.js"></script>
-<script src="Component/html-data.js"></script>
+<script src="Component/d3-components.js"></script>
 
+<!-- Bootstrap app -->
 <script src="ide/app.js"></script>
 
 </body>

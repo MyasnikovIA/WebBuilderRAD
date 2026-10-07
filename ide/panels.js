@@ -8,15 +8,17 @@
 
     var STRICT_HEAD_TAGS = { meta:1, title:1, base:1 };
 
-    /* parentOnly-карта для drag&drop: src-тег → требуемый родитель */
+    /* Разрешённые родители для drag&drop (в нижнем регистре).
+       Может быть строкой или массивом строк. */
     var PARENT_ONLY = {
-        cmpactionvar: 'cmpaction',
-        cmpdatasetvar: 'cmpdataset'
+        cmpactionvar:    ['cmpaction', 'cmpsubaction'],
+        cmpsubaction:    ['cmpaction', 'cmpsubaction'],
+        cmpsubactionvar: 'cmpsubaction',
+        cmpdatasetvar:   'cmpdataset',
+        cmpcomboitem:    'cmpcombobox'
     };
 
-    /* ============================================================
-       DomTree
-       ============================================================ */
+    /* ============================================================ */
     var _idCounter = 0;
 
     function DomTree(rootEl) {
@@ -57,11 +59,7 @@
         var html = this.canvas.getHtml();
         if (!html) return;
         this._mo = new global.MutationObserver(function () { self._scheduleRebuild(); });
-        this._mo.observe(html, {
-            childList: true,
-            subtree: true,
-            characterData: true
-        });
+        this._mo.observe(html, { childList: true, subtree: true, characterData: true });
     };
 
     DomTree.prototype._scheduleRebuild = function () {
@@ -77,13 +75,20 @@
         if (!this.canvas) return;
         var $root = this._getRoot();
         if (!$root.length) return;
-
         var html = this.canvas.getHtml();
         if (!html) return;
 
         $root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-        this._build(html, ul);
+
+        var startEl = html;
+        var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
+        if (rootType !== 'html') {
+            var rc = this.canvas.getRootContainer && this.canvas.getRootContainer();
+            if (rc) startEl = rc;
+        }
+
+        this._build(startEl, ul);
         $root.append(ul);
 
         var sel = this.canvas.getSelected();
@@ -93,6 +98,8 @@
     DomTree.prototype._build = function (el, parentUl) {
         if (!el || el.nodeType !== 1) return;
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
+        if (el.getAttribute && el.getAttribute('data-wb-preview') === '1') return;
+        if (el.tagName && el.tagName.toLowerCase() === 'wb-cdata') return;
 
         var self = this;
         var li = $('<li></li>');
@@ -100,15 +107,22 @@
         var html = this.canvas.getHtml();
         var head = this.canvas.getHead();
         var body = this.canvas.getBody();
+        var rootContainer = this.canvas.getRootContainer ? this.canvas.getRootContainer() : html;
+        var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
 
-        var isRoot = (el === html || el === head || el === body);
+        var isHtmlRoot = (el === html);
+        var isContainerRoot = (rootType !== 'html' && el === rootContainer);
+        var isRoot = isHtmlRoot || isContainerRoot;
         var isHead = (el === head) || (head && head.contains(el));
+        var isHidden = (el.tagName && ['CMPACTION','CMPDATASET','CMPSCRIPT','CMPMASK'].indexOf(el.tagName) >= 0);
         var nid = this._nid(el);
 
         var kids = [];
         for (var i = 0; i < el.children.length; i++) {
             var child = el.children[i];
             if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
+            if (child.getAttribute && child.getAttribute('data-wb-preview') === '1') continue;
+            if (child.tagName && child.tagName.toLowerCase() === 'wb-cdata') continue;
             kids.push(child);
         }
         var hasKids = kids.length > 0;
@@ -122,7 +136,7 @@
 
         var label = $('<span class="wb-tree-label"></span>')
             .text(this._label(el))
-            .toggleClass('wb-invisible', isHead && el !== head)
+            .toggleClass('wb-invisible', (isHead && el !== head) || isHidden)
             .attr('data-node-id', nid)
             .attr('draggable', isRoot ? 'false' : 'true');
         li.append(label);
@@ -175,8 +189,8 @@
     };
 
     DomTree.prototype._label = function (el) {
-        var tag = el.tagName.toLowerCase();
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');
+        var tag = custom || el.tagName.toLowerCase();
         var extra = '';
 
         if (tag === 'meta') {
@@ -198,9 +212,11 @@
             extra = ' "' + t + '"';
         } else if (tag === 'style') {
             extra = ' (inline)';
-        } else if (tag === 'cmpaction' || tag === 'cmpdataset') {
+        } else if (custom) {
             var n = el.getAttribute('name');
-            if (n) extra = ' name="' + n + '"';
+            var cap = el.getAttribute('caption');
+            if (n) extra += ' name="' + n + '"';
+            if (cap) extra += ' caption="' + cap + '"';
         }
 
         var id  = el.id ? '#' + el.id : '';
@@ -212,8 +228,7 @@
             if (parts.length) cls = '.' + parts.join('.');
         }
 
-        var displayTag = custom || tag;
-        return displayTag + id + cls + extra;
+        return tag + id + cls + extra;
     };
 
     DomTree.prototype._nid = function (el) {
@@ -237,6 +252,13 @@
         if (!nid || !this.canvas) return null;
         var html = this.canvas.getHtml();
         if (!html) return null;
+        var root = html;
+        var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
+        if (rootType !== 'html') {
+            var rc = this.canvas.getRootContainer && this.canvas.getRootContainer();
+            if (rc) root = rc;
+        }
+        if (root.__wb_nid === nid) return root;
         return this._findByNid(html, nid);
     };
 
@@ -303,9 +325,6 @@
         this.canvas.insertComponent(def, target, zone);
     };
 
-    /* ============================================================
-       Контекстное меню дерева
-       ============================================================ */
     DomTree.prototype._installContextMenu = function () {
         var self = this;
         var $root = this._getRoot();
@@ -313,31 +332,38 @@
         $root.delegate('.wb-tree-label', 'contextmenu', function (e) {
             var el = self._labelToElement(this);
             if (!el) return true;
+
             var html = self.canvas && self.canvas.getHtml();
-            if (!html || el === html) {
-                e.preventDefault();
-                return false;
-            }
+            var rootType = self.canvas && self.canvas.getRootType ? self.canvas.getRootType() : 'html';
+            var rootContainer = self.canvas && self.canvas.getRootContainer ? self.canvas.getRootContainer() : html;
+
+            var isRoot = (el === html) || (rootType !== 'html' && el === rootContainer);
+
             e.preventDefault();
             e.stopPropagation();
 
-            if (self.canvas && !self.canvas.designMode) {
-                self.canvas.select(el);
+            if (isRoot) {
+                if (self.canvas && !self.canvas.designMode) self.canvas.select(el);
+                var native = e.originalEvent || e;
+                bus.emit('contextmenu:root', {
+                    x: native.clientX,
+                    y: native.clientY,
+                    rootType: rootType
+                });
+                return false;
             }
 
-            var native = e.originalEvent || e;
+            if (self.canvas && !self.canvas.designMode) self.canvas.select(el);
+            var native2 = e.originalEvent || e;
             bus.emit('contextmenu:tree', {
-                x: native.clientX,
-                y: native.clientY,
+                x: native2.clientX,
+                y: native2.clientY,
                 element: el
             });
             return false;
         });
     };
 
-    /* ============================================================
-       Drag & drop
-       ============================================================ */
     DomTree.prototype._installDnD = function () {
         var self = this;
         var $root = this._getRoot();
@@ -346,6 +372,9 @@
             var el = self._labelToElement(this);
             var html = self.canvas && self.canvas.getHtml();
             if (!el || !html || el === html) { e.preventDefault(); return false; }
+            var rootType = self.canvas && self.canvas.getRootType ? self.canvas.getRootType() : 'html';
+            var rc = self.canvas && self.canvas.getRootContainer ? self.canvas.getRootContainer() : null;
+            if (rootType !== 'html' && rc && el === rc) { e.preventDefault(); return false; }
             if (self.canvas && self.canvas.pending) {
                 self.canvas.pending = null;
                 bus.emit('palette:cancelled');
@@ -405,24 +434,27 @@
         if (!html) return false;
         if (VOID_TAGS[dst.tagName]) return false;
 
-        /* head и body — только на верхний уровень */
         if ((src === head || src === body) && dst !== html) return false;
 
-        var srcTag = src.tagName.toLowerCase();
+        var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
+        var rc = this.canvas.getRootContainer ? this.canvas.getRootContainer() : null;
+        if (rootType !== 'html' && rc && src === rc) return false;
 
-        /* parentOnly: cmpActionVar → cmpAction, cmpDataSetVar → cmpDataSet */
+        var srcTag = src.tagName.toLowerCase();
         var parentOnly = PARENT_ONLY[srcTag];
         if (parentOnly) {
             var checkNode = (zone === 'inside') ? dst : dst.parentNode;
             var checkTag = checkNode && checkNode.tagName ? checkNode.tagName.toLowerCase() : '';
-            if (checkTag !== parentOnly) return false;
+            var allowed = Array.isArray(parentOnly) ? parentOnly : [parentOnly];
+            if (allowed.indexOf(checkTag) < 0) return false;
         }
 
-        /* meta, title, base — только внутри head */
         if (STRICT_HEAD_TAGS[srcTag]) {
             var targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
             if (!targetIsHead) return false;
         }
+
+        if (dst === body && rootType !== 'html' && src !== rc) return false;
 
         if (dst === html) return true;
         if (!html.contains(dst)) return false;
@@ -433,15 +465,10 @@
         var html = this.canvas.getHtml();
         if (!html) return;
 
-        if (dst === html) {
-            html.appendChild(src);
-        } else if (zone === 'inside') {
-            dst.appendChild(src);
-        } else if (zone === 'before') {
-            dst.parentNode.insertBefore(src, dst);
-        } else if (zone === 'after') {
-            dst.parentNode.insertBefore(src, dst.nextSibling);
-        }
+        if (dst === html) html.appendChild(src);
+        else if (zone === 'inside') dst.appendChild(src);
+        else if (zone === 'before') dst.parentNode.insertBefore(src, dst);
+        else if (zone === 'after') dst.parentNode.insertBefore(src, dst.nextSibling);
 
         var doc = this.canvas.getDoc();
         var prev = doc.querySelectorAll('.wb-selected');
@@ -467,9 +494,7 @@
         this._getRoot().find('.wb-dragging').removeClass('wb-dragging');
     };
 
-    /* ============================================================
-       Palette
-       ============================================================ */
+    /* ============================================================ */
     function Palette(rootEl) {
         this.root = $(rootEl);
         this.active = null;
@@ -484,23 +509,21 @@
     Palette.prototype._render = function () {
         var self = this;
         this.root.empty();
-
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
 
         ComponentRegistry.categories().forEach(function (cat) {
             var catId = 'cat_' + cat.name;
             var visible = cat.components.filter(function (c) { return !c.hidden; });
+            if (visible.length === 0) return;
+
             var collapsed = !!self._collapsed[catId];
 
             var li = $('<li></li>');
-
             var toggle = $('<span class="wb-toggle"></span>')
                 .text(collapsed ? '+' : '\u2212')
                 .toggleClass('wb-leaf', visible.length === 0);
             li.append(toggle);
-
-            var catLabel = $('<span class="wb-tree-label wb-cat-label"></span>').text(cat.name);
-            li.append(catLabel);
+            li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(cat.name));
 
             var cul = $('<ul></ul>');
             visible.forEach(function (c) {
@@ -517,17 +540,14 @@
             li.append(cul);
             ul.append(li);
 
-            if (visible.length) {
-                toggle.click(function (e) {
-                    e.stopPropagation();
-                    var nowCollapsed = !self._collapsed[catId];
-                    self._collapsed[catId] = nowCollapsed;
-                    toggle.text(nowCollapsed ? '+' : '\u2212');
-                    if (nowCollapsed) cul.hide(); else cul.show();
-                });
-            }
+            toggle.click(function (e) {
+                e.stopPropagation();
+                var nowCollapsed = !self._collapsed[catId];
+                self._collapsed[catId] = nowCollapsed;
+                toggle.text(nowCollapsed ? '+' : '\u2212');
+                if (nowCollapsed) cul.hide(); else cul.show();
+            });
         });
-
         this.root.append(ul);
     };
 
@@ -551,7 +571,6 @@
         $root.find('ul').show();
         $root.find('li').show();
         if (!txt) return;
-
         $root.find('li').each(function () {
             var li = $(this);
             var $comp = li.children('.wb-comp-label');
@@ -560,7 +579,6 @@
                 li.toggle(match);
             }
         });
-
         $root.children('ul').children('li').each(function () {
             var li = $(this);
             var anyVisible = li.find('.wb-comp-label:visible').length > 0;
@@ -574,9 +592,7 @@
         });
     };
 
-    /* ============================================================
-       Inspector
-       ============================================================ */
+    /* ============================================================ */
     function Inspector(rootEl) {
         this.root = $(rootEl);
         this.element = null;
@@ -662,6 +678,14 @@
         } else if (tab === 'events') {
             if (v) el.setAttribute(f.name, v); else el.removeAttribute(f.name);
         }
+
+        var canvas = global.IDE && global.IDE._canvas;
+        if (canvas && canvas.refreshPreview) {
+            var isCmp = el.getAttribute && el.getAttribute('data-wb-tag');
+            var isRoot = canvas.getRootContainer && canvas.getRootContainer() === el;
+            if (isCmp || isRoot) canvas.refreshPreview(el);
+        }
+
         bus.emit('canvas:changed');
     };
 

@@ -10,21 +10,31 @@
     var VOID_LOWER = { img:1, input:1, br:1, hr:1, meta:1, link:1, area:1, base:1,
         col:1, embed:1, source:1, track:1, wbr:1, param:1 };
 
-    /* Теги, содержимое которых сохраняется как есть */
     var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
 
-    /* CDATA-контейнеры */
-    var CDATA_CONTAINERS = { cmpaction:1, cmpdataset:1 };
+    var CDATA_CONTAINERS = { cmpaction:1, cmpdataset:1, cmpscript:1, cmpsubaction:1 };
 
-    /* Самозакрывающиеся XML-теги */
-    var XML_SELF_CLOSE = { cmpactionvar:1, cmpdatasetvar:1 };
+    var XML_SELF_CLOSE = { cmpactionvar:1, cmpdatasetvar:1, cmpcomboitem:1, cmpsubactionvar:1 };
 
-    /* Оригинальный camelCase для cmp-тегов */
     var CMP_TAGS = {
-        'cmpaction':    'cmpAction',
-        'cmpactionvar': 'cmpActionVar',
-        'cmpdataset':   'cmpDataSet',
-        'cmpdatasetvar':'cmpDataSetVar'
+        'cmpaction':      'cmpAction',
+        'cmpactionvar':   'cmpActionVar',
+        'cmpdataset':     'cmpDataSet',
+        'cmpdatasetvar':  'cmpDataSetVar',
+        'cmpscript':      'cmpScript',
+        'cmpform':        'cmpForm',
+        'cmpsubform':     'cmpSubForm',
+        'cmpbutton':      'cmpButton',
+        'cmpedit':        'cmpEdit',
+        'cmpdateedit':    'cmpDateEdit',
+        'cmpcombobox':    'cmpComboBox',
+        'cmpcomboitem':   'cmpComboItem',
+        'cmpunitedit':    'cmpUnitEdit',
+        'cmphyperlink':   'cmpHyperLink',
+        'cmpdependences': 'cmpDependences',
+        'cmpmask':        'cmpMask',
+        'cmpsubaction':   'cmpSubAction',
+        'cmpsubactionvar':'cmpSubActionVar'
     };
 
     var INDENT = '    ';
@@ -33,6 +43,7 @@
         this.iframe = iframeEl;
         this.pending = null;
         this.designMode = false;
+        this._rootType = 'html';
         this._init();
     }
 
@@ -43,13 +54,6 @@
         }
     };
 
-    /* ------------------------------------------------------------
-       Перевод координат события из системы iframe
-       в систему координат главного документа (page coords).
-       Учитывает:
-         - смещение iframe на странице (getBoundingClientRect);
-         - прокрутку главного окна (window.pageXOffset/YOffset).
-       ------------------------------------------------------------ */
     Canvas.prototype._pageCoordsFromIframeEvent = function (e) {
         var rect = this.iframe.getBoundingClientRect();
         var scrollX = window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
@@ -80,20 +84,14 @@
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
-
-            /* Data-компоненты невидимы на сцене */
-            'cmpaction, cmpdataset, cmpactionvar, cmpdatasetvar {' +
-            '  display: none !important;' +
-            '  visibility: hidden !important;' +
-            '  pointer-events: none !important;' +
-            '  user-select: none !important;' +
-            '  -webkit-user-select: none !important;' +
+            'cmpaction, cmpdataset, cmpscript, cmpmask {' +
+            '  display: none !important; visibility: hidden !important;' +
+            '  pointer-events: none !important; user-select: none !important;' +
             '}' +
-            'cmpaction *, cmpdataset * {' +
-            '  display: none !important;' +
-            '  visibility: hidden !important;' +
-            '}' +
-
+            'wb-cdata { display: none !important; }' +
+            '[data-wb-preview] { display: inline-block; outline: 1px dotted #b0bec5;' +
+            '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
+            '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
         if (doc.head) doc.head.appendChild(style);
@@ -109,6 +107,8 @@
         this._injectIdeStyle();
         this._bind();
         this._cleanClass(this.getBody());
+
+        this._rootType = this._detectRootType();
 
         if (global.IDE) global.IDE._canvas = this;
 
@@ -128,9 +128,7 @@
             });
             var html = this.getHtml();
             if (html) this._mo.observe(html, {
-                childList: true,
-                subtree: true,
-                characterData: true
+                childList: true, subtree: true, characterData: true
             });
         }
 
@@ -175,14 +173,98 @@
         return body;
     };
 
+    Canvas.prototype.getRootType = function () { return this._rootType; };
+
+    Canvas.prototype.getRootContainer = function () {
+        if (this._rootType === 'html') return this.getHtml();
+        var body = this.getBody();
+        if (!body) return null;
+        var kids = body.children;
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            var tag = k.tagName.toLowerCase();
+            if (this._rootType === 'cmpForm' && tag === 'cmpform') return k;
+            if (this._rootType === 'div' && tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
+        }
+        return null;
+    };
+
+    Canvas.prototype._detectRootType = function () {
+        var body = this.getBody();
+        if (!body) return 'html';
+        var kids = body.children;
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            var tag = k.tagName.toLowerCase();
+            if (tag === 'cmpform') return 'cmpForm';
+            if (tag === 'div' && k.getAttribute('data-wb-root') === '1') return 'div';
+        }
+        return 'html';
+    };
+
+    Canvas.prototype.setRootType = function (type) {
+        if (['html', 'cmpForm', 'div'].indexOf(type) < 0) return;
+        if (type === this._rootType) return;
+
+        var doc = this.getDoc();
+        var body = this.getBody();
+        if (!body) return;
+
+        var oldRoot = (this._rootType === 'html') ? null : this.getRootContainer();
+        var source = oldRoot || body;
+        var moved = [];
+        var kids = source.children;
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            if (k.getAttribute && k.getAttribute('data-wb-ide') === '1') continue;
+            if (k.getAttribute && k.getAttribute('data-wb-preview') === '1') continue;
+            moved.push(k);
+        }
+        for (var j = 0; j < moved.length; j++) {
+            if (moved[j].parentNode) moved[j].parentNode.removeChild(moved[j]);
+        }
+        if (oldRoot && oldRoot.parentNode) oldRoot.parentNode.removeChild(oldRoot);
+        var bKids = body.children;
+        for (var m = bKids.length - 1; m >= 0; m--) {
+            var bk = bKids[m];
+            if (bk.getAttribute && bk.getAttribute('data-wb-ide') === '1') continue;
+            bk.parentNode.removeChild(bk);
+        }
+
+        var newRoot = null;
+        if (type === 'cmpForm') {
+            newRoot = doc.createElement('cmpform');
+            newRoot.setAttribute('data-wb-tag', 'cmpForm');
+            newRoot.setAttribute('data-cmptype', 'd3.form');
+            newRoot.setAttribute('class', 'd3form formBackground');
+        } else if (type === 'div') {
+            newRoot = doc.createElement('div');
+            newRoot.setAttribute('data-cmptype', 'd3.rootdiv');
+            newRoot.setAttribute('data-wb-root', '1');
+            newRoot.setAttribute('class', 'formBackground');
+        }
+
+        if (newRoot) {
+            body.appendChild(newRoot);
+            for (var n = 0; n < moved.length; n++) newRoot.appendChild(moved[n]);
+        } else {
+            for (var p = 0; p < moved.length; p++) body.appendChild(moved[p]);
+        }
+
+        this._rootType = type;
+        if (newRoot) this._renderPreview(newRoot);
+
+        bus.emit('canvas:changed');
+        if (newRoot) bus.emit('selection:changed', { element: newRoot });
+        else bus.emit('canvas:selection:reset');
+    };
+
     Canvas.prototype._reobserve = function () {
         if (!this._mo) return;
         this._mo.disconnect();
         var html = this.getHtml();
         if (html) this._mo.observe(html, {
-            childList: true,
-            subtree: true,
-            characterData: true
+            childList: true, subtree: true, characterData: true
         });
     };
 
@@ -195,6 +277,7 @@
         this._injectIdeStyle();
         this.pending = null;
         this.designMode = false;
+        this._rootType = 'html';
         $(this.iframe).removeClass('wb-design-mode');
 
         this._cleanClass(this.getBody());
@@ -211,15 +294,10 @@
         }, 0);
     };
 
-    /* ============================================================
-       Design Mode
-       ============================================================ */
     Canvas.prototype.setDesignMode = function (on) {
         var doc = this.getDoc();
         this.designMode = !!on;
-        try {
-            doc.designMode = this.designMode ? 'on' : 'off';
-        } catch (e) {}
+        try { doc.designMode = this.designMode ? 'on' : 'off'; } catch (e) {}
 
         if (this.designMode) {
             this.pending = null;
@@ -247,23 +325,26 @@
         this.setDesignMode(!this.designMode);
     };
 
-    /* ============================================================
-       Подписка на события iframe
-       ============================================================ */
     Canvas.prototype._bind = function () {
         var self = this, doc = this.getDoc();
 
         doc.addEventListener('mousedown', function (e) {
-            /* Скрыть открытое контекстное меню (от сцены или от дерева) —
-               пользователь передумал и кликнул снова по сцене. */
             bus.emit('contextmenu:hide');
-
             if (self.designMode) return;
             if (self.pending) {
                 var target = self._placementTarget(e.target);
                 self._place(self.pending, target);
                 e.preventDefault(); e.stopPropagation();
                 return;
+            }
+            var clicked = e.target;
+            while (clicked && clicked !== doc.body) {
+                if (clicked.getAttribute && clicked.getAttribute('data-wb-tag')) {
+                    self.select(clicked);
+                    e.preventDefault();
+                    return;
+                }
+                clicked = clicked.parentNode;
             }
             if (e.target && e.target.nodeType === 1) self.select(e.target);
         }, true);
@@ -298,9 +379,17 @@
 
         doc.addEventListener('contextmenu', function (e) {
             if (self.pending) { self.pending = null; bus.emit('palette:cancelled'); }
-            if (!self.designMode && e.target && e.target.nodeType === 1) self.select(e.target);
-
-            /* Координаты события в iframe переводим в координаты главного документа */
+            if (!self.designMode && e.target && e.target.nodeType === 1) {
+                var clicked = e.target;
+                while (clicked && clicked !== doc.body) {
+                    if (clicked.getAttribute && clicked.getAttribute('data-wb-tag')) {
+                        self.select(clicked);
+                        break;
+                    }
+                    clicked = clicked.parentNode;
+                }
+                if (!clicked) self.select(e.target);
+            }
             var pt = self._pageCoordsFromIframeEvent(e);
             bus.emit('contextmenu:element', { x: pt.x, y: pt.y });
             e.preventDefault();
@@ -313,31 +402,53 @@
         var head = this.getHead();
         if (!html) return null;
         if (!el || el.nodeType !== 1) return body;
+
+        if (this._rootType !== 'html') {
+            var rc = this.getRootContainer();
+            if (rc && el !== rc && !rc.contains(el)) return rc;
+        }
+
         if (el !== html && !html.contains(el)) return body;
 
         var n = el;
         while (n && n !== body && n !== head && n !== html) {
+            if (n.getAttribute && n.getAttribute('data-wb-preview') === '1') {
+                n = n.parentNode;
+                continue;
+            }
             if (!VOID[n.tagName]) return n;
             n = n.parentNode;
         }
         if (n === head) return head;
-        if (n === body) return body;
         return body;
     };
 
-    /* Найти ближайшего подходящего родителя для parentOnly-компонента. */
+    /* Найти ближайшего родителя из массива def.parentOnly (или одного тега).
+       Идёт вверх от target, затем fallback — первый подходящий в документе. */
     Canvas.prototype._findParentFor = function (def, target) {
         var doc = this.getDoc();
         var html = this.getHtml();
-        var wanted = def.parentOnly.toLowerCase();
+
+        var wanted;
+        if (Array.isArray(def.parentOnly)) {
+            wanted = def.parentOnly.map(function (t) { return String(t).toLowerCase(); });
+        } else {
+            wanted = [String(def.parentOnly).toLowerCase()];
+        }
 
         var t = target;
         while (t && t !== html) {
-            if (t.tagName && t.tagName.toLowerCase() === wanted) return t;
+            if (t.tagName) {
+                var tag = t.tagName.toLowerCase();
+                if (wanted.indexOf(tag) >= 0) return t;
+            }
             t = t.parentNode;
         }
-        var all = doc.querySelectorAll(wanted);
-        return all.length > 0 ? all[0] : null;
+        for (var i = 0; i < wanted.length; i++) {
+            var all = doc.querySelectorAll(wanted[i]);
+            if (all.length > 0) return all[0];
+        }
+        return null;
     };
 
     Canvas.prototype.insertComponent = function (def, target, zone) {
@@ -356,8 +467,8 @@
         }
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
-
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
+        if (def.xmlTag)  el.setAttribute('data-wb-tag', def.xmlTag);
 
         if (def.parentOnly) {
             var parent = this._findParentFor(def, target);
@@ -383,6 +494,8 @@
             target.appendChild(el);
         }
 
+        this._renderPreview(el);
+
         this.pending = null;
         bus.emit('palette:placed');
 
@@ -396,6 +509,45 @@
         bus.emit('canvas:changed');
         bus.emit('selection:changed', { element: el });
         return el;
+    };
+
+    Canvas.prototype._renderPreview = function (el) {
+        if (!el || el.nodeType !== 1) return;
+
+        var old = el.querySelector(':scope > [data-wb-preview="1"]');
+        if (old) old.parentNode.removeChild(old);
+
+        if (this.getRootContainer && this.getRootContainer() === el) return;
+
+        var def = ComponentRegistry.match(el);
+        if (!def || !def.preview) return;
+
+        var doc = this.getDoc();
+        var node;
+        try { node = def.preview(el, doc); } catch (e) { node = null; }
+        if (!node) return;
+
+        if (typeof node === 'string') {
+            var tmp = doc.createElement('div');
+            tmp.innerHTML = node;
+            node = tmp.firstChild;
+        }
+        if (!node || node.nodeType !== 1) return;
+
+        node.setAttribute('data-wb-preview', '1');
+        el.appendChild(node);
+    };
+
+    Canvas.prototype.refreshPreview = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        this._renderPreview(el);
+        var kids = el.children;
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i];
+            if (c.getAttribute && c.getAttribute('data-wb-tag')) {
+                this.refreshPreview(c);
+            }
+        }
     };
 
     Canvas.prototype._place = function (def, target) {
@@ -419,7 +571,7 @@
     };
 
     /* ============================================================
-       Форматирование HTML при сохранении
+       Форматирование при сохранении
        ============================================================ */
 
     Canvas.prototype._formatTagName = function (el) {
@@ -438,6 +590,8 @@
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
             if (name === 'data-wb-tag') continue;
+            if (name === 'data-wb-preview') continue;
+            if (name === 'data-wb-root') continue;
 
             var val = a.value == null ? '' : String(a.value);
 
@@ -475,6 +629,14 @@
                 child.parentNode.removeChild(child);
                 continue;
             }
+            if (child.getAttribute && child.getAttribute('data-wb-preview') === '1') {
+                child.parentNode.removeChild(child);
+                continue;
+            }
+            if (child.tagName && child.tagName.toLowerCase() === 'wb-cdata') {
+                child.parentNode.removeChild(child);
+                continue;
+            }
             this._stripServiceClasses(child);
             if (child.hasAttribute && child.hasAttribute('data-cmptype')) {
                 child.removeAttribute('data-cmptype');
@@ -486,50 +648,73 @@
         }
     };
 
-    Canvas.prototype._formatCdataContainer = function (el, level, tagName, attrs) {
+    Canvas.prototype._formatCmpNode = function (node, level, xmlTag) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
         var innerPad = pad + INDENT;
 
-        var raw = el.textContent || '';
-        var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-        var content = m ? m[1] : '';
+        var attrs = this._formatAttrs(node);
+        var cdata = null;
+        var childCmp = [];
 
-        var lines = content.split(/\r?\n/);
-        while (lines.length && lines[0].trim() === '') lines.shift();
-        while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-
-        var minIndent = Infinity;
-        for (var i = 0; i < lines.length; i++) {
-            if (lines[i].trim() === '') continue;
-            var ind = lines[i].match(/^\s*/)[0].length;
-            if (ind < minIndent) minIndent = ind;
-        }
-        if (!isFinite(minIndent)) minIndent = 0;
-
-        var out = pad + '<' + tagName + attrs + '>\n';
-
-        if (content !== '' || lines.length > 0) {
-            out += innerPad + '<![CDATA[\n';
-            for (var j = 0; j < lines.length; j++) {
-                var line = lines[j];
-                if (line.trim() === '') {
-                    out += '\n';
-                } else {
-                    out += innerPad + line.substr(minIndent) + '\n';
+        for (var i = 0; i < node.childNodes.length; i++) {
+            var c = node.childNodes[i];
+            if (c.nodeType === 1) {
+                if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') {
+                    var cv = c.textContent || '';
+                    var cm = cv.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+                    cdata = cm ? cm[1] : cv;
+                    continue;
                 }
+                childCmp.push(c);
+            } else if (c.nodeType === 3) {
+                var t = c.nodeValue || '';
+                if (t.trim() === '') continue;
+                var m = t.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+                if (m) {
+                    cdata = m[1];
+                } else {
+                    childCmp.push(c);
+                }
+            }
+        }
+
+        if ((cdata === null || cdata === '') && childCmp.length === 0) {
+            if (xmlTag === 'cmpForm') {
+                return pad + '<' + xmlTag + attrs + '></' + xmlTag + '>\n';
+            }
+            return pad + '<' + xmlTag + attrs + '/>\n';
+        }
+
+        var out = pad + '<' + xmlTag + attrs + '>\n';
+
+        if (cdata !== null && cdata !== '') {
+            var lines = cdata.split(/\r?\n/);
+            while (lines.length && lines[0].trim() === '') lines.shift();
+            while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+
+            var minIndent = Infinity;
+            for (var mm = 0; mm < lines.length; mm++) {
+                if (lines[mm].trim() === '') continue;
+                var ind = lines[mm].match(/^\s*/)[0].length;
+                if (ind < minIndent) minIndent = ind;
+            }
+            if (!isFinite(minIndent)) minIndent = 0;
+
+            out += innerPad + '<![CDATA[\n';
+            for (var n = 0; n < lines.length; n++) {
+                if (lines[n].trim() === '') out += '\n';
+                else out += innerPad + lines[n].substr(minIndent) + '\n';
             }
             out += innerPad + ']]>\n';
         }
 
-        var kids = el.children;
-        for (var c = 0; c < kids.length; c++) {
-            var child = kids[c];
-            if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
-            out += this._formatNode(child, level + 1);
+        for (var p = 0; p < childCmp.length; p++) {
+            out += this._formatNode(childCmp[p], level + 1);
         }
 
-        out += pad + '</' + tagName + '>\n';
+        out += pad + '</' + xmlTag + '>\n';
         return out;
     };
 
@@ -541,6 +726,7 @@
             var t = node.nodeValue;
             if (t == null) return '';
             if (t.trim() === '') return '';
+            if (/<!\[CDATA\[/.test(t)) return '';
             var norm = t.replace(/\s+/g, ' ').trim();
             return pad + norm + '\n';
         }
@@ -553,8 +739,14 @@
         var tagName  = this._formatTagName(node);
         var attrs    = this._formatAttrs(node);
 
+        if (tagLower === 'wb-cdata') return '';
+
+        if (node.getAttribute && node.getAttribute('data-wb-tag')) {
+            return this._formatCmpNode(node, level, tagName);
+        }
+
         if (CDATA_CONTAINERS[tagLower]) {
-            return this._formatCdataContainer(node, level, tagName, attrs);
+            return this._formatCmpNode(node, level, tagName);
         }
 
         if (XML_SELF_CLOSE[tagLower]) {
@@ -574,9 +766,15 @@
         var childNodes = node.childNodes;
         for (var i = 0; i < childNodes.length; i++) {
             var c = childNodes[i];
-            if (c.nodeType === 3 && (c.nodeValue == null || c.nodeValue.trim() === '')) continue;
-            if (c.nodeType === 8) continue;
-            children.push(c);
+            if (c.nodeType === 1) {
+                if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+                children.push(c);
+            } else if (c.nodeType === 3) {
+                if (c.nodeValue == null || c.nodeValue.trim() === '') continue;
+                if (/<!\[CDATA\[/.test(c.nodeValue)) continue;
+                children.push(c);
+            }
         }
 
         if (children.length === 1 && children[0].nodeType === 3) {
@@ -596,16 +794,35 @@
         return out;
     };
 
+    Canvas.prototype._findRootInClone = function (clone) {
+        if (this._rootType === 'html') return null;
+        var body = clone.querySelector('body');
+        if (!body) return null;
+        var kids = body.children;
+        for (var i = 0; i < kids.length; i++) {
+            var k = kids[i];
+            var tag = k.tagName.toLowerCase();
+            if (this._rootType === 'cmpForm' && tag === 'cmpform') return k;
+            if (this._rootType === 'div' && tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
+        }
+        return null;
+    };
+
     Canvas.prototype.cleanHtml = function () {
         var htmlEl = this.getHtml();
         if (!htmlEl) return '';
         var clone = htmlEl.cloneNode(true);
         this._purgeServiceNodes(clone);
-        var body = this._formatNode(clone, 0);
-        return '<!DOCTYPE html>\n' + body;
+
+        var root = this._findRootInClone(clone);
+        if (root) {
+            return this._formatNode(root, 0).replace(/\n$/, '');
+        }
+
+        var bodyStr = this._formatNode(clone, 0);
+        return '<!DOCTYPE html>\n' + bodyStr;
     };
 
     Canvas.CMP_TAGS = CMP_TAGS;
-
     global.Canvas = Canvas;
 })(window);
