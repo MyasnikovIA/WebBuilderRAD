@@ -25,7 +25,7 @@
         </div>
     </div>
 
-    <!-- Left -->
+    <!-- Left: Structure + Palette -->
     <div region="west" width="290" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel" style="height:50%;">
             <div class="wb-panel-head">
@@ -43,12 +43,12 @@
         </div>
     </div>
 
-    <!-- Center -->
+    <!-- Center: canvas -->
     <div region="center" style="padding:6px;background:#808080;">
         <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
     </div>
 
-    <!-- Right -->
+    <!-- Right: Inspector -->
     <div id="wb-right" region="east" width="330" expanded="true" showSplitIcon="true" showHeader="false">
         <div class="wb-panel">
             <div class="wb-panel-head">
@@ -69,7 +69,7 @@
 </div>
 
 <!-- =========================================================
-     Выпадающие меню
+     Выпадающие меню в тулбаре
      ========================================================= -->
 <ul id="fileMenu" class="mini-menu" style="display:none;">
     <li iconCls="icon-new" onclick="App.cmd('new')">New</li>
@@ -101,7 +101,7 @@
 </ul>
 
 <!-- =========================================================
-     Modal
+     Модальное окно редактора
      ========================================================= -->
 <div id="wb-window" class="mini-window" title=""
      showMaxButton="true"
@@ -119,7 +119,7 @@
 </div>
 
 <!-- =========================================================
-     Контекстное меню сцены / дерева
+     Контекстное меню СЦЕНЫ (ПКМ по элементу в iframe)
      ========================================================= -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
@@ -135,6 +135,26 @@
     <li onclick="App.cmd('back')">Send to Back</li>
     <li class="separator"></li>
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
+</ul>
+
+<!-- =========================================================
+     Контекстное меню ДЕРЕВА (ПКМ по узлу в Structure)
+     ========================================================= -->
+<ul id="wb-treemenu" class="mini-contextmenu">
+    <li onclick="App.cmd('copy')">Copy</li>
+    <li onclick="App.cmd('cut')">Cut</li>
+    <li onclick="App.cmd('paste')">Paste</li>
+    <li onclick="App.cmd('pasteAfter')">Paste After</li>
+    <li onclick="App.cmd('duplicate')">Duplicate</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('delete')">Delete</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('editHtml')">Edit HTML…</li>
+    <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
+    <li onclick="App.cmd('editText')">Edit Text</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('front')">Bring to Front</li>
+    <li onclick="App.cmd('back')">Send to Back</li>
 </ul>
 
 <!-- IDE core -->

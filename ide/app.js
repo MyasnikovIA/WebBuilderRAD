@@ -22,19 +22,25 @@
         EventBus.on('command:undo',   function ()  { History.undo(); });
         EventBus.on('command:redo',   function ()  { History.redo(); });
 
+        /* Контекстное меню сцены (ПКМ по элементу в iframe) */
         EventBus.on('contextmenu:element', function (e) {
             var menu = mini.get('wb-contextmenu');
             menu.showAtPos(e.x, e.y);
         });
 
+        /* Контекстное меню дерева (ПКМ по узлу Structure) */
+        EventBus.on('contextmenu:tree', function (e) {
+            var menu = mini.get('wb-treemenu');
+            menu.showAtPos(e.x, e.y);
+        });
+
         /* Очистка инспектора при включении design mode */
         EventBus.on('canvas:selection:reset', function () {
-            var win = document.getElementById('wb-inspector-target');
-            if (win) win.textContent = '—';
+            var t = document.getElementById('wb-inspector-target');
+            if (t) t.textContent = '—';
         });
 
         $(document).keydown(function (e) {
-            /* Не мешаем клавишам, когда сцена в режиме дизайна и фокус в iframe */
             if (canvas.designMode && document.activeElement === canvas.iframe) return;
 
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
@@ -42,6 +48,7 @@
             else if (e.ctrlKey && e.keyCode === 67) { App.cmd('copy');  e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
+            else if (e.keyCode === 46) { App.cmd('delete'); }
         });
 
         function moveSel(dx, dy, resize) {
@@ -69,11 +76,32 @@
             EventBus.emit('selection:changed', { element: el });
         }
 
+        /* Нормализация клона: убрать служебные классы и data-cmptype */
+        /* Нормализация клона: убрать служебные классы и атрибуты IDE */
+        function cleanClone(node) {
+            if (!node || node.nodeType !== 1) return;
+            node.classList.remove('wb-selected', 'wb-hover');
+            if (node.classList.length === 0) node.removeAttribute('class');
+            node.removeAttribute('data-cmptype');
+            node.removeAttribute('data-wb-editable');
+            node.removeAttribute('data-wb-ide');
+
+            var kids = node.querySelectorAll('.wb-selected, .wb-hover, [data-cmptype], [data-wb-editable], [data-wb-ide]');
+            for (var i = 0; i < kids.length; i++) {
+                kids[i].classList.remove('wb-selected', 'wb-hover');
+                if (kids[i].classList.length === 0) kids[i].removeAttribute('class');
+                kids[i].removeAttribute('data-cmptype');
+                kids[i].removeAttribute('data-wb-editable');
+                kids[i].removeAttribute('data-wb-ide');
+            }
+        }
+
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
             new: function () {
                 if (!confirm('Очистить холст?')) return;
+                clipboard = null;
                 canvas.reset();
             },
 
@@ -92,6 +120,7 @@
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
 
+            /* ---------- Copy / Cut / Paste / Delete ---------- */
             copy: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -109,15 +138,42 @@
             paste: function () {
                 var el = canvas.getSelected();
                 if (!el || !clipboard) return;
+                if (el === canvas.getHtml()) return;
                 var c = clipboard.cloneNode(true);
-                c.classList.remove('wb-selected', 'wb-hover');
-                var html = canvas.getHtml();
-                if (el === html) {
-                    var body = canvas.getOrCreateBody();
-                    if (body) body.appendChild(c);
+                cleanClone(c);
+
+                /* head принимает только head-элементы */
+                var tagLower = el.tagName.toLowerCase();
+                if (tagLower === 'head') {
+                    var headTags = { meta:1, link:1, script:1, style:1, title:1, base:1, noscript:1, template:1 };
+                    if (!headTags[c.tagName.toLowerCase()]) return;
+                    el.appendChild(c);
                 } else {
                     el.appendChild(c);
                 }
+
+                EventBus.emit('canvas:changed');
+                canvas.select(c);
+            },
+            pasteAfter: function () {
+                var el = canvas.getSelected();
+                if (!el || !clipboard) return;
+                if (el === canvas.getHtml()) return;
+                if (el.parentNode == null) return;
+                var c = clipboard.cloneNode(true);
+                cleanClone(c);
+                el.parentNode.insertBefore(c, el.nextSibling);
+                EventBus.emit('canvas:changed');
+                canvas.select(c);
+            },
+            duplicate: function () {
+                var el = canvas.getSelected();
+                if (!el) return;
+                if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
+                if (el.parentNode == null) return;
+                var c = el.cloneNode(true);
+                cleanClone(c);
+                el.parentNode.insertBefore(c, el.nextSibling);
                 EventBus.emit('canvas:changed');
                 canvas.select(c);
             },
@@ -129,6 +185,7 @@
                 EventBus.emit('canvas:changed');
             },
 
+            /* ---------- Правки ---------- */
             editText: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -142,9 +199,15 @@
             editHtml: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
+
+                /* Показываем очищенный клон — без следов IDE */
+                var clone = el.cloneNode(true);
+                cleanClone(clone);
+
                 var ta = document.createElement('textarea');
                 ta.className = 'wb-code-editor';
-                ta.value = el.outerHTML;
+                ta.value = clone.outerHTML;
+
                 Modal.open({
                     title: 'Edit HTML — ' + el.tagName.toLowerCase(),
                     content: ta,
@@ -154,14 +217,16 @@
                             tmp.innerHTML = ta.value;
                             var nw = tmp.firstChild;
                             if (!nw) return;
-                            nw.classList.remove('wb-selected', 'wb-hover');
+                            /* На всякий случай чистим служебные классы, если пользователь
+                               случайно вставил их вручную */
+                            cleanClone(nw);
                             el.parentNode.replaceChild(nw, el);
                             EventBus.emit('canvas:changed');
                             canvas.select(nw);
                         } catch (ex) { alert('Некорректный HTML: ' + ex.message); }
                     }
                 });
-            },
+                },
 
             editInnerHtml: function () {
                 var el = canvas.getSelected();
@@ -180,9 +245,8 @@
                 });
             },
 
-            designMode: function () {
-                canvas.toggleDesignMode();
-            },
+            /* ---------- Прочее ---------- */
+            designMode: function () { canvas.toggleDesignMode(); },
 
             front: function () {
                 var el = canvas.getSelected();

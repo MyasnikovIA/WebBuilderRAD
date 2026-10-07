@@ -305,7 +305,12 @@
         }
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
-        el.setAttribute('data-cmptype', def.id);
+
+        /* data-cmptype нужен только кастомным компонентам,
+           у которых задан собственный cmptype (ui.card, ui.button, ui.badge).
+           Для стандартных HTML-тегов ComponentRegistry.match найдёт
+           компонент по tagName без этой метки. */
+        if (def.cmptype) el.setAttribute('data-cmptype', def.id);
 
         if (def.rootLevel) {
             html.appendChild(el);
@@ -368,8 +373,13 @@
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
+            /* Служебные атрибуты IDE */
             if (name === 'data-cmptype') continue;
+            if (name === 'data-wb-editable') continue;
+            if (name === 'data-wb-ide') continue;
+            /* Пустой class="" */
             if (name === 'class' && (a.value || '').trim() === '') continue;
+
             var val = a.value == null ? '' : String(a.value);
             val = val.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             out += ' ' + name + '="' + val + '"';
@@ -400,6 +410,9 @@
             this._stripServiceClasses(child);
             if (child.hasAttribute && child.hasAttribute('data-cmptype')) {
                 child.removeAttribute('data-cmptype');
+            }
+            if (child.hasAttribute && child.hasAttribute('data-wb-editable')) {
+                child.removeAttribute('data-wb-editable');
             }
             this._purgeServiceNodes(child);
         }

@@ -39,6 +39,7 @@
 
         $('#wb-domtree-filter').bind('keyup input', function () { self._filter($(this).val()); });
         this._installDnD();
+        this._installContextMenu();
     }
 
     DomTree.prototype._observe = function () {
@@ -48,7 +49,11 @@
         var html = this.canvas.getHtml();
         if (!html) return;
         this._mo = new global.MutationObserver(function () { self._scheduleRebuild(); });
-        this._mo.observe(html, { childList: true, subtree: true });
+        this._mo.observe(html, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
     };
 
     DomTree.prototype._scheduleRebuild = function () {
@@ -79,9 +84,7 @@
 
     DomTree.prototype._build = function (el, parentUl) {
         if (!el || el.nodeType !== 1) return;
-
-        /* Служебные элементы IDE (style, link, script от редактора)
-           не показываем в дереве. */
+        /* Пропускаем служебный IDE-стиль */
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
 
         var self = this;
@@ -98,7 +101,6 @@
         var kids = [];
         for (var i = 0; i < el.children.length; i++) {
             var child = el.children[i];
-            /* Пропускаем служебный IDE-стиль внутри head */
             if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
             kids.push(child);
         }
@@ -284,6 +286,40 @@
     DomTree.prototype._insertFromPalette = function (def, target, zone) {
         if (!this.canvas || !def || !target) return;
         this.canvas.insertComponent(def, target, zone);
+    };
+
+    /* ============================================================
+       Контекстное меню дерева (ПКМ по узлу)
+       ============================================================ */
+    DomTree.prototype._installContextMenu = function () {
+        var self = this;
+        var $root = this._getRoot();
+
+        $root.delegate('.wb-tree-label', 'contextmenu', function (e) {
+            var el = self._labelToElement(this);
+            if (!el) return true;
+            var html = self.canvas && self.canvas.getHtml();
+            if (!html || el === html) {
+                /* html не редактируем — блокируем меню */
+                e.preventDefault();
+                return false;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            /* Сначала выделяем узел — команды меню работают с выделенным. */
+            if (self.canvas && !self.canvas.designMode) {
+                self.canvas.select(el);
+            }
+
+            var native = e.originalEvent || e;
+            bus.emit('contextmenu:tree', {
+                x: native.clientX,
+                y: native.clientY,
+                element: el
+            });
+            return false;
+        });
     };
 
     /* ============================================================
@@ -580,7 +616,6 @@
     Inspector.prototype._set = function (tab, f, v) {
         var el = this.element; if (!el) return;
 
-        /* Утилита для снятия class="" после правок */
         var cleanClass = function (node) {
             if (node && node.nodeType === 1 && typeof node.className === 'string' && node.className.trim() === '') {
                 node.removeAttribute('class');
@@ -592,7 +627,6 @@
             else if (f.type === 'boolean') el[f.name] = !!v;
             else if (f.attr) el.setAttribute(f.name, v);
             else el[f.name] = v;
-
             if (f.name === 'className') cleanClass(el);
         } else if (tab === 'styles') {
             if (v === '' || v == null) {

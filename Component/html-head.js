@@ -11,9 +11,6 @@
 
     /* ============================================================
        Document: HEAD и BODY — уникальные корневые компоненты.
-       rootLevel: true → всегда добавляются прямо в <html>.
-       unique: true    → повторное добавление не создаёт дубликат,
-                         вместо этого выделяется существующий.
        ============================================================ */
     R.register({
         id: 'html.head', category: 'Document', caption: 'HEAD', tagName: 'head',
@@ -30,10 +27,7 @@
     });
 
     /* ============================================================
-       Head-элементы.
-       headOnly: true → при добавлении из палитры всегда попадают
-                        в head, даже если пользователь кликнул по
-                        сцене вне head или по узлу в body.
+       Head-элементы. headOnly: true — всегда попадают в head.
        ============================================================ */
     R.register({
         id: 'html.meta', category: 'Head', caption: 'Meta', tagName: 'meta',
@@ -87,7 +81,6 @@
         create: function (doc) {
             var el = doc.createElement('style');
             el.textContent = '/* CSS */';
-            el.setAttribute('data-wb-editable', '1');
             return el;
         },
         schema: sch([{ name: 'media', caption: 'Media', type: 'string', attr: true }])
@@ -99,7 +92,6 @@
         create: function (doc) {
             var el = doc.createElement('script');
             el.textContent = '// JS';
-            el.setAttribute('data-wb-editable', '1');
             return el;
         },
         schema: sch([
