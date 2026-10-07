@@ -1,0 +1,148 @@
+/* Превью cmpFile — соответствует .ctrl_file / File.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме корень — <div class="ctrl_file">. В IDE корень — <cmpFile>
+   (кастомный тег), а chrome-узлы (file_label, file_loader, file_info)
+   создаются в create() с маркерами data-wb-ide="1". */
+
+/* ---------- Корень ---------- */
+cmpFile {
+    display: inline-block;
+    position: relative;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    border: 1px dashed #cfd8dc;
+    border-radius: 3px;
+    background: #fff;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    line-height: 22px;
+    min-height: 24px;
+    vertical-align: middle;
+}
+
+cmpFile[visible="false"] { display: none; }
+cmpFile[enabled="false"] { opacity: 0.7; }
+
+/* ---------- Метка ---------- */
+cmpFile > [data-part="label"] {
+    display: inline-block;
+    float: left;
+    line-height: 22px;
+    margin-right: 6px;
+    color: #333;
+    font-weight: normal;
+}
+
+/* ---------- Зона загрузки ---------- */
+cmpFile > [data-part="loader"] {
+    display: inline-block;
+    line-height: 22px;
+}
+
+cmpFile > [data-part="loader"] .file_select {
+    display: inline-block;
+    position: relative;
+    width: 120px;
+    height: 22px;
+    line-height: 22px;
+    overflow: hidden;
+    background: #f5f7f9;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    box-sizing: border-box;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+/* Скрываем настоящий <input type="file"> как в рантайме */
+cmpFile > [data-part="loader"] .file_select input[type="file"] {
+    opacity: 0;
+    filter: Alpha(opacity=0);
+    cursor: pointer;
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+}
+
+cmpFile > [data-part="loader"] .file_select > span {
+    position: relative;
+    z-index: 2;
+    display: block;
+    width: 100%;
+    height: 100%;
+    line-height: 20px;
+    padding-left: 6px;
+    color: #3E9AC6;
+    text-decoration: underline;
+    cursor: pointer;
+    box-sizing: border-box;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+cmpFile > [data-part="loader"] .file_select:hover > span {
+    text-decoration: none;
+}
+
+/* Прогресс-бар и процент — в превью неактивны, но видны как задел. */
+cmpFile > [data-part="loader"] .file_select .progress {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0;
+    background: lightblue;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+cmpFile > [data-part="loader"] .file_select .percent {
+    position: absolute;
+    right: 3px; top: 0;
+    color: #3E9AC6;
+    font-size: 11px;
+    pointer-events: none;
+}
+
+/* ---------- Зона информации о файле ---------- */
+cmpFile > [data-part="info"] {
+    display: inline-block;
+    line-height: 22px;
+    vertical-align: middle;
+}
+
+cmpFile > [data-part="info"] > .file_name {
+    display: inline-block;
+    color: #333;
+    margin-right: 6px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+cmpFile > [data-part="info"] > .file_save,
+cmpFile > [data-part="info"] > .file_delete {
+    display: inline-block;
+    color: #3E9AC6;
+    text-decoration: underline;
+    cursor: pointer;
+    line-height: 22px;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+cmpFile > [data-part="info"] > .file_save:hover,
+cmpFile > [data-part="info"] > .file_delete:hover {
+    text-decoration: none;
+}
+
+/* ReadOnly — прячем кнопку «Очистить» (управляется через preview) */
+cmpFile[readonly="true"] > [data-part="info"] > .file_delete {
+    display: none;
+}

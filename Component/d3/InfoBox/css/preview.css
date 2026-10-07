@@ -1,0 +1,106 @@
+/* Превью cmpInfoBox — соответствует .infobox_Ctrl / InfoBox.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме корень — <div class="infobox_Ctrl …">. В IDE корень —
+   <cmpInfoBox>, а preview-узел повторяет структуру плашки. */
+
+cmpInfoBox {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+    vertical-align: top;
+}
+cmpInfoBox[visible="false"] { display: none; }
+cmpInfoBox[enabled="false"] { opacity: 0.7; }
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+.d3-preview-infobox[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: flex !important;
+}
+
+/* ---------- Обёртка (flex, как .infobox_Ctrl) ---------- */
+.d3-preview-infobox {
+    display: flex;
+    margin: 4px 0;
+    color: #808080;
+    border: 1px solid lightgrey;
+    background: #fff;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    line-height: 1.35;
+    box-sizing: border-box;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+/* ---------- Модификаторы ---------- */
+.d3-preview-infobox.d3-preview-infobox-error {
+    color: #a40028;
+    border-color: #a40028;
+}
+.d3-preview-infobox.d3-preview-infobox-success {
+    color: #079A2D;
+    border-color: #079A2D;
+}
+.d3-preview-infobox.d3-preview-infobox-warning {
+    color: #000;
+    border-color: #feee33;
+    background: #fffde7;
+}
+
+/* ---------- Контейнер иконки ---------- */
+.d3-preview-infobox-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 11px;
+    flex: 0 0 auto;
+}
+
+.d3-preview-infobox-icon-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    color: inherit;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    font-weight: bold;
+    font-style: italic;
+    line-height: 1;
+    box-sizing: border-box;
+    user-select: none;
+    -moz-user-select: none;
+}
+
+/* ---------- Текстовый блок ---------- */
+.d3-preview-infobox-text {
+    flex: 1 1 auto;
+    padding: 5px 5px 5px 0;
+    font-size: 12px;
+    color: inherit;
+    min-width: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
+.d3-preview-infobox-empty {
+    color: #bdbdbd;
+    font-style: italic;
+}
+
+/* ---------- Disabled ---------- */
+.d3-preview-infobox.ctrl_disable {
+    opacity: 0.7;
+}

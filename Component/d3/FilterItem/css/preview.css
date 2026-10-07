@@ -1,0 +1,82 @@
+/* Превью cmpFilterItem.
+   В рантайме FilterItem разворачивается в разный input в зависимости
+   от filterkind. В IDE рисуем универсальный input-плейсхолдер
+   с подписью типа. */
+
+.d3-preview-filteritem[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 1px 2px !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+.d3-preview-filteritem {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    white-space: nowrap;
+}
+
+.d3-preview-filteritem-caption {
+    display: inline-block;
+    color: #555;
+    font-size: 12px;
+    line-height: 22px;
+    white-space: nowrap;
+}
+
+.d3-preview-filteritem input {
+    display: inline-block;
+    width: 100px;
+    min-width: 60px;
+    padding: 2px 6px;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    background: #fff;
+    font: inherit;
+    color: #333;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.d3-preview-filteritem input::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+/* Визуальные подсказки по типу. */
+.d3-preview-filteritem[data-filterkind="date"] input,
+.d3-preview-filteritem[data-filterkind="activedate"] input,
+.d3-preview-filteritem[data-filterkind="perioddate"] input {
+    background: #f9fbfc;
+}
+
+.d3-preview-filteritem[data-filterkind="numb"] input,
+.d3-preview-filteritem[data-filterkind="periodnumb"] input,
+.d3-preview-filteritem[data-filterkind="speriodnum"] input {
+    text-align: right;
+}
+
+.d3-preview-filteritem[data-filterkind="perioddate"] input,
+.d3-preview-filteritem[data-filterkind="periodtime"] input,
+.d3-preview-filteritem[data-filterkind="periodnumb"] input,
+.d3-preview-filteritem[data-filterkind="speriodnum"] input {
+    width: 80px;
+}
+
+.d3-preview-filteritem[data-filterkind="unitedit"] input,
+.d3-preview-filteritem[data-filterkind="unitmulti"] input,
+.d3-preview-filteritem[data-filterkind="multi_hier"] input,
+.d3-preview-filteritem[data-filterkind="cmb_unit"] input,
+.d3-preview-filteritem[data-filterkind="combo"] input {
+    width: 140px;
+    background: #f5f7f9;
+}

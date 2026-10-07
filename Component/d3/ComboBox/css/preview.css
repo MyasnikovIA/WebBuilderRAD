@@ -1,0 +1,97 @@
+/* Превью cmpComboBox — соответствует .ctrl_combobox / ComboBox.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+.d3-preview-combo[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding-right: 22px !important;
+    margin: 0 !important;
+    min-width: 100px !important;
+    min-height: 22px !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+/* Обёртка — аналог .ctrl_combobox */
+.d3-preview-combo {
+    position: relative;
+    display: inline-block;
+    padding-right: 22px;
+    background: #fff;
+    border: 1px solid #9696AA;
+    border-radius: 3px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    min-width: 100px;
+    min-height: 22px;
+    line-height: 20px;
+    vertical-align: middle;
+}
+
+/* Input — аналог input внутри .ctrl_combobox */
+.d3-preview-combo input[type="text"] {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 2px 6px;
+    font: inherit;
+    color: inherit;
+    outline: none;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+/* Кнопка раскрытия — аналог div.cmbb-button.
+   В оригинале используется background: url('~CmpComboBox/button').
+   Здесь рисуем CSS-стрелку, чтобы не тащить картинку в превью. */
+.d3-preview-combo .cmbb-button {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    background: #f0f0f0;
+    border-left: 1px solid #9696AA;
+    cursor: pointer;
+    box-sizing: border-box;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.d3-preview-combo .cmbb-button::after {
+    content: '\25BE'; /* ▾ */
+    display: block;
+    text-align: center;
+    line-height: 22px;
+    color: #444;
+    font-size: 10px;
+}
+
+/* ReadOnly — input не редактируется, курсор default */
+.d3-preview-combo.readonly input[type="text"] {
+    cursor: default;
+}
+
+/* Disabled — аналог .ctrl_combobox.ctrl_disable */
+.d3-preview-combo.ctrl_disable {
+    opacity: 0.75;
+    background: #f7f7f7;
+}
+.d3-preview-combo.ctrl_disable input[type="text"] {
+    color: #999;
+    cursor: not-allowed;
+}
+.d3-preview-combo.ctrl_disable .cmbb-button {
+    cursor: not-allowed;
+    background: #ececec;
+}
+
+/* Скрыть дочерние ComboItem в превью — они видны только в DomTree.
+   Сам превью-узел — тоже child, поэтому селектор точечный. */
+cmpcombobox > cmpcomboitem {
+    display: none !important;
+}

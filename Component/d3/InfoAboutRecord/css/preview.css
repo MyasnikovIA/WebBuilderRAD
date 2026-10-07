@@ -1,0 +1,83 @@
+/* Превью cmpInfoAboutRecord — соответствует .info_about_record_ctrl /
+   InfoAboutRecord.css.
+
+   В рантайме корень — <div>, внутри — <i class="fas fa-info-circle">.
+   В IDE рисуем CSS-иконку ⓘ (без зависимости от FontAwesome). */
+
+cmpInfoAboutRecord {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpInfoAboutRecord[visible="false"] { display: none; }
+cmpInfoAboutRecord[enabled="false"] { opacity: 0.7; }
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+.d3-preview-infoaboutrecord[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-infoaboutrecord {
+    display: inline-block;
+    cursor: pointer;
+    padding: 0 5px;
+    line-height: 1;
+    font-size: 18px;
+    color: #808080;
+    vertical-align: middle;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+}
+
+.d3-preview-infoaboutrecord:hover {
+    color: #555;
+}
+
+/* ---------- Иконка ⓘ ---------- */
+.d3-preview-infoaboutrecord-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 50%;
+    background: #eceff1;
+    border: 2px solid currentColor;
+    color: inherit;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12px;
+    font-weight: bold;
+    font-style: italic;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+/* ---------- Состояние: value пуст ---------- */
+.d3-preview-infoaboutrecord.d3-preview-infoaboutrecord-hidden {
+    opacity: 0.35;
+}
+
+.d3-preview-infoaboutrecord.d3-preview-infoaboutrecord-hidden
+.d3-preview-infoaboutrecord-icon {
+    background: #f5f5f5;
+}
+
+/* ---------- Disabled ---------- */
+.d3-preview-infoaboutrecord.ctrl_disable {
+    cursor: default;
+    color: #b0b0b0;
+}
+.d3-preview-infoaboutrecord.ctrl_disable:hover {
+    color: #b0b0b0;
+}

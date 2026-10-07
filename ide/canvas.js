@@ -18,7 +18,9 @@
 
     var XML_SELF_CLOSE = {
         cmpactionvar:1, cmpdatasetvar:1, cmpcomboitem:1, cmpsubactionvar:1,
-        'wb-image':1
+        cmpfetchvar:1, cmpsubfetchvar:1,
+        cmpimage:1,
+        'wb-image':1, cmptagitem:1
     };
 
     var CMP_TAGS = {
@@ -27,6 +29,11 @@
         'cmpdataset':     'cmpDataSet',
         'cmpdatasetvar':  'cmpDataSetVar',
         'cmpscript':      'cmpScript',
+        'cmpfilter':     'cmpFilter',
+        'cmpinfobox': 'cmpInfoBox',
+        'cmpinfoaboutrecord': 'cmpInfoAboutRecord',
+        'cmpimage':       'cmpImage',
+        'cmpfilteritem': 'cmpFilterItem',
         'cmpform':        'cmpForm',
         'cmpsubform':     'cmpSubForm',
         'cmpbutton':      'cmpButton',
@@ -39,9 +46,25 @@
         'cmpdependences': 'cmpDependences',
         'cmpmask':        'cmpMask',
         'cmpsubaction':   'cmpSubAction',
-        'cmpsubactionvar':'cmpSubActionVar'
+        'cmpfieldset':    'cmpFieldSet',
+        'cmpsubactionvar':'cmpSubActionVar',
+        'cmpbroker':      'cmpBroker',
+        'cmpbuttonedit':  'cmpButtonEdit',
+        'cmptagitem':     'cmpTagItem',
+        'cmpcelllabel':   'cmpCellLabel',
+        'cmpcharts':      'cmpCharts',
+        'cmpcompleter':   'cmpCompleter',
+        'cmpcustomfilter': 'cmpCustomFilter',
+        'cmpdialog ': 'cmpDialog ',
+        'cmpexpander ': 'cmpExpander ',
+        'cmpfetch':       'cmpFetch',
+        'cmpgrid':       'cmpGrid',
+        'cmpcolumn':     'cmpColumn',
+        'cmpgridfooter': 'cmpGridFooter',
+        'cmpfetchvar':    'cmpFetchVar',
+        'cmpcheckbox':    'cmpCheckBox'
     };
-
+    
     var INDENT = '    ';
 
     function Canvas(iframeEl) {
@@ -90,10 +113,12 @@
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
-            'cmpaction, cmpdataset, cmpscript, cmpmask {' +
+
+            'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
+
             'wb-cdata { display: none !important; }' +
             'wb-images, wb-image { display: none !important; }' +
             '[data-wb-preview] { display: inline-block; outline: 1px dotted #b0bec5;' +
@@ -792,6 +817,11 @@
         var tagLower = node.tagName.toLowerCase();
         var tagName  = this._formatTagName(node);
         var attrs    = this._formatAttrs(node);
+
+        if (tagLower === 'cmpcomment') {
+            var commentText = String(node.textContent || '').replace(/--/g, '- -');
+            return pad + '<!--' + commentText + '-->\n';
+        }
 
         /* Служебный контейнер CDATA — не выводим */
         if (tagLower === 'wb-cdata') return '';

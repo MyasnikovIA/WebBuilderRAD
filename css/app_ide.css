@@ -208,3 +208,19 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
     vertical-align: -2px;
     margin-right: 4px;
 }
+
+
+/* ============================================================
+   Разделители групп свойств в Object Inspector
+   ============================================================ */
+.wb-row-separator {
+    padding: 4px 8px;
+    background: #e8e8e8;
+    font-weight: 600;
+    font-size: 11px;
+    color: #555;
+    border-bottom: 1px solid #d0d0d0;
+    border-top: 1px solid #f0f0f0;
+    user-select: none;
+}
+.wb-row-separator:first-child { border-top: 0; }

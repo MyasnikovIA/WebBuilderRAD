@@ -1,0 +1,69 @@
+/* Превью cmpFieldSet — соответствует .ctrl_fieldset / FieldSet.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме корень — <fieldset class="ctrl_fieldset">. В IDE корень —
+   <cmpfieldset> (кастомный тег), а chrome-<legend data-wb-ide="1">
+   создаётся в create(). Стили ниже описывают эту пару. */
+
+/* ---------- Корень ---------- */
+cmpFieldSet {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    padding: 12px 0;
+    border: none;                 /* как .ctrl_fieldset */
+    margin: 0;
+    background: transparent;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 13px;
+    color: #222;
+    min-height: 40px;
+}
+
+/* Неактивное состояние */
+cmpFieldSet[enabled="false"] {
+    opacity: 0.7;
+}
+
+/* Скрытие */
+cmpFieldSet[visible="false"] {
+    display: none;
+}
+
+/* ---------- Chrome-легенда (создаётся в create()) ---------- */
+cmpFieldSet > legend[data-wb-ide="1"] {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 5px 6px 3px;
+    margin: 0 0 8px 0;
+    border: 0;                    /* сброс браузерных дефолтов <legend> */
+    border-bottom: 1px solid #ddd;
+    font-weight: bold;
+    font-size: 13px;
+    color: #333;
+    background: transparent;
+    float: none;
+    position: static;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+/* Тонкая рамка вокруг корня — только для IDE, чтобы контейнер был виден.
+   В рантайме .ctrl_fieldset { border: none } и рамки нет. */
+cmpFieldSet::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border: 1px dashed #cfd8dc;
+    border-radius: 3px;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+
+/* Пользовательские дети — обычный блок */
+cmpFieldSet > *:not(legend[data-wb-ide="1"]) {
+    padding-left: 8px;
+    padding-right: 8px;
+}

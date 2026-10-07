@@ -1,0 +1,78 @@
+/* Превью cmpCustomFilter — соответствует .ctrl_CustomFilter / CustomFilter.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+.d3-preview-customfilter[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 80px !important;
+    min-height: 22px !important;
+    display: inline-block !important;
+}
+
+/* Обёртка — аналог .ctrl_CustomFilter */
+.d3-preview-customfilter {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+.d3-preview-customfilter ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.d3-preview-customfilter li {
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin: 5px 0;
+    user-select: none;
+    -moz-user-select: none;
+}
+
+/* Горизонтальный режим — как .ctrl_CustomFilter.horizontal */
+.d3-preview-customfilter.horizontal li {
+    border-bottom-color: #bbb;
+    display: inline-block;
+    padding: 6px 10px;
+    margin: 0;
+}
+.d3-preview-customfilter.horizontal li.active {
+    border-bottom-color: #d9606f;
+}
+
+/* Вертикальный режим — как .ctrl_CustomFilter.vertical */
+.d3-preview-customfilter.vertical {
+    display: block;
+}
+.d3-preview-customfilter.vertical li {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 36px;
+    line-height: 36px;
+    font-size: 13px;
+    padding-left: 15px;
+    box-sizing: border-box;
+    border-bottom: 0;
+    border-left: 3px solid transparent;
+    margin: 5px 0;
+}
+.d3-preview-customfilter.vertical li.active {
+    background-color: #f6f5f5;
+    border-left-color: #d9606f;
+}
+
+/* Общий активный стиль — как .ctrl_CustomFilter li.active */
+.d3-preview-customfilter li.active {
+    background-color: #f6f5f5;
+}

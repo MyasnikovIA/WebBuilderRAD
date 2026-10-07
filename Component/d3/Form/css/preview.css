@@ -1,0 +1,87 @@
+/* Превью cmpForm — соответствует Form.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   Корень cmpForm — это <div class="d3form formBackground">, создаваемый
+   Canvas.setRootType('cmpForm') или в режиме корневого контейнера html.
+   При sized="true" сервер добавляет сиблинг <div class="formFrame">
+   с caption и кнопкой закрытия. В IDE рисуем этот фрейм через
+   псевдоэлементы ::before / ::after — узлы не сериализуются. */
+
+/* ---------- Базовый контейнер ---------- */
+cmpForm {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-height: 40px;
+    background: transparent;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+}
+
+/* ---------- sized=true: карточка с фреймом ---------- */
+cmpForm[sized="true"] {
+    /* Как .formSized + .formFrame: отступ сверху под caption,
+       горизонтальные паддинги, лёгкая подложка. */
+    margin: 30px auto 10px;
+    padding: 10px;
+    background: #f5f7f9;      /* заглушка для ~CmpForm/framebg */
+    border: 1px solid #cfd8dc;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* Caption во фрейме — аналог .formFrame .frameCaption */
+cmpForm[sized="true"]::before {
+    content: attr(caption);
+    position: absolute;
+    top: -30px;
+    left: 0;
+    right: 40px;
+    height: 30px;
+    line-height: 30px;
+    padding-left: 2px;
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+    box-sizing: border-box;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.25);
+}
+
+/* Кнопка закрытия во фрейме — аналог .formFrame .frameClose */
+cmpForm[sized="true"]::after {
+    content: 'X';
+    position: absolute;
+    top: -25px;
+    right: 10px;
+    width: 40px;
+    height: 20px;
+    line-height: 20px;
+    background: #DC322F;
+    color: #fff;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 3px;
+    cursor: pointer;
+    pointer-events: none;   /* не кликается в IDE — только визуальный маркер */
+    box-sizing: border-box;
+}
+
+/* Тёмная полоса-подложка под caption для читаемости
+   (в рантайме это framebg-картинка). */
+cmpForm[sized="true"] {
+    /* Подложку рисуем псевдоэлементом не можем — уже занят под caption.
+       Оборачиваем визуально: полоса сверху через box-shadow. */
+    border-top: 4px solid #37474f;
+}
+
+/* ---------- visible="false" ---------- */
+cmpForm[visible="false"] {
+    display: none;
+}

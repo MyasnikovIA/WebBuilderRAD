@@ -15,10 +15,17 @@
         cmpsubaction:    ['cmpaction', 'cmpsubaction'],
         cmpsubactionvar: 'cmpsubaction',
         cmpdatasetvar:   'cmpdataset',
-        cmpcomboitem:    'cmpcombobox'
+        cmpfetchvar:     'cmpfetch',
+        cmpcomboitem:    'cmpcombobox',
+        cmpfilteritem:   'cmpfilter',
+        cmpcolumn:       'cmpgrid',
+        cmpgridfooter:   'cmpgrid',
+        cmptagitem:      'cmpbuttonedit'
     };
 
-    /* ============================================================ */
+    /* ============================================================
+       DomTree
+       ============================================================ */
     var _idCounter = 0;
 
     function DomTree(rootEl) {
@@ -99,7 +106,10 @@
         if (!el || el.nodeType !== 1) return;
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
         if (el.getAttribute && el.getAttribute('data-wb-preview') === '1') return;
+        if (el.getAttribute && el.getAttribute('data-wb-comp-asset') === '1') return;
         if (el.tagName && el.tagName.toLowerCase() === 'wb-cdata') return;
+        if (el.tagName && (el.tagName.toLowerCase() === 'wb-images'
+            || el.tagName.toLowerCase() === 'wb-image')) return;
 
         var self = this;
         var li = $('<li></li>');
@@ -114,7 +124,8 @@
         var isContainerRoot = (rootType !== 'html' && el === rootContainer);
         var isRoot = isHtmlRoot || isContainerRoot;
         var isHead = (el === head) || (head && head.contains(el));
-        var isHidden = (el.tagName && ['CMPACTION','CMPDATASET','CMPSCRIPT','CMPMASK'].indexOf(el.tagName) >= 0);
+        var isHidden = (el.tagName && ['CMPACTION','CMPDATASET','CMPSCRIPT','CMPMASK','CMPBROKER','CMPTAGITEM'].indexOf(el.tagName) >= 0);
+
         var nid = this._nid(el);
 
         var kids = [];
@@ -122,7 +133,10 @@
             var child = el.children[i];
             if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
             if (child.getAttribute && child.getAttribute('data-wb-preview') === '1') continue;
+            if (child.getAttribute && child.getAttribute('data-wb-comp-asset') === '1') continue;
             if (child.tagName && child.tagName.toLowerCase() === 'wb-cdata') continue;
+            if (child.tagName && (child.tagName.toLowerCase() === 'wb-images'
+                || child.tagName.toLowerCase() === 'wb-image')) continue;
             kids.push(child);
         }
         var hasKids = kids.length > 0;
@@ -325,6 +339,7 @@
         this.canvas.insertComponent(def, target, zone);
     };
 
+    /* ---------- contextmenu ---------- */
     DomTree.prototype._installContextMenu = function () {
         var self = this;
         var $root = this._getRoot();
@@ -364,6 +379,7 @@
         });
     };
 
+    /* ---------- drag & drop ---------- */
     DomTree.prototype._installDnD = function () {
         var self = this;
         var $root = this._getRoot();
@@ -502,7 +518,9 @@
         this._getRoot().find('.wb-dragging').removeClass('wb-dragging');
     };
 
-    /* ============================================================ */
+    /* ============================================================
+       Palette
+       ============================================================ */
     function Palette(rootEl) {
         this.root = $(rootEl);
         this.active = null;
@@ -613,7 +631,9 @@
         });
     };
 
-    /* ============================================================ */
+    /* ============================================================
+       Inspector
+       ============================================================ */
     function Inspector(rootEl) {
         this.root = $(rootEl);
         this.element = null;
@@ -685,10 +705,20 @@
         };
 
         if (tab === 'properties') {
-            if (f.set) f.set(el, v);
-            else if (f.type === 'boolean') el[f.name] = !!v;
-            else if (f.attr) el.setAttribute(f.name, v);
-            else el[f.name] = v;
+            if (f.set) {
+                f.set(el, v);
+            } else if (f.type === 'boolean') {
+                var bv = !!v;
+                el[f.name] = bv;
+                if (f.attr) {
+                    if (bv) el.setAttribute(f.name, 'true');
+                    else    el.removeAttribute(f.name);
+                }
+            } else if (f.attr) {
+                el.setAttribute(f.name, v);
+            } else {
+                el[f.name] = v;
+            }
             if (f.name === 'className') cleanClass(el);
         } else if (tab === 'styles') {
             if (v === '' || v == null) {
@@ -700,6 +730,7 @@
             if (v) el.setAttribute(f.name, v); else el.removeAttribute(f.name);
         }
 
+        /* Обновить превью D3-компонента и его родителя */
         var canvas = global.IDE && global.IDE._canvas;
         if (canvas && canvas.refreshPreviewAndParent) {
             var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
@@ -715,6 +746,10 @@
     };
 
     Inspector.prototype._row = function (tab, f) {
+        /* Разделитель группы */
+        if (f.type === 'separator') {
+            return $('<div class="wb-row-separator"></div>').text(f.caption || '');
+        }
         var row = $('<div class="wb-row"></div>');
         row.append($('<div class="wb-row-name"></div>').text(f.caption || f.name));
         var box = $('<div class="wb-row-value"></div>').append(this._editor(tab, f));
@@ -778,6 +813,30 @@
             var ta = $('<textarea rows="3" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:11px;border:1px solid #c0c0c0;"></textarea>').val(val || '');
             ta.change(function () { commit(ta.val()); });
             return ta;
+        }
+        if (t === 'image') {
+            var iw = $('<div style="display:flex;width:100%;gap:4px;align-items:center;"></div>');
+            var iInp = $('<input type="text">').val(val == null ? '' : val);
+            var iBtn = $('<button type="button" class="wb-code-btn">…</button>');
+            iInp.change(function () { commit(iInp.val()); });
+            iBtn.click(function () {
+                var v = prompt('Image URL:', iInp.val() || '');
+                if (v === null) return;
+                iInp.val(v);
+                commit(v);
+            });
+            iw.append(iInp).append(iBtn);
+            return iw;
+        }
+        if (t === 'images') {
+            var mBtn = $('<button type="button" class="wb-code-btn">Edit…</button>');
+            mBtn.click(function () {
+                var current = self._get(tab, f) || {};
+                global.D3.openImagesEditor(current, function (newMap) {
+                    commit(newMap);
+                });
+            });
+            return mBtn;
         }
         if (t === 'code') {
             var btn = $('<button type="button" class="wb-code-btn">Edit…</button>');

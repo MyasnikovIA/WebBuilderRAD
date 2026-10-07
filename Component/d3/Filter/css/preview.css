@@ -1,0 +1,45 @@
+/* Превью cmpFilter — соответствует .filter / Filter.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме .filter — это <div> с фоном и высотой 37px, внутри
+   <td>-ячейки от FilterItem. В IDE корень — <cmpfilter> (кастомный тег),
+   FilterItem-ы кладутся прямо в него. */
+
+cmpfilter {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    background: #f9fbfc;
+    min-height: 34px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+}
+
+cmpfilter[visible="false"] { display: none; }
+cmpfilter[enabled="false"] { opacity: 0.75; }
+
+/* Тонкая вертикальная линия-«шапка» для идентификации — не в рантайме. */
+cmpfilter::before {
+    content: 'filter';
+    position: absolute;
+    top: -1px;
+    left: 8px;
+    transform: translateY(-50%);
+    padding: 0 4px;
+    background: #f9fbfc;
+    color: #90a4ae;
+    font-size: 10px;
+    font-style: italic;
+}
+
+/* Дети — FilterItem-ы, inline-block по умолчанию (как фильтр-строка). */
+cmpfilter > cmpfilteritem {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 6px 6px 0;
+}

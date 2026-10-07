@@ -1,0 +1,16 @@
+/* Превью cmpComment.
+   Элемент скрыт в canvas правилом ide-style (см. canvas.js), поэтому
+   этот файл — задел на будущее (если понадобится показывать комментарий
+   плашкой). Сейчас не влияет ни на что. */
+
+.d3-preview-comment {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px;
+    color: #6a9955;
+    background: #f7faf7;
+    border-left: 3px solid #a5d6a7;
+    padding: 2px 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    box-sizing: border-box;
+}

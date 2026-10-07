@@ -1,0 +1,52 @@
+/* Превью cmpCellLabel — соответствует .ctrl_cellLabel из CellLabel.css.
+   Подключается автоматически через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+/* Сброс IDE-рамки [data-wb-preview] для корректного табличного вида. */
+.d3-preview-celllabel[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+.d3-preview-celllabel {
+    display: inline-block;
+    vertical-align: middle;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    color: #222;
+}
+
+/* Внешняя таблица */
+.d3-preview-celllabel .ctrl_cellLabel {
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: fixed;
+    margin-left: 1px;
+}
+
+.d3-preview-celllabel .ctrl_cellLabel td {
+    padding: 0;
+    vertical-align: top;
+}
+
+/* Отдельная ячейка с символом */
+.d3-preview-celllabel .ctrl_cellLabel_child {
+    border: 1px solid #000;
+    margin-left: -1px;
+    text-align: center;
+    overflow: hidden;
+    box-sizing: border-box;
+    min-width: 12px;
+    height: 20px;
+    line-height: 20px;
+    background: #ffffff;
+    color: #222;
+    user-select: none;
+    -moz-user-select: none;
+}

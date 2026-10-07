@@ -1,0 +1,51 @@
+/* Превью cmpImage — соответствует .D3Image / Image.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме корень — <img class="D3Image">. В IDE корень — <cmpImage>,
+   а сама картинка — preview-узел <img class="d3-preview-image">
+   (создаётся в preview()). */
+
+/* Сам cmpImage — невидимый контейнер: всё визуальное на preview-узле. */
+cmpImage {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpImage[visible="false"] { display: none; }
+cmpImage[enabled="false"] { opacity: 0.7; }
+
+/* ---------- Preview: реальная картинка ---------- */
+.d3-preview-image[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+.d3-preview-image {
+    display: inline-block;
+    max-width: 100%;
+    border: 0 none;                /* как .D3Image { border: 0 none } */
+    background: #fff;
+    vertical-align: middle;
+    font-size: 12px;               /* для alt-текста, если картинка не грузится */
+    color: #666;
+    box-sizing: border-box;
+}
+
+/* Плейсхолдер (пустой src или lob-режим). */
+.d3-preview-image.d3-preview-image-placeholder {
+    background: #eceff1;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    min-width: 60px;
+    min-height: 40px;
+}

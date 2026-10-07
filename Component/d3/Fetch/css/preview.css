@@ -1,0 +1,24 @@
+/* Превью cmpFetch.
+
+   Fetch в рантайме невидим (пишет XML в SetSysInfo, а не в DOM),
+   в IDE тоже скрыт правилом ide-style (canvas.js). Этот файл — задел
+   на случай, если понадобится показывать Fetch плашкой в дереве. */
+
+.d3-preview-fetch {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #00695c;
+    background: #e0f2f1;
+    border: 1px dashed #80cbc4;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-fetch::before {
+    content: '\21C4'; /* ⇄ */
+    margin-right: 4px;
+    opacity: 0.8;
+}

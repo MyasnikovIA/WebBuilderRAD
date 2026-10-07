@@ -1,0 +1,107 @@
+/* Превью cmpDialog — соответствует .dialogCtrl / Dialog.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме .dialogCtrl скрыт (display:none) и становится видимым
+   только при добавлении класса .active. В IDE показываем его сразу —
+   иначе пользователь не увидит компонент на холсте. */
+
+cmpdialog {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 300px;
+    min-height: 80px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 20px 0 rgba(0,0,0,0.35);
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    vertical-align: top;
+}
+
+/* Chrome-узлы (data-wb-ide="1") — в дерево не идут, в save не попадают. */
+
+/* Flex-порядок: header → пользовательские дети → footer.
+   По умолчанию order=2, шапка=1, кнопки=3. */
+cmpdialog > * { order: 2; }
+cmpdialog > [data-part="header"] { order: 1; }
+cmpdialog > [data-part="footer"] { order: 3; }
+
+.d3-preview-dialog-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.d3-preview-dialog-caption {
+    font-weight: bold;
+    font-size: 16px;
+    text-align: center;
+    padding-bottom: 5px;
+}
+
+.d3-preview-dialog-text {
+    text-align: left;
+    color: #333;
+    padding-bottom: 6px;
+}
+
+.d3-preview-dialog-footer {
+    text-align: center;
+    padding-top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+.d3-preview-dialog-btn {
+    display: inline-block;
+    padding: 4px 14px;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    background: #f5f7f9;
+    color: #222;
+    cursor: pointer;
+    font-size: 12px;
+    user-select: none;
+    -moz-user-select: none;
+}
+
+.d3-preview-dialog-btn:hover {
+    background: #e8eef5;
+}
+
+/* Скрыть footer, если show_buttons="false" */
+cmpdialog[show_buttons="false"] > [data-part="footer"] {
+    display: none;
+}
+
+/* Скрыть всё, если visible="false" */
+cmpdialog[visible="false"] {
+    display: none;
+}
+
+/* Неактивное состояние */
+cmpdialog[enabled="false"] {
+    opacity: 0.75;
+}
+cmpdialog[enabled="false"] .d3-preview-dialog-btn {
+    cursor: not-allowed;
+    background: #ececec;
+    color: #999;
+}
+
+/* Сброс IDE-рамки на самих chrome-узлах —
+   правило [data-wb-preview] в IDE их не касается (это дети компонента,
+   а не preview-узел), но на всякий случай. */
+cmpdialog [data-wb-ide="1"][data-wb-preview] {
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}

@@ -127,6 +127,11 @@
             'cmpaction':      'cmpAction',
             'cmpactionvar':   'cmpActionVar',
             'cmpdataset':     'cmpDataSet',
+            'cmpfilter':     'cmpFilter',
+            'cmpinfobox': 'cmpInfoBox',
+            'cmpinfoaboutrecord': 'cmpInfoAboutRecord',
+            'cmpfilteritem': 'cmpFilterItem',
+            'cmpimage':       'cmpImage',
             'cmpdatasetvar':  'cmpDataSetVar',
             'cmpscript':      'cmpScript',
             'cmpform':        'cmpForm',
@@ -141,7 +146,21 @@
             'cmpdependences': 'cmpDependences',
             'cmpmask':        'cmpMask',
             'cmpsubaction':   'cmpSubAction',
-            'cmpsubactionvar':'cmpSubActionVar'
+            'cmpsubactionvar':'cmpSubActionVar',
+            'cmpbroker':      'cmpBroker',
+            'cmpbuttonedit':  'cmpButtonEdit',
+            'cmpgrid':       'cmpGrid',
+            'cmpcolumn':     'cmpColumn',
+            'cmpgridfooter': 'cmpGridFooter',
+            'cmptagitem':     'cmpTagItem',
+            'cmpcelllabel':   'cmpCellLabel',
+            'cmpcharts':      'cmpCharts',
+            'cmpcompleter': 'cmpCompleter',
+            'cmpcustomfilter': 'cmpCustomFilter',
+            'cmpdialog ': 'cmpDialog ',
+            'cmpfieldset':    'cmpFieldSet',
+            'cmpexpander ': 'cmpExpander ',
+            'cmpcheckbox':    'cmpCheckBox'
         };
 
         function restoreCmpTags(root) {

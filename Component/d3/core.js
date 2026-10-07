@@ -3,6 +3,7 @@
      D3.register(opts)         — регистрирует cmp-компонент в ComponentRegistry
      D3.cdataProp(caption)     — свойство CDATA для инспектора
      D3.attrSchema(attrs,cdata)
+     D3.buildSchema(props, cdata, events, styles)
      D3.findFirstTextNode(el)
      D3.setCdataOnElement(el, v)
      D3.getCdataFromElement(el)
@@ -10,11 +11,17 @@
      D3.baseFor(tagName)       — абсолютный URL папки компонента
      D3.imageFor(tagName, rel) — абсолютный URL картинки внутри папки компонента
 
-   Каждый компонент живёт в своей папке Component/d3/<Имя>/index.js
+   Каждый компонент живёт в папке Component/d3/<Имя>/index.js
    и может иметь подпапки images/, css/, js/.
 
    В opts.icon / opts.previewCss / opts.previewJs указываются ОТНОСИТЕЛЬНЫЕ
-   пути (например 'images/icon.png'); D3.register сделает их абсолютными. */
+   пути (например 'images/icon.png'); D3.register сделает их абсолютными.
+
+   Поля схемы:
+     properties — массив полей; можно вставлять { type:'separator', caption:'…' }
+     events     — массив событий (type:'code' — редактор кода)
+     styles     — массив CSS-свойств (попадают во вкладку Styles)
+     cdataSchema — опционально, добавляет поле CDATA */
 (function (global) {
     'use strict';
 
@@ -59,6 +66,21 @@
         return { properties: props, styles: [], events: [] };
     }
 
+    /* Собирает schema компонента.
+       properties  — массив полей; можно вставлять { type:'separator', caption:'…' }.
+       cdata       — опционально, добавляет поле CDATA.
+       events      — массив событий (type:'code' → редактор кода).
+       styles      — массив CSS-свойств для вкладки Styles. */
+    function buildSchema(properties, cdata, events, styles) {
+        var props = (properties || []).slice();
+        if (cdata) props.push(cdataProp(cdata.caption));
+        return {
+            properties: props,
+            events: events || [],
+            styles: styles || []
+        };
+    }
+
     /* 'cmpButton' → 'Button', 'cmpSubActionVar' → 'SubActionVar' */
     function folderOf(tagName) {
         var s = String(tagName || '').replace(/^cmp/, '');
@@ -100,11 +122,10 @@
             xmlTag: tagName,
             hidden: !!opts.hidden,
             folder: folderOf(tagName),
-            /* Опциональные ресурсы из папки компонента */
             iconUrl:        opts.icon        ? imageFor(tagName, opts.icon)                 : '',
             previewCssUrls: absolutizeList(tagName, opts.previewCss),
             previewJsUrls:  absolutizeList(tagName, opts.previewJs),
-            create: function (doc) {
+            create: opts.create || function (doc) {
                 var el = doc.createElement(tagLower);
                 el.setAttribute('data-wb-tag', tagName);
                 if (opts.attrs) {
@@ -118,7 +139,7 @@
             preview: opts.preview,
             parentOnly: opts.parentOnly,
             unique: opts.unique,
-            schema: attrSchema(opts.properties, opts.cdataSchema)
+            schema: buildSchema(opts.properties, opts.cdataSchema, opts.events, opts.styles)
         };
         R.register(comp);
         return comp;
@@ -128,6 +149,7 @@
         register: register,
         cdataProp: cdataProp,
         attrSchema: attrSchema,
+        buildSchema: buildSchema,
         findFirstTextNode: findFirstTextNode,
         setCdataOnElement: setCdataOnElement,
         getCdataFromElement: getCdataFromElement,

@@ -1,0 +1,15 @@
+/* Превью-плашка cmpBroker.
+   Сам элемент скрыт на сцене (правило в canvas.js: cmpbroker в списке
+   display:none). Этот файл нужен только если вы захотите показать
+   превью-заглушку в дереве или в инспекторе. */
+
+.cmpbroker-preview {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #ede7f6;
+    color: #5e35b1;
+    border: 1px dashed #b39ddb;
+    border-radius: 3px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+}

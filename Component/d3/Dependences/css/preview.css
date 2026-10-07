@@ -1,0 +1,24 @@
+/* Превью cmpDependences.
+
+   Компонент невидим в рантайме (style="display:none"), в IDE тоже
+   скрыт правилом ide-style (canvas.js). Этот файл — задел на будущее,
+   если понадобится показывать Dependences плашкой (например, в дереве). */
+
+.d3-preview-dependences {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #6a1b9a;
+    background: #f3e5f5;
+    border: 1px dashed #ce93d8;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-dependences::before {
+    content: '\26A0'; /* ⚠ */
+    margin-right: 4px;
+    opacity: 0.8;
+}
