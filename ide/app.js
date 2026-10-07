@@ -73,19 +73,11 @@
             EventBus.emit('selection:changed', { element: el });
         }
 
-        /* ============================================================
-           Утилиты парсинга и очистки
-           ============================================================ */
-
-        /* Нормализация клона: убрать только визуальные артефакты IDE.
-           data-cmptype и data-wb-tag сохраняются (нужны для функционала). */
         function cleanClone(node) {
             if (!node || node.nodeType !== 1) return;
             node.classList.remove('wb-selected', 'wb-hover');
             if (node.classList.length === 0) node.removeAttribute('class');
-            if (node.hasAttribute && node.hasAttribute('data-wb-editable')) {
-                node.removeAttribute('data-wb-editable');
-            }
+            node.removeAttribute('data-wb-editable');
             var kids = node.querySelectorAll('.wb-selected, .wb-hover, [data-wb-editable]');
             for (var i = 0; i < kids.length; i++) {
                 kids[i].classList.remove('wb-selected', 'wb-hover');
@@ -94,9 +86,6 @@
             }
         }
 
-        /* Парсинг HTML с корректной обработкой CDATA.
-           Заменяем <![CDATA[ и ]]> на маркеры до парсинга, восстанавливаем
-           после — иначе HTML-парсер превратит CDATA в комментарий. */
         function parseHtmlWithCdata(html) {
             var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
             var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
@@ -123,7 +112,6 @@
             return tmp.firstChild || null;
         }
 
-        /* Восстановление data-wb-tag (camelCase) для cmp-элементов после парсинга. */
         var CMP_TAGS = {
             'cmpaction':    'cmpAction',
             'cmpactionvar': 'cmpActionVar',
@@ -141,9 +129,17 @@
             for (var i = 0; i < kids.length; i++) restoreCmpTags(kids[i]);
         }
 
-        /* ============================================================
-           Команды
-           ============================================================ */
+        /* Проверка: можно ли положить клон с описанием def внутрь node */
+        function fitsParent(def, node) {
+            if (!def || !def.parentOnly) return true;
+            var t = node;
+            while (t) {
+                if (t.tagName && t.tagName.toLowerCase() === def.parentOnly) return true;
+                t = t.parentNode;
+            }
+            return false;
+        }
+
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
@@ -186,6 +182,17 @@
                 var el = canvas.getSelected();
                 if (!el || !clipboard) return;
                 if (el === canvas.getHtml()) return;
+
+                /* Проверка parentOnly */
+                var clipDef = ComponentRegistry.match(clipboard);
+                if (clipDef && clipDef.parentOnly) {
+                    if (el.tagName.toLowerCase() !== clipDef.parentOnly) {
+                        alert('Component ' + clipDef.caption +
+                            ' can only be placed inside <' + clipDef.parentOnly + '>');
+                        return;
+                    }
+                }
+
                 var c = clipboard.cloneNode(true);
                 cleanClone(c);
 
@@ -205,6 +212,19 @@
                 var el = canvas.getSelected();
                 if (!el || !clipboard) return;
                 if (el === canvas.getHtml() || !el.parentNode) return;
+
+                /* Проверка parentOnly для вставки соседом */
+                var clipDef = ComponentRegistry.match(clipboard);
+                if (clipDef && clipDef.parentOnly) {
+                    var parent = el.parentNode;
+                    if (!parent || !parent.tagName ||
+                        parent.tagName.toLowerCase() !== clipDef.parentOnly) {
+                        alert('Component ' + clipDef.caption +
+                            ' can only be placed inside <' + clipDef.parentOnly + '>');
+                        return;
+                    }
+                }
+
                 var c = clipboard.cloneNode(true);
                 cleanClone(c);
                 el.parentNode.insertBefore(c, el.nextSibling);
@@ -250,7 +270,6 @@
                 ta.className = 'wb-code-editor';
 
                 if (isCmp) {
-                    /* Для cmp-элементов показываем pretty-print с camelCase и CDATA */
                     ta.value = canvas._formatNode(el, 0).replace(/\n$/, '');
                 } else {
                     var clone = el.cloneNode(true);

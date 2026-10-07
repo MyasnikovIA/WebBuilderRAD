@@ -10,10 +10,13 @@
     var VOID_LOWER = { img:1, input:1, br:1, hr:1, meta:1, link:1, area:1, base:1,
         col:1, embed:1, source:1, track:1, wbr:1, param:1 };
 
-    /* Теги, содержимое которых сохраняется как есть (script/style/pre/textarea + cmpAction/cmpDataSet с CDATA) */
-    var RAW_TAGS = { script:1, style:1, pre:1, textarea:1, cmpaction:1, cmpdataset:1 };
+    /* Теги, содержимое которых сохраняется как есть */
+    var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
 
-    /* XML-теги, которые в исходнике самозакрываются: <cmpActionVar ... /> */
+    /* CDATA-контейнеры */
+    var CDATA_CONTAINERS = { cmpaction:1, cmpdataset:1 };
+
+    /* Самозакрывающиеся XML-теги */
     var XML_SELF_CLOSE = { cmpactionvar:1, cmpdatasetvar:1 };
 
     /* Оригинальный camelCase для cmp-тегов */
@@ -60,8 +63,26 @@
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
-            /* Data-компоненты невидимы на сцене */
-            'cmpaction, cmpdataset, cmpactionvar, cmpdatasetvar { display: none !important; }' +
+
+            /* ============================================================
+               Data-компоненты (cmpAction / cmpDataSet и их дочерние)
+               выполняются на сервере. Всё их содержимое, включая блоки
+               <![CDATA[...]]>, никогда не должно визуализироваться на
+               сцене и не должно быть доступно для взаимодействия.
+               ============================================================ */
+            'cmpaction, cmpdataset, cmpactionvar, cmpdatasetvar {' +
+            '  display: none !important;' +
+            '  visibility: hidden !important;' +
+            '  pointer-events: none !important;' +
+            '  user-select: none !important;' +
+            '  -webkit-user-select: none !important;' +
+            '}' +
+            /* Двойная страховка: любые потомки тоже скрыты. */
+            'cmpaction *, cmpdataset * {' +
+            '  display: none !important;' +
+            '  visibility: hidden !important;' +
+            '}' +
+
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
         if (doc.head) doc.head.appendChild(style);
@@ -286,6 +307,23 @@
         return body;
     };
 
+    /* Найти ближайшего подходящего родителя для parentOnly-компонента. */
+    Canvas.prototype._findParentFor = function (def, target) {
+        var doc = this.getDoc();
+        var html = this.getHtml();
+        var wanted = def.parentOnly.toLowerCase();
+
+        /* Идём вверх от target */
+        var t = target;
+        while (t && t !== html) {
+            if (t.tagName && t.tagName.toLowerCase() === wanted) return t;
+            t = t.parentNode;
+        }
+        /* Fallback — первый подходящий в документе */
+        var all = doc.querySelectorAll(wanted);
+        return all.length > 0 ? all[0] : null;
+    };
+
     Canvas.prototype.insertComponent = function (def, target, zone) {
         var doc  = this.getDoc();
         var html = this.getHtml();
@@ -303,10 +341,19 @@
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
 
-        /* data-cmptype — только для кастомных компонентов с явным cmptype */
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
 
-        if (def.rootLevel) {
+        /* parentOnly: cmpActionVar → cmpAction, cmpDataSetVar → cmpDataSet */
+        if (def.parentOnly) {
+            var parent = this._findParentFor(def, target);
+            if (!parent) {
+                /* Нет подходящего родителя — отказ */
+                this.pending = null;
+                bus.emit('palette:placed');
+                return null;
+            }
+            parent.appendChild(el);
+        } else if (def.rootLevel) {
             html.appendChild(el);
         } else if (def.headOnly) {
             var head = this.getOrCreateHead();
@@ -367,21 +414,31 @@
         return el.tagName.toLowerCase();
     };
 
+    /* Сериализация атрибутов с фильтрацией служебных классов. */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
-            /* Служебные атрибуты IDE */
+
+            /* Служебные атрибуты IDE — не выводим */
             if (name === 'data-cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
             if (name === 'data-wb-tag') continue;
-            /* Пустой class="" */
-            if (name === 'class' && (a.value || '').trim() === '') continue;
 
             var val = a.value == null ? '' : String(a.value);
+
+            /* class — вырезаем wb-selected / wb-hover */
+            if (name === 'class') {
+                var parts = val.split(/\s+/).filter(function (c) {
+                    return c && c !== 'wb-selected' && c !== 'wb-hover';
+                });
+                if (parts.length === 0) continue;   /* пустой class="" — не выводим */
+                val = parts.join(' ');
+            }
+
             val = val.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             out += ' ' + name + '="' + val + '"';
         }
@@ -419,6 +476,55 @@
         }
     };
 
+    /* Специализированное форматирование cmpAction / cmpDataSet с CDATA. */
+    Canvas.prototype._formatCdataContainer = function (el, level, tagName, attrs) {
+        var pad = '';
+        for (var k = 0; k < level; k++) pad += INDENT;
+        var innerPad = pad + INDENT;
+
+        var raw = el.textContent || '';
+        var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+        var content = m ? m[1] : '';
+
+        var lines = content.split(/\r?\n/);
+        while (lines.length && lines[0].trim() === '') lines.shift();
+        while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+
+        var minIndent = Infinity;
+        for (var i = 0; i < lines.length; i++) {
+            if (lines[i].trim() === '') continue;
+            var ind = lines[i].match(/^\s*/)[0].length;
+            if (ind < minIndent) minIndent = ind;
+        }
+        if (!isFinite(minIndent)) minIndent = 0;
+
+        var out = pad + '<' + tagName + attrs + '>\n';
+
+        if (content !== '' || lines.length > 0) {
+            out += innerPad + '<![CDATA[\n';
+            for (var j = 0; j < lines.length; j++) {
+                var line = lines[j];
+                if (line.trim() === '') {
+                    out += '\n';
+                } else {
+                    out += innerPad + line.substr(minIndent) + '\n';
+                }
+            }
+            out += innerPad + ']]>\n';
+        }
+
+        /* Дочерние элементы (cmpActionVar / cmpDataSetVar) */
+        var kids = el.children;
+        for (var c = 0; c < kids.length; c++) {
+            var child = kids[c];
+            if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
+            out += this._formatNode(child, level + 1);
+        }
+
+        out += pad + '</' + tagName + '>\n';
+        return out;
+    };
+
     Canvas.prototype._formatNode = function (node, level) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
@@ -439,17 +545,20 @@
         var tagName  = this._formatTagName(node);
         var attrs    = this._formatAttrs(node);
 
-        /* Самозакрывающиеся XML-теги: <cmpActionVar .../> */
+        /* CDATA-контейнеры */
+        if (CDATA_CONTAINERS[tagLower]) {
+            return this._formatCdataContainer(node, level, tagName, attrs);
+        }
+
+        /* Самозакрывающиеся XML-теги */
         if (XML_SELF_CLOSE[tagLower]) {
             return pad + '<' + tagName + attrs + '/>\n';
         }
 
-        /* Void HTML-теги */
         if (VOID_LOWER[tagLower]) {
             return pad + '<' + tagName + attrs + '>\n';
         }
 
-        /* RAW-теги: содержимое как есть (script, style, pre, textarea, cmpAction, cmpDataSet) */
         if (RAW_TAGS[tagLower]) {
             var raw = node.textContent || '';
             return pad + '<' + tagName + attrs + '>' + raw + '</' + tagName + '>\n';
@@ -490,7 +599,6 @@
         return '<!DOCTYPE html>\n' + body;
     };
 
-    /* Экспорт таблицы cmp-тегов для внешних модулей */
     Canvas.CMP_TAGS = CMP_TAGS;
 
     global.Canvas = Canvas;

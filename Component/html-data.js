@@ -45,8 +45,10 @@
         ])
     });
 
+    /* parentOnly: cmpActionVar можно добавлять только внутрь cmpAction */
     R.register({
         id: 'cmp.actionvar', category: 'Data', caption: 'ActionVar', tagName: 'cmpActionVar',
+        parentOnly: 'cmpaction',
         create: function (doc) {
             var el = doc.createElement('cmpActionVar');
             el.setAttribute('data-wb-tag', 'cmpActionVar');
@@ -61,7 +63,7 @@
             { name: 'name',    caption: 'Name',    type: 'string', attr: true },
             { name: 'src',     caption: 'Src',     type: 'string', attr: true },
             { name: 'srctype', caption: 'SrcType', type: 'enum',   attr: true,
-                values: ['', 'var', 'session', 'param', 'const'] },
+                values: ['', 'var', 'ctrl' , 'session', 'ctrlcaption', 'data', 'const']  },
             { name: 'put',     caption: 'Put',     type: 'string', attr: true },
             { name: 'len',     caption: 'Len',     type: 'number', attr: true }
         ])
@@ -86,8 +88,10 @@
         ])
     });
 
+    /* parentOnly: cmpDataSetVar можно добавлять только внутрь cmpDataSet */
     R.register({
         id: 'cmp.datasetvar', category: 'Data', caption: 'DataSetVar', tagName: 'cmpDataSetVar',
+        parentOnly: 'cmpdataset',
         create: function (doc) {
             var el = doc.createElement('cmpDataSetVar');
             el.setAttribute('data-wb-tag', 'cmpDataSetVar');
@@ -100,7 +104,7 @@
             { name: 'name',    caption: 'Name',    type: 'string', attr: true },
             { name: 'src',     caption: 'Src',     type: 'string', attr: true },
             { name: 'srctype', caption: 'SrcType', type: 'enum',   attr: true,
-                values: ['', 'var', 'session', 'param', 'const'] }
+                values: ['', 'var', 'ctrl' , 'session', 'ctrlcaption', 'data', 'const'] }
         ])
     });
 

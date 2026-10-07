@@ -6,8 +6,13 @@
     var VOID_TAGS = { IMG:1, INPUT:1, BR:1, HR:1, META:1, LINK:1, AREA:1, BASE:1,
         COL:1, EMBED:1, SOURCE:1, TRACK:1, WBR:1 };
 
-    /* Теги, которые допускаются только внутри <head>. */
     var STRICT_HEAD_TAGS = { meta:1, title:1, base:1 };
+
+    /* parentOnly-карта для drag&drop: src-тег → требуемый родитель */
+    var PARENT_ONLY = {
+        cmpactionvar: 'cmpaction',
+        cmpdatasetvar: 'cmpdataset'
+    };
 
     /* ============================================================
        DomTree
@@ -299,7 +304,7 @@
     };
 
     /* ============================================================
-       Контекстное меню дерева (ПКМ по узлу)
+       Контекстное меню дерева
        ============================================================ */
     DomTree.prototype._installContextMenu = function () {
         var self = this;
@@ -360,35 +365,37 @@
             if (!self._dragEl) return;
             var target = self._labelToElement(this);
             var native = e.originalEvent;
-            if (!self._canDrop(self._dragEl, target)) {
+            var zone = self._zoneFromEvent(this, native);
+            if (!self._canDrop(self._dragEl, target, zone)) {
                 if (native && native.dataTransfer) native.dataTransfer.dropEffect = 'none';
+                $(this).addClass('wb-drop-forbidden');
                 return;
             }
+            $(this).removeClass('wb-drop-forbidden');
             e.preventDefault();
             if (native && native.dataTransfer) native.dataTransfer.dropEffect = 'move';
-            var zone = self._zoneFromEvent(this, native);
             self._clearIndicators();
             $(this).addClass('wb-drop-' + zone);
         });
 
         $root.delegate('.wb-tree-label', 'dragleave', function () {
-            $(this).removeClass('wb-drop-before wb-drop-after wb-drop-inside');
+            $(this).removeClass('wb-drop-before wb-drop-after wb-drop-inside wb-drop-forbidden');
         });
 
         $root.delegate('.wb-tree-label', 'drop', function (e) {
             if (!self._dragEl) return;
             var target = self._labelToElement(this);
-            if (!self._canDrop(self._dragEl, target)) return;
+            var zone = self._zoneFromEvent(this, e.originalEvent);
+            if (!self._canDrop(self._dragEl, target, zone)) return;
             e.preventDefault();
             e.stopPropagation();
-            var zone = self._zoneFromEvent(this, e.originalEvent);
             self._performDrop(self._dragEl, target, zone);
             self._endDrag();
             return false;
         });
     };
 
-    DomTree.prototype._canDrop = function (src, dst) {
+    DomTree.prototype._canDrop = function (src, dst, zone) {
         if (!src || !dst) return false;
         if (src === dst) return false;
         if (src.contains(dst)) return false;
@@ -398,12 +405,21 @@
         if (!html) return false;
         if (VOID_TAGS[dst.tagName]) return false;
 
-        /* head и body можно перемещать только на верхний уровень (в html) */
+        /* head и body — только на верхний уровень */
         if ((src === head || src === body) && dst !== html) return false;
 
+        var srcTag = src.tagName.toLowerCase();
+
+        /* parentOnly: cmpActionVar → cmpAction, cmpDataSetVar → cmpDataSet */
+        var parentOnly = PARENT_ONLY[srcTag];
+        if (parentOnly) {
+            var checkNode = (zone === 'inside') ? dst : dst.parentNode;
+            var checkTag = checkNode && checkNode.tagName ? checkNode.tagName.toLowerCase() : '';
+            if (checkTag !== parentOnly) return false;
+        }
+
         /* meta, title, base — только внутри head */
-        var tagLower = src.tagName.toLowerCase();
-        if (STRICT_HEAD_TAGS[tagLower]) {
+        if (STRICT_HEAD_TAGS[srcTag]) {
             var targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
             if (!targetIsHead) return false;
         }
@@ -441,8 +457,8 @@
 
     DomTree.prototype._clearIndicators = function () {
         this._getRoot()
-            .find('.wb-drop-before, .wb-drop-after, .wb-drop-inside')
-            .removeClass('wb-drop-before wb-drop-after wb-drop-inside');
+            .find('.wb-drop-before, .wb-drop-after, .wb-drop-inside, .wb-drop-forbidden')
+            .removeClass('wb-drop-before wb-drop-after wb-drop-inside wb-drop-forbidden');
     };
 
     DomTree.prototype._endDrag = function () {
