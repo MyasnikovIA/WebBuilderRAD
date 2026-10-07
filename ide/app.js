@@ -22,14 +22,23 @@
         EventBus.on('command:undo',   function ()  { History.undo(); });
         EventBus.on('command:redo',   function ()  { History.redo(); });
 
+        /* Контекстное меню сцены (ПКМ по элементу в iframe) */
         EventBus.on('contextmenu:element', function (e) {
             var menu = mini.get('wb-contextmenu');
             menu.showAtPos(e.x, e.y);
         });
 
+        /* Контекстное меню дерева (ПКМ по узлу Structure) */
         EventBus.on('contextmenu:tree', function (e) {
             var menu = mini.get('wb-treemenu');
             menu.showAtPos(e.x, e.y);
+        });
+        /* Скрыть любое открытое контекстное меню */
+        EventBus.on('contextmenu:hide', function () {
+            var m1 = mini.get('wb-contextmenu');
+            if (m1) m1.hide();
+            var m2 = mini.get('wb-treemenu');
+            if (m2) m2.hide();
         });
 
         EventBus.on('canvas:selection:reset', function () {

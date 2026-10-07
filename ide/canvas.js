@@ -43,6 +43,23 @@
         }
     };
 
+    /* ------------------------------------------------------------
+       Перевод координат события из системы iframe
+       в систему координат главного документа (page coords).
+       Учитывает:
+         - смещение iframe на странице (getBoundingClientRect);
+         - прокрутку главного окна (window.pageXOffset/YOffset).
+       ------------------------------------------------------------ */
+    Canvas.prototype._pageCoordsFromIframeEvent = function (e) {
+        var rect = this.iframe.getBoundingClientRect();
+        var scrollX = window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
+        var scrollY = window.pageYOffset || document.documentElement.scrollTop  || document.body.scrollTop  || 0;
+        return {
+            x: rect.left + scrollX + (e.clientX || 0),
+            y: rect.top  + scrollY + (e.clientY || 0)
+        };
+    };
+
     Canvas.prototype._templateHtml = function () {
         return '<!DOCTYPE html>' +
             '<html lang="ru">' +
@@ -64,12 +81,7 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
 
-            /* ============================================================
-               Data-компоненты (cmpAction / cmpDataSet и их дочерние)
-               выполняются на сервере. Всё их содержимое, включая блоки
-               <![CDATA[...]]>, никогда не должно визуализироваться на
-               сцене и не должно быть доступно для взаимодействия.
-               ============================================================ */
+            /* Data-компоненты невидимы на сцене */
             'cmpaction, cmpdataset, cmpactionvar, cmpdatasetvar {' +
             '  display: none !important;' +
             '  visibility: hidden !important;' +
@@ -77,7 +89,6 @@
             '  user-select: none !important;' +
             '  -webkit-user-select: none !important;' +
             '}' +
-            /* Двойная страховка: любые потомки тоже скрыты. */
             'cmpaction *, cmpdataset * {' +
             '  display: none !important;' +
             '  visibility: hidden !important;' +
@@ -243,6 +254,10 @@
         var self = this, doc = this.getDoc();
 
         doc.addEventListener('mousedown', function (e) {
+            /* Скрыть открытое контекстное меню (от сцены или от дерева) —
+               пользователь передумал и кликнул снова по сцене. */
+            bus.emit('contextmenu:hide');
+
             if (self.designMode) return;
             if (self.pending) {
                 var target = self._placementTarget(e.target);
@@ -284,7 +299,10 @@
         doc.addEventListener('contextmenu', function (e) {
             if (self.pending) { self.pending = null; bus.emit('palette:cancelled'); }
             if (!self.designMode && e.target && e.target.nodeType === 1) self.select(e.target);
-            bus.emit('contextmenu:element', { x: e.clientX, y: e.clientY });
+
+            /* Координаты события в iframe переводим в координаты главного документа */
+            var pt = self._pageCoordsFromIframeEvent(e);
+            bus.emit('contextmenu:element', { x: pt.x, y: pt.y });
             e.preventDefault();
         });
     };
@@ -313,13 +331,11 @@
         var html = this.getHtml();
         var wanted = def.parentOnly.toLowerCase();
 
-        /* Идём вверх от target */
         var t = target;
         while (t && t !== html) {
             if (t.tagName && t.tagName.toLowerCase() === wanted) return t;
             t = t.parentNode;
         }
-        /* Fallback — первый подходящий в документе */
         var all = doc.querySelectorAll(wanted);
         return all.length > 0 ? all[0] : null;
     };
@@ -343,11 +359,9 @@
 
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
 
-        /* parentOnly: cmpActionVar → cmpAction, cmpDataSetVar → cmpDataSet */
         if (def.parentOnly) {
             var parent = this._findParentFor(def, target);
             if (!parent) {
-                /* Нет подходящего родителя — отказ */
                 this.pending = null;
                 bus.emit('palette:placed');
                 return null;
@@ -414,15 +428,12 @@
         return el.tagName.toLowerCase();
     };
 
-    /* Сериализация атрибутов с фильтрацией служебных классов. */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
-
-            /* Служебные атрибуты IDE — не выводим */
             if (name === 'data-cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
@@ -430,12 +441,11 @@
 
             var val = a.value == null ? '' : String(a.value);
 
-            /* class — вырезаем wb-selected / wb-hover */
             if (name === 'class') {
                 var parts = val.split(/\s+/).filter(function (c) {
                     return c && c !== 'wb-selected' && c !== 'wb-hover';
                 });
-                if (parts.length === 0) continue;   /* пустой class="" — не выводим */
+                if (parts.length === 0) continue;
                 val = parts.join(' ');
             }
 
@@ -476,7 +486,6 @@
         }
     };
 
-    /* Специализированное форматирование cmpAction / cmpDataSet с CDATA. */
     Canvas.prototype._formatCdataContainer = function (el, level, tagName, attrs) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
@@ -513,7 +522,6 @@
             out += innerPad + ']]>\n';
         }
 
-        /* Дочерние элементы (cmpActionVar / cmpDataSetVar) */
         var kids = el.children;
         for (var c = 0; c < kids.length; c++) {
             var child = kids[c];
@@ -545,12 +553,10 @@
         var tagName  = this._formatTagName(node);
         var attrs    = this._formatAttrs(node);
 
-        /* CDATA-контейнеры */
         if (CDATA_CONTAINERS[tagLower]) {
             return this._formatCdataContainer(node, level, tagName, attrs);
         }
 
-        /* Самозакрывающиеся XML-теги */
         if (XML_SELF_CLOSE[tagLower]) {
             return pad + '<' + tagName + attrs + '/>\n';
         }
