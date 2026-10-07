@@ -6,8 +6,6 @@
 
         mini.parse();
 
-        /* ВАЖНО: подписчики создаются ДО canvas, иначе canvas:ready
-           уходит в пустоту и Structure остаётся пустой. */
         var domTree   = new DomTree(document.getElementById('wb-domtree'));
         var palette   = new Palette(document.getElementById('wb-palette'));
         var inspector = new Inspector(document.getElementById('wb-right') || document.body);
@@ -39,11 +37,12 @@
 
         function moveSel(dx, dy, resize) {
             var el = canvas.getSelected();
-            if (!el || el === canvas.getBody()) return;
+            var body = canvas.getBody();
+            if (!el || !body || el === body) return;
             var st = el.style;
             if (!st.position || st.position === 'static') {
                 var r = el.getBoundingClientRect();
-                var br = canvas.getBody().getBoundingClientRect();
+                var br = body.getBoundingClientRect();
                 st.position = 'absolute';
                 st.left   = Math.round(r.left - br.left) + 'px';
                 st.top    = Math.round(r.top  - br.top)  + 'px';
@@ -66,8 +65,7 @@
 
             new: function () {
                 if (!confirm('Очистить холст?')) return;
-                canvas.getBody().innerHTML = '';
-                EventBus.emit('canvas:changed');
+                canvas.reset();
             },
 
             save: function () {
@@ -87,12 +85,14 @@
 
             copy: function () {
                 var el = canvas.getSelected();
-                if (!el || el === canvas.getBody()) return;
+                if (!el) return;
+                if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
                 clipboard = el.cloneNode(true);
             },
             cut: function () {
                 var el = canvas.getSelected();
-                if (!el || el === canvas.getBody()) return;
+                if (!el) return;
+                if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
                 clipboard = el.cloneNode(true);
                 el.parentNode.removeChild(el);
                 EventBus.emit('canvas:changed');
@@ -102,13 +102,20 @@
                 if (!el || !clipboard) return;
                 var c = clipboard.cloneNode(true);
                 c.classList.remove('wb-selected', 'wb-hover');
-                el.appendChild(c);
+                var html = canvas.getHtml();
+                if (el === html) {
+                    var body = canvas.getOrCreateBody();
+                    if (body) body.appendChild(c);
+                } else {
+                    el.appendChild(c);
+                }
                 EventBus.emit('canvas:changed');
                 canvas.select(c);
             },
             delete: function () {
                 var el = canvas.getSelected();
-                if (!el || el === canvas.getBody()) return;
+                if (!el) return;
+                if (el === canvas.getHtml()) return;
                 el.parentNode.removeChild(el);
                 EventBus.emit('canvas:changed');
             },
@@ -140,8 +147,8 @@
                             if (!nw) return;
                             nw.classList.remove('wb-selected', 'wb-hover');
                             el.parentNode.replaceChild(nw, el);
-                            EventBus.emit('canvas:changed');   /* сначала дерево */
-                            canvas.select(nw);                 /* потом выделение */
+                            EventBus.emit('canvas:changed');
+                            canvas.select(nw);
                         } catch (ex) { alert('Некорректный HTML: ' + ex.message); }
                     }
                 });
@@ -158,7 +165,7 @@
                     content: ta,
                     onOk: function () {
                         el.innerHTML = ta.value;
-                        EventBus.emit('canvas:changed');   /* сначала дерево */
+                        EventBus.emit('canvas:changed');
                         EventBus.emit('selection:changed', { element: el });
                     }
                 });

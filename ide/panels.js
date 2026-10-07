@@ -3,9 +3,11 @@
     'use strict';
     var bus = global.EventBus;
 
+    var VOID_TAGS = { IMG:1, INPUT:1, BR:1, HR:1, META:1, LINK:1, AREA:1, BASE:1,
+        COL:1, EMBED:1, SOURCE:1, TRACK:1, WBR:1 };
+
     /* ============================================================
-       DomTree — дерево структуры
-       (+ drag & drop, + складные узлы, + вставка из палитры)
+       DomTree
        ============================================================ */
     var _idCounter = 0;
 
@@ -20,7 +22,7 @@
 
         bus.on('canvas:ready', function (c) {
             self.canvas = c;
-            self._observeBody();
+            self._observe();
             self.rebuild();
         });
         bus.on('canvas:changed',   function () { self.rebuild(); });
@@ -30,7 +32,7 @@
         bus.on('canvas:changed', function () {
             if (!self.canvas && global.IDE && global.IDE._canvas) {
                 self.canvas = global.IDE._canvas;
-                self._observeBody();
+                self._observe();
                 self.rebuild();
             }
         });
@@ -39,15 +41,14 @@
         this._installDnD();
     }
 
-    /* ---------- MutationObserver ---------- */
-    DomTree.prototype._observeBody = function () {
+    DomTree.prototype._observe = function () {
         if (this._mo) { this._mo.disconnect(); this._mo = null; }
         if (!this.canvas || !global.MutationObserver) return;
         var self = this;
-        var body = this.canvas.getBody();
-        if (!body) return;
+        var html = this.canvas.getHtml();
+        if (!html) return;
         this._mo = new global.MutationObserver(function () { self._scheduleRebuild(); });
-        this._mo.observe(body, { childList: true, subtree: true });
+        this._mo.observe(html, { childList: true, subtree: true });
     };
 
     DomTree.prototype._scheduleRebuild = function () {
@@ -57,7 +58,6 @@
         setTimeout(function () { self._rebuildScheduled = false; self.rebuild(); }, 0);
     };
 
-    /* ---------- корень и построение ---------- */
     DomTree.prototype._getRoot = function () { return $('#' + this.rootId); };
 
     DomTree.prototype.rebuild = function () {
@@ -65,12 +65,12 @@
         var $root = this._getRoot();
         if (!$root.length) return;
 
-        var body = this.canvas.getBody();
-        if (!body) return;
+        var html = this.canvas.getHtml();
+        if (!html) return;
 
         $root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-        this._build(body, ul);
+        this._build(html, ul);
         $root.append(ul);
 
         var sel = this.canvas.getSelected();
@@ -81,7 +81,13 @@
         if (!el || el.nodeType !== 1) return;
         var self = this;
         var li = $('<li></li>');
-        var isBody = (el === this.canvas.getBody());
+
+        var html = this.canvas.getHtml();
+        var head = this.canvas.getHead();
+        var body = this.canvas.getBody();
+
+        var isRoot = (el === html || el === head || el === body);
+        var isHead = (el === head) || (head && head.contains(el));
         var nid = this._nid(el);
 
         var kids = [];
@@ -89,21 +95,19 @@
         var hasKids = kids.length > 0;
         var collapsed = !!this._collapsed[nid];
 
-        /* toggle [+] / [−] */
         var toggle = $('<span class="wb-toggle"></span>')
             .text(collapsed ? '+' : '\u2212')
             .toggleClass('wb-leaf', !hasKids)
             .attr('data-node-id', nid);
         li.append(toggle);
 
-        /* label */
         var label = $('<span class="wb-tree-label"></span>')
             .text(this._label(el))
+            .toggleClass('wb-invisible', isHead && el !== head)
             .attr('data-node-id', nid)
-            .attr('draggable', isBody ? 'false' : 'true');
+            .attr('draggable', isRoot ? 'false' : 'true');
         li.append(label);
 
-        /* дети */
         if (hasKids) {
             var cul = $('<ul></ul>');
             for (var j = 0; j < kids.length; j++) self._build(kids[j], cul);
@@ -112,10 +116,8 @@
         }
         parentUl.append(li);
 
-        /* ---------- события label ---------- */
         label.click(function (e) {
             e.stopPropagation();
-            /* Если активен компонент из палитры — вставляем сюда. */
             if (self.canvas && self.canvas.pending) {
                 var zone = self._zoneFromEvent(this, e.originalEvent || e);
                 self._clearIndicators();
@@ -125,13 +127,9 @@
             self.canvas.select(el);
         });
 
-        label.bind('mouseenter', function () {
-            label.addClass('wb-hover');
-        });
+        label.bind('mouseenter', function () { label.addClass('wb-hover'); });
 
         label.bind('mousemove', function (e) {
-            /* Показываем индикатор зоны вставки, только если из палитры
-               выбран компонент и не идёт перетаскивание. */
             if (!self.canvas || !self.canvas.pending) return;
             if (self._dragEl) return;
             var native = e.originalEvent || e;
@@ -159,6 +157,27 @@
 
     DomTree.prototype._label = function (el) {
         var tag = el.tagName.toLowerCase();
+        var extra = '';
+        if (tag === 'meta') {
+            var ch = el.getAttribute('charset');
+            var nm = el.getAttribute('name');
+            if (ch) extra = ' charset="' + ch + '"';
+            else if (nm) extra = ' name="' + nm + '"';
+        } else if (tag === 'link') {
+            var rel = el.getAttribute('rel');
+            var href = el.getAttribute('href');
+            if (rel) extra += ' rel="' + rel + '"';
+            if (href) extra += ' href="' + href + '"';
+        } else if (tag === 'script') {
+            var src = el.getAttribute('src');
+            extra = src ? ' src="' + src + '"' : ' (inline)';
+        } else if (tag === 'title') {
+            var t = el.textContent || '';
+            if (t.length > 40) t = t.substr(0, 40) + '…';
+            extra = ' "' + t + '"';
+        } else if (tag === 'style') {
+            extra = ' (inline)';
+        }
         var id  = el.id ? '#' + el.id : '';
         var cls = '';
         if (typeof el.className === 'string' && el.className) {
@@ -167,7 +186,7 @@
             });
             if (parts.length) cls = '.' + parts.join('.');
         }
-        return tag + id + cls;
+        return tag + id + cls + extra;
     };
 
     DomTree.prototype._nid = function (el) {
@@ -175,7 +194,6 @@
         return el.__wb_nid;
     };
 
-    /* ---------- поиск элемента по nid ---------- */
     DomTree.prototype._findByNid = function (el, nid) {
         if (!el || el.nodeType !== 1) return null;
         if (el.__wb_nid === nid) return el;
@@ -190,20 +208,19 @@
     DomTree.prototype._labelToElement = function (label) {
         var nid = $(label).attr('data-node-id');
         if (!nid || !this.canvas) return null;
-        var body = this.canvas.getBody();
-        if (!body) return null;
-        return this._findByNid(body, nid);
+        var html = this.canvas.getHtml();
+        if (!html) return null;
+        return this._findByNid(html, nid);
     };
 
-    /* ---------- выделение в дереве ---------- */
     DomTree.prototype.highlight = function (el) {
         var $root = this._getRoot();
         $root.find('.wb-tree-label').removeClass('wb-selected');
         if (!el) return;
 
         if (!el.__wb_nid) {
-            var body = this.canvas && this.canvas.getBody();
-            if (body && body.contains(el)) { this.rebuild(); return; }
+            var html = this.canvas && this.canvas.getHtml();
+            if (html && html.contains(el)) { this.rebuild(); return; }
         }
 
         var nid = el.__wb_nid;
@@ -211,7 +228,6 @@
         var $lab = $root.find('.wb-tree-label[data-node-id="' + nid + '"]');
         if (!$lab.length) return;
 
-        /* раскрыть всех родителей выделенного узла */
         $lab.parents('li').each(function () {
             var $li = $(this);
             var $ul = $li.children('ul').first();
@@ -229,7 +245,6 @@
             $root.scrollTop(Math.max(0, lTop - $root.height() / 2));
     };
 
-    /* ---------- фильтр ---------- */
     DomTree.prototype._filter = function (txt) {
         txt = (txt || '').toLowerCase();
         var all = this._getRoot().find('li');
@@ -247,11 +262,6 @@
         });
     };
 
-    /* ============================================================
-       Вставка компонента из палитры по клику в дереве
-       ============================================================ */
-
-    /* Вычислить зону по позиции курсора (верх 25% / середина / низ 25%) */
     DomTree.prototype._zoneFromEvent = function (labelEl, nativeEvent) {
         var rect = labelEl.getBoundingClientRect();
         var y = nativeEvent.clientY - rect.top;
@@ -261,49 +271,14 @@
         return 'inside';
     };
 
+    /* Вставка из палитры по клику в дереве — делегирует в canvas.insertComponent. */
     DomTree.prototype._insertFromPalette = function (def, target, zone) {
-        var canvas = this.canvas;
-        if (!canvas || !def || !target) return;
-
-        var doc  = canvas.getDoc();
-        var body = canvas.getBody();
-        if (!body) return;
-
-        /* у body только inside */
-        if (target === body) zone = 'inside';
-
-        var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
-        el.setAttribute('data-cmptype', def.id);
-
-        try {
-            if (zone === 'inside') {
-                target.appendChild(el);
-            } else if (zone === 'before') {
-                target.parentNode.insertBefore(el, target);
-            } else if (zone === 'after') {
-                target.parentNode.insertBefore(el, target.nextSibling);
-            }
-        } catch (e) {
-            console.error('[DomTree] insert failed', e);
-            return;
-        }
-
-        /* сбрасываем ожидание палитры */
-        canvas.pending = null;
-        bus.emit('palette:placed');
-
-        /* снимаем выделение со всех, выделяем новый */
-        var prev = doc.querySelectorAll('.wb-selected');
-        for (var i = 0; i < prev.length; i++) prev[i].classList.remove('wb-selected');
-        el.classList.add('wb-selected');
-
-        /* перестраиваем дерево + обновляем инспектор + History */
-        bus.emit('canvas:changed');
-        bus.emit('selection:changed', { element: el });
+        if (!this.canvas || !def || !target) return;
+        this.canvas.insertComponent(def, target, zone);
     };
 
     /* ============================================================
-       Drag & drop: перетаскивание узлов дерева
+       Drag & drop
        ============================================================ */
     DomTree.prototype._installDnD = function () {
         var self = this;
@@ -311,8 +286,8 @@
 
         $root.delegate('.wb-tree-label', 'dragstart', function (e) {
             var el = self._labelToElement(this);
-            var body = self.canvas && self.canvas.getBody();
-            if (!el || !body || el === body) { e.preventDefault(); return false; }
+            var html = self.canvas && self.canvas.getHtml();
+            if (!el || !html || el === html) { e.preventDefault(); return false; }
             if (self.canvas && self.canvas.pending) {
                 self.canvas.pending = null;
                 bus.emit('palette:cancelled');
@@ -338,7 +313,7 @@
             }
             e.preventDefault();
             if (native && native.dataTransfer) native.dataTransfer.dropEffect = 'move';
-            var zone = self._hitZone(this, native);
+            var zone = self._zoneFromEvent(this, native);
             self._clearIndicators();
             $(this).addClass('wb-drop-' + zone);
         });
@@ -353,44 +328,54 @@
             if (!self._canDrop(self._dragEl, target)) return;
             e.preventDefault();
             e.stopPropagation();
-            var zone = self._hitZone(this, e.originalEvent);
+            var zone = self._zoneFromEvent(this, e.originalEvent);
             self._performDrop(self._dragEl, target, zone);
             self._endDrag();
             return false;
         });
     };
 
-    DomTree.prototype._hitZone = function (labelEl, native) {
-        return this._zoneFromEvent(labelEl, native);
-    };
-
     DomTree.prototype._canDrop = function (src, dst) {
         if (!src || !dst) return false;
         if (src === dst) return false;
         if (src.contains(dst)) return false;
+        var html = this.canvas.getHtml();
+        var head = this.canvas.getHead();
         var body = this.canvas.getBody();
-        if (!body) return false;
-        if (dst === body) return true;
-        if (!body.contains(dst)) return false;
+        if (!html) return false;
+        if (VOID_TAGS[dst.tagName]) return false;
+
+        /* head и body можно кидать только в html (то есть на верхний уровень) */
+        if ((src === head || src === body) && dst !== html) return false;
+
+        /* head-элементы (meta, link, script, style, title, base) — только внутри head */
+        var tagLower = src.tagName.toLowerCase();
+        var isHeadEl = (tagLower === 'meta' || tagLower === 'link' || tagLower === 'script' ||
+            tagLower === 'style' || tagLower === 'title' || tagLower === 'base' ||
+            tagLower === 'noscript' || tagLower === 'template');
+        if (isHeadEl) {
+            /* допустимо только внутрь head */
+            var $targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
+            if (!$targetIsHead) return false;
+        }
+
+        if (dst === html) return true;
+        if (!html.contains(dst)) return false;
         return true;
     };
 
     DomTree.prototype._performDrop = function (src, dst, zone) {
-        var body = this.canvas.getBody();
-        if (!body) return;
-        if (dst === body) zone = 'inside';
+        var html = this.canvas.getHtml();
+        if (!html) return;
 
-        try {
-            if (zone === 'inside') {
-                dst.appendChild(src);
-            } else if (zone === 'before') {
-                dst.parentNode.insertBefore(src, dst);
-            } else if (zone === 'after') {
-                dst.parentNode.insertBefore(src, dst.nextSibling);
-            }
-        } catch (e) {
-            console.error('[DomTree] drop failed', e);
-            return;
+        if (dst === html) {
+            html.appendChild(src);
+        } else if (zone === 'inside') {
+            dst.appendChild(src);
+        } else if (zone === 'before') {
+            dst.parentNode.insertBefore(src, dst);
+        } else if (zone === 'after') {
+            dst.parentNode.insertBefore(src, dst.nextSibling);
         }
 
         var doc = this.canvas.getDoc();
@@ -415,7 +400,7 @@
     };
 
     /* ============================================================
-       Palette — палитра компонентов (в виде дерева)
+       Palette
        ============================================================ */
     function Palette(rootEl) {
         this.root = $(rootEl);
@@ -482,7 +467,6 @@
         this.clearActive();
         btn.addClass('wb-active');
         this.active = comp;
-        /* подсветить дерево Structure как приёмник вставки */
         $('#wb-domtree').addClass('wb-drop-mode');
         bus.emit('palette:selected', { component: comp });
     };
@@ -523,7 +507,7 @@
     };
 
     /* ============================================================
-       Inspector — Object Inspector (Delphi 7 style)
+       Inspector
        ============================================================ */
     function Inspector(rootEl) {
         this.root = $(rootEl);

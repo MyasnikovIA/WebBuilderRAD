@@ -13,16 +13,22 @@
         this._init();
     }
 
-    Canvas.prototype._init = function () {
-        var doc = this.getDoc();
-        doc.open();
-        doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Canvas</title></head><body></body></html>');
-        doc.close();
+    /* Стартовый шаблон сцены: только meta charset в head. */
+    Canvas.prototype._templateHtml = function () {
+        return '<!DOCTYPE html>' +
+            '<html lang="ru">' +
+            '<head>' +
+            '<meta charset="UTF-8">' +
+            '</head>' +
+            '<body></body>' +
+            '</html>';
+    };
 
-        // IDE-стили внутри iframe.
-        // ВАЖНО: html,body получают min-height:100%, иначе body пустой
-        // не имеет размеров и клик в пустой области попадает в <html>.
-        var style = this.getDoc().createElement('style');
+    Canvas.prototype._injectIdeStyle = function () {
+        var doc = this.getDoc();
+        var old = doc.querySelector('style[data-wb-ide="1"]');
+        if (old) old.parentNode.removeChild(old);
+        var style = doc.createElement('style');
         style.setAttribute('data-wb-ide', '1');
         style.textContent =
             'html, body { min-height: 100%; }' +
@@ -30,8 +36,17 @@
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
-        this.getDoc().head.appendChild(style);
+        if (doc.head) doc.head.appendChild(style);
+    };
 
+    Canvas.prototype._init = function () {
+        var self = this;
+        var doc = this.getDoc();
+        doc.open();
+        doc.write(this._templateHtml());
+        doc.close();
+
+        this._injectIdeStyle();
         this._bind();
 
         if (global.IDE) global.IDE._canvas = this;
@@ -46,32 +61,73 @@
                     }
                 }
             });
-            this._mo.observe(this.getBody(), { childList: true, subtree: true });
+            var html = this.getHtml();
+            if (html) this._mo.observe(html, { childList: true, subtree: true });
         }
 
         bus.emit('canvas:ready', this);
 
-        // После завершения навигации iframe актуализируем observer и дерево.
-        var self2 = this;
         setTimeout(function () {
-            self2._reobserve();
+            self._reobserve();
             bus.emit('canvas:changed');
         }, 0);
     };
 
+    /* ---------- живые геттеры ---------- */
     Canvas.prototype.getDoc = function () {
         return this.iframe.contentDocument || this.iframe.contentWindow.document;
+    };
+    Canvas.prototype.getHtml = function () {
+        var d = this.getDoc();
+        return d ? d.documentElement : null;
+    };
+    Canvas.prototype.getHead = function () {
+        var d = this.getDoc();
+        return d ? d.head : null;
+    };
+    Canvas.prototype.getOrCreateHead = function () {
+        var doc = this.getDoc();
+        if (doc.head) return doc.head;
+        var head = doc.createElement('head');
+        var html = doc.documentElement;
+        if (html) html.insertBefore(head, html.firstChild);
+        return head;
     };
     Canvas.prototype.getBody = function () {
         var d = this.getDoc();
         return d ? d.body : null;
     };
+    Canvas.prototype.getOrCreateBody = function () {
+        var doc = this.getDoc();
+        if (doc.body) return doc.body;
+        var body = doc.createElement('body');
+        var html = doc.documentElement;
+        if (html) html.appendChild(body);
+        return body;
+    };
 
     Canvas.prototype._reobserve = function () {
         if (!this._mo) return;
         this._mo.disconnect();
-        var b = this.getBody();
-        if (b) this._mo.observe(b, { childList: true, subtree: true });
+        var html = this.getHtml();
+        if (html) this._mo.observe(html, { childList: true, subtree: true });
+    };
+
+    Canvas.prototype.reset = function () {
+        var doc = this.getDoc();
+        doc.open();
+        doc.write(this._templateHtml());
+        doc.close();
+
+        this._injectIdeStyle();
+        this.pending = null;
+
+        if (global.IDE) global.IDE._canvas = this;
+        this._reobserve();
+
+        bus.emit('canvas:refreshed');
+        bus.emit('canvas:changed');
+        setTimeout(function () { bus.emit('canvas:changed'); }, 0);
     };
 
     Canvas.prototype._bind = function () {
@@ -116,31 +172,67 @@
         });
     };
 
-    /* ГЛАВНОЕ ИСПРАВЛЕНИЕ:
-       — если клик вне body (например, по <html>) → вернуть body;
-       — иначе подниматься вверх до body, пропуская VOID-теги. */
     Canvas.prototype._placementTarget = function (el) {
-        var body = this.getBody();
-        if (!body) return null;
+        var html = this.getHtml();
+        var body = this.getBody() || this.getOrCreateBody();
+        var head = this.getHead();
+        if (!html) return null;
         if (!el || el.nodeType !== 1) return body;
-
-        // клик вне body (в <html>, в документ и т.п.) — кладём в body
-        if (el !== body && !body.contains(el)) return body;
+        if (el !== html && !html.contains(el)) return body;
 
         var n = el;
-        while (n && n !== body) {
+        while (n && n !== body && n !== head && n !== html) {
             if (!VOID[n.tagName]) return n;
             n = n.parentNode;
         }
+        if (n === head) return head;
+        if (n === body) return body;
         return body;
     };
 
-    Canvas.prototype._place = function (def, target) {
-        if (!target) return;
-        var doc = this.getDoc();
+    /* Универсальная вставка: используется и сценой, и деревом. */
+    Canvas.prototype.insertComponent = function (def, target, zone) {
+        var doc  = this.getDoc();
+        var html = this.getHtml();
+        if (!html) return null;
+
+        /* Уникальные компоненты (head, body) — не дублируются. */
+        if (def.unique) {
+            var existing = doc.querySelector(def.tagName);
+            if (existing) {
+                this.pending = null;
+                bus.emit('palette:placed');
+                this.select(existing);
+                return existing;
+            }
+        }
+
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
         el.setAttribute('data-cmptype', def.id);
-        target.appendChild(el);
+
+        /* rootLevel: head и body всегда добавляются в html */
+        if (def.rootLevel) {
+            html.appendChild(el);
+        }
+        /* headOnly: meta/title/link/script/style/base/noscript/template
+           всегда добавляются в head. Создаём head, если его нет. */
+        else if (def.headOnly) {
+            var head = this.getOrCreateHead();
+            head.appendChild(el);
+        }
+        /* target — html: кладём в body */
+        else if (target === html || !target || !target.parentNode) {
+            var body = this.getOrCreateBody();
+            if (body) body.appendChild(el);
+        }
+        /* Обычный случай — целевой узел из дерева или сцены */
+        else if (zone === 'before') {
+            target.parentNode.insertBefore(el, target);
+        } else if (zone === 'after') {
+            target.parentNode.insertBefore(el, target.nextSibling);
+        } else {
+            target.appendChild(el);
+        }
 
         this.pending = null;
         bus.emit('palette:placed');
@@ -151,13 +243,19 @@
 
         bus.emit('canvas:changed');
         bus.emit('selection:changed', { element: el });
+        return el;
+    };
+
+    Canvas.prototype._place = function (def, target) {
+        this.insertComponent(def, target, 'inside');
     };
 
     Canvas.prototype.setPending  = function (def) { this.pending = def; };
     Canvas.prototype.getSelected = function () { return this.getDoc().querySelector('.' + SEL); };
 
     Canvas.prototype.select = function (el) {
-        if (!el || el.nodeType !== 1 || el === this.getDoc().documentElement) return;
+        if (!el || el.nodeType !== 1) return;
+        if (el === this.getHtml()) return;
         var prev = this.getDoc().querySelectorAll('.' + SEL);
         for (var i = 0; i < prev.length; i++) prev[i].classList.remove(SEL);
         el.classList.add(SEL);
@@ -165,7 +263,7 @@
     };
 
     Canvas.prototype.cleanHtml = function () {
-        var html = '<!DOCTYPE html>\n' + this.getDoc().documentElement.outerHTML;
+        var html = '<!DOCTYPE html>\n' + this.getHtml().outerHTML;
         html = html.replace(/ class="wb-selected"/g, '')
             .replace(/ class="wb-hover"/g, '')
             .replace(/ data-cmptype="[^"]*"/g, '')

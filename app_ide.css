@@ -6,15 +6,12 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
 .wb-panel-head input { width: 110px; padding: 2px 4px; font-size: 11px; border: 1px solid #b0b0b0; }
 .wb-scroll { flex: 1; overflow: auto; padding: 4px; background: #fff; min-height: 0; }
 
-/* ============================================================
-   Дерево (общее для Structure и Palette)
-   ============================================================ */
+/* ---------- Дерево ---------- */
 .wb-tree { list-style: none; margin: 0; padding: 0; }
 .wb-tree ul { list-style: none; margin: 0; padding-left: 16px; }
 .wb-tree-root { padding-left: 2px !important; }
 .wb-tree li { position: relative; white-space: nowrap; line-height: 16px; }
 
-/* toggle [+] / [−] */
 .wb-toggle {
     display: inline-block;
     width: 12px;
@@ -36,7 +33,6 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
 .wb-toggle:hover { background: #e0eefb; border-color: #1e88e5; }
 .wb-toggle.wb-leaf { visibility: hidden; }
 
-/* label узла */
 .wb-tree-label {
     display: inline-block;
     padding: 1px 4px;
@@ -52,14 +48,16 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
 .wb-tree-label:hover, .wb-tree-label.wb-hover { background: #e3f2fd; }
 .wb-tree-label.wb-selected { background: #1e88e5; color: #fff; }
 
-/* метки в палитре */
+/* Невидимые элементы (head и его содержимое) */
+.wb-tree-label.wb-invisible { color: #888; font-style: italic; }
+.wb-tree-label.wb-invisible.wb-selected { color: #fff; }
+
+/* ---------- Палитра ---------- */
 .wb-cat-label  { font-weight: 600; color: #333; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 11px; }
 .wb-comp-label { font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 11px; }
 .wb-comp-label.wb-active { background: #1e88e5; color: #fff; }
 
-/* ============================================================
-   Drag & drop в дереве Structure
-   ============================================================ */
+/* ---------- Drag & drop в дереве ---------- */
 .wb-tree-label.wb-dragging { opacity: 0.4; }
 .wb-tree-label.wb-drop-before { box-shadow: inset 0 2px 0 0 #1e88e5; }
 .wb-tree-label.wb-drop-after  { box-shadow: inset 0 -2px 0 0 #1e88e5; }
@@ -70,9 +68,10 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
 }
 .wb-tree-label.wb-drop-forbidden { cursor: not-allowed; }
 
-/* ============================================================
-   Inspector
-   ============================================================ */
+/* ---------- Режим вставки из палитры ---------- */
+#wb-domtree.wb-drop-mode .wb-tree-label { cursor: copy; }
+
+/* ---------- Inspector ---------- */
 .wb-inspector-tabs { display: flex; background: #e0e0e0; border-bottom: 1px solid #c0c0c0; flex: 0 0 auto; }
 .wb-itab { flex: 1; text-align: center; padding: 5px; cursor: pointer; font-size: 11px; border-right: 1px solid #c0c0c0; user-select: none; }
 .wb-itab:last-child { border-right: 0; }
@@ -124,15 +123,3 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
     resize: none;
 }
 #wb-window-body > .wb-code-editor { height: 100%; }
-
-/* ============================================================
-   Режим вставки из палитры: курсор над деревом Structure
-   ============================================================ */
-#wb-domtree.wb-drop-mode .wb-tree-label {
-    cursor: copy;
-}
-#wb-domtree.wb-drop-mode .wb-tree-label.wb-drop-before,
-#wb-domtree.wb-drop-mode .wb-tree-label.wb-drop-after,
-#wb-domtree.wb-drop-mode .wb-tree-label.wb-drop-inside {
-    /* индикаторы переиспользуются из drag & drop */
-}
