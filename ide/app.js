@@ -290,7 +290,7 @@
 
                 setTimeout(function () { editor.focus(); }, 50);
             },
-
+ 
             /* ---------- Edit InnerHTML ----------
                — script    → JS
                — style     → CSS
