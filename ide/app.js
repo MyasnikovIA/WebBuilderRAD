@@ -274,10 +274,19 @@
                 if (el === canvas.getHtml()) return;
                 var rc = canvas.getRootContainer();
                 if (canvas.getRootType() !== 'html' && el === rc) return;
-                el.parentNode.removeChild(el);
+
+                var parent = el.parentNode;
+                parent.removeChild(el);
+
+                /* Обновить превью родителя — ComboBox после удаления ComboItem
+                   должен убрать <option>. */
+                if (parent && parent.nodeType === 1 &&
+                    parent.getAttribute && parent.getAttribute('data-wb-tag')) {
+                    canvas._renderPreview(parent);
+                }
+
                 EventBus.emit('canvas:changed');
             },
-
             editText: function () {
                 var el = canvas.getSelected();
                 if (!el) return;

@@ -112,7 +112,6 @@
     </div>
 </div>
 
-<!-- Контекстное меню сцены -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
     <li onclick="App.cmd('editInnerHtml')">Edit InnerHTML…</li>
@@ -129,7 +128,6 @@
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
 </ul>
 
-<!-- Контекстное меню узла дерева -->
 <ul id="wb-treemenu" class="mini-contextmenu">
     <li onclick="App.cmd('copy')">Copy</li>
     <li onclick="App.cmd('cut')">Cut</li>
@@ -147,7 +145,6 @@
     <li onclick="App.cmd('back')">Send to Back</li>
 </ul>
 
-<!-- Контекстное меню корневого узла: выбор типа контейнера -->
 <ul id="wb-rootmenu" class="mini-contextmenu">
     <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
     <li onclick="App.cmd('setRootCmpForm')">Root: cmpForm (D3 Form)</li>
@@ -161,14 +158,43 @@
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 
-<!-- Components -->
+<!-- HTML / UI components -->
 <script src="Component/html-basic.js"></script>
 <script src="Component/html-form.js"></script>
 <script src="Component/html-table.js"></script>
 <script src="Component/html-media.js"></script>
 <script src="Component/ui-components.js"></script>
 <script src="Component/html-head.js"></script>
-<script src="Component/d3-components.js"></script>
+
+<!-- D3 core (обязательно первым) -->
+<script src="Component/d3/core.js"></script>
+
+<!-- D3 form-контейнеры -->
+<script src="Component/d3/form.js"></script>
+<script src="Component/d3/rootdiv.js"></script>
+<script src="Component/d3/subform.js"></script>
+
+<!-- D3 controls -->
+<script src="Component/d3/button.js"></script>
+<script src="Component/d3/edit.js"></script>
+<script src="Component/d3/dateedit.js"></script>
+<script src="Component/d3/combobox.js"></script>
+<script src="Component/d3/comboitem.js"></script>
+<script src="Component/d3/unitedit.js"></script>
+<script src="Component/d3/hyperlink.js"></script>
+<script src="Component/d3/dependences.js"></script>
+<script src="Component/d3/mask.js"></script>
+
+<!-- D3 data -->
+<script src="Component/d3/script.js"></script>
+<script src="Component/d3/dataset.js"></script>
+<script src="Component/d3/datasetvar.js"></script>
+
+<!-- D3 actions -->
+<script src="Component/d3/action.js"></script>
+<script src="Component/d3/actionvar.js"></script>
+<script src="Component/d3/subaction.js"></script>
+<script src="Component/d3/subactionvar.js"></script>
 
 <!-- Bootstrap app -->
 <script src="ide/app.js"></script>

@@ -494,7 +494,7 @@
             target.appendChild(el);
         }
 
-        this._renderPreview(el);
+        this.refreshPreviewAndParent(el);
 
         this.pending = null;
         bus.emit('palette:placed');
@@ -821,6 +821,17 @@
 
         var bodyStr = this._formatNode(clone, 0);
         return '<!DOCTYPE html>\n' + bodyStr;
+    };
+
+    /* Перерисовать preview элемента И его D3-родителя.
+       Нужно для comboItem → comboBox, datasetVar → dataset и т.п. */
+    Canvas.prototype.refreshPreviewAndParent = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        this.refreshPreview(el);
+        var p = el.parentNode;
+        if (p && p.nodeType === 1 && p.getAttribute && p.getAttribute('data-wb-tag')) {
+            this._renderPreview(p);
+        }
     };
 
     Canvas.CMP_TAGS = CMP_TAGS;

@@ -470,6 +470,14 @@
         else if (zone === 'before') dst.parentNode.insertBefore(src, dst);
         else if (zone === 'after') dst.parentNode.insertBefore(src, dst.nextSibling);
 
+        /* Обновить превью родителя — ComboBox после перемещения ComboItem
+           должен перестроить <option>. */
+        var newParent = src.parentNode;
+        if (newParent && newParent.nodeType === 1 &&
+            newParent.getAttribute && newParent.getAttribute('data-wb-tag')) {
+            this.canvas._renderPreview(newParent);
+        }
+
         var doc = this.canvas.getDoc();
         var prev = doc.querySelectorAll('.wb-selected');
         for (var i = 0; i < prev.length; i++) {
@@ -680,10 +688,14 @@
         }
 
         var canvas = global.IDE && global.IDE._canvas;
-        if (canvas && canvas.refreshPreview) {
-            var isCmp = el.getAttribute && el.getAttribute('data-wb-tag');
+        if (canvas && canvas.refreshPreviewAndParent) {
+            var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
             var isRoot = canvas.getRootContainer && canvas.getRootContainer() === el;
-            if (isCmp || isRoot) canvas.refreshPreview(el);
+            if (isCmp || isRoot) {
+                canvas.refreshPreviewAndParent(el);
+            } else if (canvas.refreshPreview) {
+                canvas.refreshPreview(el);
+            }
         }
 
         bus.emit('canvas:changed');
