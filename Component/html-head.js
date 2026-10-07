@@ -27,7 +27,9 @@
     });
 
     /* ============================================================
-       Head-элементы. headOnly: true — всегда попадают в head.
+       Head-элементы.
+       headOnly: true — только meta, title, base, noscript, template.
+       script/style/link могут находиться в любом блоке (body, div и т.п.).
        ============================================================ */
     R.register({
         id: 'html.meta', category: 'Head', caption: 'Meta', tagName: 'meta',
@@ -57,9 +59,9 @@
         schema: sch()
     });
 
+    /* Link — может быть в head и в body (например, rel="preload", itemprop) */
     R.register({
         id: 'html.link', category: 'Head', caption: 'Link', tagName: 'link',
-        headOnly: true,
         create: function (doc) {
             var el = doc.createElement('link');
             el.rel = 'stylesheet';
@@ -75,9 +77,9 @@
         ])
     });
 
+    /* Style — может быть в head и в body (scoped/inline-стили) */
     R.register({
         id: 'html.style', category: 'Head', caption: 'Style', tagName: 'style',
-        headOnly: true,
         create: function (doc) {
             var el = doc.createElement('style');
             el.textContent = '/* CSS */';
@@ -86,9 +88,9 @@
         schema: sch([{ name: 'media', caption: 'Media', type: 'string', attr: true }])
     });
 
+    /* Script — может быть в head и в body */
     R.register({
         id: 'html.script', category: 'Head', caption: 'Script', tagName: 'script',
-        headOnly: true,
         create: function (doc) {
             var el = doc.createElement('script');
             el.textContent = '// JS';

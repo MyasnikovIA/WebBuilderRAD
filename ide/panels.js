@@ -6,6 +6,9 @@
     var VOID_TAGS = { IMG:1, INPUT:1, BR:1, HR:1, META:1, LINK:1, AREA:1, BASE:1,
         COL:1, EMBED:1, SOURCE:1, TRACK:1, WBR:1 };
 
+    /* Теги, которые допускаются только внутри <head>. */
+    var STRICT_HEAD_TAGS = { meta:1, title:1, base:1 };
+
     /* ============================================================
        DomTree
        ============================================================ */
@@ -84,7 +87,6 @@
 
     DomTree.prototype._build = function (el, parentUl) {
         if (!el || el.nodeType !== 1) return;
-        /* Пропускаем служебный IDE-стиль */
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
 
         var self = this;
@@ -169,7 +171,9 @@
 
     DomTree.prototype._label = function (el) {
         var tag = el.tagName.toLowerCase();
+        var custom = el.getAttribute && el.getAttribute('data-wb-tag');
         var extra = '';
+
         if (tag === 'meta') {
             var ch = el.getAttribute('charset');
             var nm = el.getAttribute('name');
@@ -189,7 +193,11 @@
             extra = ' "' + t + '"';
         } else if (tag === 'style') {
             extra = ' (inline)';
+        } else if (tag === 'cmpaction' || tag === 'cmpdataset') {
+            var n = el.getAttribute('name');
+            if (n) extra = ' name="' + n + '"';
         }
+
         var id  = el.id ? '#' + el.id : '';
         var cls = '';
         if (typeof el.className === 'string' && el.className && el.className.trim() !== '') {
@@ -198,7 +206,9 @@
             });
             if (parts.length) cls = '.' + parts.join('.');
         }
-        return tag + id + cls + extra;
+
+        var displayTag = custom || tag;
+        return displayTag + id + cls + extra;
     };
 
     DomTree.prototype._nid = function (el) {
@@ -300,14 +310,12 @@
             if (!el) return true;
             var html = self.canvas && self.canvas.getHtml();
             if (!html || el === html) {
-                /* html не редактируем — блокируем меню */
                 e.preventDefault();
                 return false;
             }
             e.preventDefault();
             e.stopPropagation();
 
-            /* Сначала выделяем узел — команды меню работают с выделенным. */
             if (self.canvas && !self.canvas.designMode) {
                 self.canvas.select(el);
             }
@@ -390,15 +398,14 @@
         if (!html) return false;
         if (VOID_TAGS[dst.tagName]) return false;
 
+        /* head и body можно перемещать только на верхний уровень (в html) */
         if ((src === head || src === body) && dst !== html) return false;
 
+        /* meta, title, base — только внутри head */
         var tagLower = src.tagName.toLowerCase();
-        var isHeadEl = (tagLower === 'meta' || tagLower === 'link' || tagLower === 'script' ||
-            tagLower === 'style' || tagLower === 'title' || tagLower === 'base' ||
-            tagLower === 'noscript' || tagLower === 'template');
-        if (isHeadEl) {
-            var $targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
-            if (!$targetIsHead) return false;
+        if (STRICT_HEAD_TAGS[tagLower]) {
+            var targetIsHead = (dst === head) || (dst.tagName.toLowerCase() === 'head');
+            if (!targetIsHead) return false;
         }
 
         if (dst === html) return true;
@@ -585,8 +592,10 @@
             return;
         }
         this.def = ComponentRegistry.match(el);
+        var custom = el.getAttribute && el.getAttribute('data-wb-tag');
+        var displayTag = custom || el.tagName.toLowerCase();
         this.root.find('#wb-inspector-target')
-            .text('<' + el.tagName.toLowerCase() + '>' + (this.def ? ' — ' + this.def.caption : ''));
+            .text('<' + displayTag + '>' + (this.def ? ' — ' + this.def.caption : ''));
         this.refresh();
     };
 

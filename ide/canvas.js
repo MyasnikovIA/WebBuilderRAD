@@ -10,7 +10,19 @@
     var VOID_LOWER = { img:1, input:1, br:1, hr:1, meta:1, link:1, area:1, base:1,
         col:1, embed:1, source:1, track:1, wbr:1, param:1 };
 
-    var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
+    /* Теги, содержимое которых сохраняется как есть (script/style/pre/textarea + cmpAction/cmpDataSet с CDATA) */
+    var RAW_TAGS = { script:1, style:1, pre:1, textarea:1, cmpaction:1, cmpdataset:1 };
+
+    /* XML-теги, которые в исходнике самозакрываются: <cmpActionVar ... /> */
+    var XML_SELF_CLOSE = { cmpactionvar:1, cmpdatasetvar:1 };
+
+    /* Оригинальный camelCase для cmp-тегов */
+    var CMP_TAGS = {
+        'cmpaction':    'cmpAction',
+        'cmpactionvar': 'cmpActionVar',
+        'cmpdataset':   'cmpDataSet',
+        'cmpdatasetvar':'cmpDataSetVar'
+    };
 
     var INDENT = '    ';
 
@@ -21,9 +33,6 @@
         this._init();
     }
 
-    /* ------------------------------------------------------------
-       Утилита: убрать пустой атрибут class=""
-       ------------------------------------------------------------ */
     Canvas.prototype._cleanClass = function (el) {
         if (!el || el.nodeType !== 1) return;
         if (typeof el.className === 'string' && el.className.trim() === '') {
@@ -31,9 +40,6 @@
         }
     };
 
-    /* ------------------------------------------------------------
-       Шаблон документа сцены
-       ------------------------------------------------------------ */
     Canvas.prototype._templateHtml = function () {
         return '<!DOCTYPE html>' +
             '<html lang="ru">' +
@@ -54,6 +60,8 @@
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
+            /* Data-компоненты невидимы на сцене */
+            'cmpaction, cmpdataset, cmpactionvar, cmpdatasetvar { display: none !important; }' +
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
         if (doc.head) doc.head.appendChild(style);
@@ -68,7 +76,6 @@
 
         this._injectIdeStyle();
         this._bind();
-
         this._cleanClass(this.getBody());
 
         if (global.IDE) global.IDE._canvas = this;
@@ -104,9 +111,6 @@
         }, 0);
     };
 
-    /* ------------------------------------------------------------
-       Живые геттеры
-       ------------------------------------------------------------ */
     Canvas.prototype.getDoc = function () {
         return this.iframe.contentDocument || this.iframe.contentWindow.document;
     };
@@ -183,9 +187,8 @@
         this.designMode = !!on;
         try {
             doc.designMode = this.designMode ? 'on' : 'off';
-        } catch (e) { /* некоторые браузеры могут не поддержать */ }
+        } catch (e) {}
 
-        /* Если включаем — снять выделение и подсветку, отменить ожидание палитры */
         if (this.designMode) {
             this.pending = null;
             var sel = doc.querySelectorAll('.' + SEL);
@@ -198,11 +201,9 @@
                 hov[j].classList.remove(HOV);
                 this._cleanClass(hov[j]);
             }
-            /* Поставить фокус в iframe, чтобы сразу можно было печатать */
             try { this.iframe.contentWindow.focus(); } catch (ex) {}
         }
 
-        /* Визуальный индикатор — рамка вокруг iframe */
         if (this.designMode) $(this.iframe).addClass('wb-design-mode');
         else $(this.iframe).removeClass('wb-design-mode');
 
@@ -214,16 +215,14 @@
         this.setDesignMode(!this.designMode);
     };
 
-    /* ------------------------------------------------------------
+    /* ============================================================
        Подписка на события iframe
-       ------------------------------------------------------------ */
+       ============================================================ */
     Canvas.prototype._bind = function () {
         var self = this, doc = this.getDoc();
 
         doc.addEventListener('mousedown', function (e) {
-            /* В режиме дизайна клик работает как обычное редактирование текста. */
             if (self.designMode) return;
-
             if (self.pending) {
                 var target = self._placementTarget(e.target);
                 self._place(self.pending, target);
@@ -248,9 +247,7 @@
         }, true);
 
         doc.addEventListener('keydown', function (e) {
-            /* В designMode все клавиши уходят на редактирование текста. */
             if (self.designMode) return;
-
             if (e.keyCode === 46) { bus.emit('command:delete'); e.preventDefault(); }
             else if (e.keyCode >= 37 && e.keyCode <= 40) {
                 bus.emit('command:move', {
@@ -306,10 +303,7 @@
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
 
-        /* data-cmptype нужен только кастомным компонентам,
-           у которых задан собственный cmptype (ui.card, ui.button, ui.badge).
-           Для стандартных HTML-тегов ComponentRegistry.match найдёт
-           компонент по tagName без этой метки. */
+        /* data-cmptype — только для кастомных компонентов с явным cmptype */
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
 
         if (def.rootLevel) {
@@ -353,7 +347,6 @@
     Canvas.prototype.select = function (el) {
         if (!el || el.nodeType !== 1) return;
         if (el === this.getHtml()) return;
-        /* В designMode сцену не выделяем — там идёт редактирование текста. */
         if (this.designMode) return;
         var prev = this.getDoc().querySelectorAll('.' + SEL);
         for (var i = 0; i < prev.length; i++) {
@@ -367,6 +360,13 @@
     /* ============================================================
        Форматирование HTML при сохранении
        ============================================================ */
+
+    Canvas.prototype._formatTagName = function (el) {
+        var custom = el.getAttribute && el.getAttribute('data-wb-tag');
+        if (custom) return custom;
+        return el.tagName.toLowerCase();
+    };
+
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
@@ -377,6 +377,7 @@
             if (name === 'data-cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
+            if (name === 'data-wb-tag') continue;
             /* Пустой class="" */
             if (name === 'class' && (a.value || '').trim() === '') continue;
 
@@ -434,17 +435,24 @@
         }
         if (node.nodeType !== 1) return '';
 
-        var tag = node.tagName.toLowerCase();
-        var attrs = this._formatAttrs(node);
+        var tagLower = node.tagName.toLowerCase();
+        var tagName  = this._formatTagName(node);
+        var attrs    = this._formatAttrs(node);
 
-        if (VOID_LOWER[tag]) {
-            return pad + '<' + tag + attrs + '>\n';
+        /* Самозакрывающиеся XML-теги: <cmpActionVar .../> */
+        if (XML_SELF_CLOSE[tagLower]) {
+            return pad + '<' + tagName + attrs + '/>\n';
         }
 
-        if (RAW_TAGS[tag]) {
+        /* Void HTML-теги */
+        if (VOID_LOWER[tagLower]) {
+            return pad + '<' + tagName + attrs + '>\n';
+        }
+
+        /* RAW-теги: содержимое как есть (script, style, pre, textarea, cmpAction, cmpDataSet) */
+        if (RAW_TAGS[tagLower]) {
             var raw = node.textContent || '';
-            if (raw === '') return pad + '<' + tag + attrs + '></' + tag + '>\n';
-            return pad + '<' + tag + attrs + '>' + raw + '</' + tag + '>\n';
+            return pad + '<' + tagName + attrs + '>' + raw + '</' + tagName + '>\n';
         }
 
         var children = [];
@@ -458,18 +466,18 @@
 
         if (children.length === 1 && children[0].nodeType === 3) {
             var txt = children[0].nodeValue.replace(/\s+/g, ' ').trim();
-            return pad + '<' + tag + attrs + '>' + txt + '</' + tag + '>\n';
+            return pad + '<' + tagName + attrs + '>' + txt + '</' + tagName + '>\n';
         }
 
         if (children.length === 0) {
-            return pad + '<' + tag + attrs + '></' + tag + '>\n';
+            return pad + '<' + tagName + attrs + '></' + tagName + '>\n';
         }
 
-        var out = pad + '<' + tag + attrs + '>\n';
+        var out = pad + '<' + tagName + attrs + '>\n';
         for (var j = 0; j < children.length; j++) {
             out += this._formatNode(children[j], level + 1);
         }
-        out += pad + '</' + tag + '>\n';
+        out += pad + '</' + tagName + '>\n';
         return out;
     };
 
@@ -481,6 +489,9 @@
         var body = this._formatNode(clone, 0);
         return '<!DOCTYPE html>\n' + body;
     };
+
+    /* Экспорт таблицы cmp-тегов для внешних модулей */
+    Canvas.CMP_TAGS = CMP_TAGS;
 
     global.Canvas = Canvas;
 })(window);

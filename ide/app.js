@@ -22,19 +22,16 @@
         EventBus.on('command:undo',   function ()  { History.undo(); });
         EventBus.on('command:redo',   function ()  { History.redo(); });
 
-        /* Контекстное меню сцены (ПКМ по элементу в iframe) */
         EventBus.on('contextmenu:element', function (e) {
             var menu = mini.get('wb-contextmenu');
             menu.showAtPos(e.x, e.y);
         });
 
-        /* Контекстное меню дерева (ПКМ по узлу Structure) */
         EventBus.on('contextmenu:tree', function (e) {
             var menu = mini.get('wb-treemenu');
             menu.showAtPos(e.x, e.y);
         });
 
-        /* Очистка инспектора при включении design mode */
         EventBus.on('canvas:selection:reset', function () {
             var t = document.getElementById('wb-inspector-target');
             if (t) t.textContent = '—';
@@ -76,26 +73,77 @@
             EventBus.emit('selection:changed', { element: el });
         }
 
-        /* Нормализация клона: убрать служебные классы и data-cmptype */
-        /* Нормализация клона: убрать служебные классы и атрибуты IDE */
+        /* ============================================================
+           Утилиты парсинга и очистки
+           ============================================================ */
+
+        /* Нормализация клона: убрать только визуальные артефакты IDE.
+           data-cmptype и data-wb-tag сохраняются (нужны для функционала). */
         function cleanClone(node) {
             if (!node || node.nodeType !== 1) return;
             node.classList.remove('wb-selected', 'wb-hover');
             if (node.classList.length === 0) node.removeAttribute('class');
-            node.removeAttribute('data-cmptype');
-            node.removeAttribute('data-wb-editable');
-            node.removeAttribute('data-wb-ide');
-
-            var kids = node.querySelectorAll('.wb-selected, .wb-hover, [data-cmptype], [data-wb-editable], [data-wb-ide]');
+            if (node.hasAttribute && node.hasAttribute('data-wb-editable')) {
+                node.removeAttribute('data-wb-editable');
+            }
+            var kids = node.querySelectorAll('.wb-selected, .wb-hover, [data-wb-editable]');
             for (var i = 0; i < kids.length; i++) {
                 kids[i].classList.remove('wb-selected', 'wb-hover');
                 if (kids[i].classList.length === 0) kids[i].removeAttribute('class');
-                kids[i].removeAttribute('data-cmptype');
                 kids[i].removeAttribute('data-wb-editable');
-                kids[i].removeAttribute('data-wb-ide');
             }
         }
 
+        /* Парсинг HTML с корректной обработкой CDATA.
+           Заменяем <![CDATA[ и ]]> на маркеры до парсинга, восстанавливаем
+           после — иначе HTML-парсер превратит CDATA в комментарий. */
+        function parseHtmlWithCdata(html) {
+            var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
+            var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
+
+            var prepared = String(html)
+                .replace(/<!\[CDATA\[/g, SENT_O)
+                .replace(/\]\]>/g, SENT_C);
+
+            var tmp = document.createElement('div');
+            tmp.innerHTML = prepared;
+
+            (function walk(n) {
+                if (n.nodeType === 3) {
+                    if (n.nodeValue && n.nodeValue.indexOf('\u0001WB_CDATA_') >= 0) {
+                        n.nodeValue = n.nodeValue
+                            .split(SENT_O).join('<![CDATA[')
+                            .split(SENT_C).join(']]>');
+                    }
+                } else if (n.nodeType === 1) {
+                    for (var i = 0; i < n.childNodes.length; i++) walk(n.childNodes[i]);
+                }
+            })(tmp);
+
+            return tmp.firstChild || null;
+        }
+
+        /* Восстановление data-wb-tag (camelCase) для cmp-элементов после парсинга. */
+        var CMP_TAGS = {
+            'cmpaction':    'cmpAction',
+            'cmpactionvar': 'cmpActionVar',
+            'cmpdataset':   'cmpDataSet',
+            'cmpdatasetvar':'cmpDataSetVar'
+        };
+
+        function restoreCmpTags(root) {
+            if (!root || root.nodeType !== 1) return;
+            var lower = root.tagName.toLowerCase();
+            if (CMP_TAGS[lower]) {
+                root.setAttribute('data-wb-tag', CMP_TAGS[lower]);
+            }
+            var kids = root.children;
+            for (var i = 0; i < kids.length; i++) restoreCmpTags(kids[i]);
+        }
+
+        /* ============================================================
+           Команды
+           ============================================================ */
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
@@ -120,7 +168,6 @@
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
 
-            /* ---------- Copy / Cut / Paste / Delete ---------- */
             copy: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -142,7 +189,6 @@
                 var c = clipboard.cloneNode(true);
                 cleanClone(c);
 
-                /* head принимает только head-элементы */
                 var tagLower = el.tagName.toLowerCase();
                 if (tagLower === 'head') {
                     var headTags = { meta:1, link:1, script:1, style:1, title:1, base:1, noscript:1, template:1 };
@@ -158,8 +204,7 @@
             pasteAfter: function () {
                 var el = canvas.getSelected();
                 if (!el || !clipboard) return;
-                if (el === canvas.getHtml()) return;
-                if (el.parentNode == null) return;
+                if (el === canvas.getHtml() || !el.parentNode) return;
                 var c = clipboard.cloneNode(true);
                 cleanClone(c);
                 el.parentNode.insertBefore(c, el.nextSibling);
@@ -170,7 +215,7 @@
                 var el = canvas.getSelected();
                 if (!el) return;
                 if (el === canvas.getHtml() || el === canvas.getHead() || el === canvas.getBody()) return;
-                if (el.parentNode == null) return;
+                if (!el.parentNode) return;
                 var c = el.cloneNode(true);
                 cleanClone(c);
                 el.parentNode.insertBefore(c, el.nextSibling);
@@ -185,7 +230,6 @@
                 EventBus.emit('canvas:changed');
             },
 
-            /* ---------- Правки ---------- */
             editText: function () {
                 var el = canvas.getSelected();
                 if (!el) return;
@@ -200,33 +244,36 @@
                 var el = canvas.getSelected();
                 if (!el) return;
 
-                /* Показываем очищенный клон — без следов IDE */
-                var clone = el.cloneNode(true);
-                cleanClone(clone);
+                var isCmp = el.hasAttribute && el.hasAttribute('data-wb-tag');
 
                 var ta = document.createElement('textarea');
                 ta.className = 'wb-code-editor';
-                ta.value = clone.outerHTML;
+
+                if (isCmp) {
+                    /* Для cmp-элементов показываем pretty-print с camelCase и CDATA */
+                    ta.value = canvas._formatNode(el, 0).replace(/\n$/, '');
+                } else {
+                    var clone = el.cloneNode(true);
+                    cleanClone(clone);
+                    ta.value = clone.outerHTML;
+                }
 
                 Modal.open({
-                    title: 'Edit HTML — ' + el.tagName.toLowerCase(),
+                    title: 'Edit HTML — ' + canvas._formatTagName(el),
                     content: ta,
                     onOk: function () {
                         try {
-                            var tmp = document.createElement('div');
-                            tmp.innerHTML = ta.value;
-                            var nw = tmp.firstChild;
+                            var nw = parseHtmlWithCdata(ta.value);
                             if (!nw) return;
-                            /* На всякий случай чистим служебные классы, если пользователь
-                               случайно вставил их вручную */
                             cleanClone(nw);
+                            restoreCmpTags(nw);
                             el.parentNode.replaceChild(nw, el);
                             EventBus.emit('canvas:changed');
                             canvas.select(nw);
                         } catch (ex) { alert('Некорректный HTML: ' + ex.message); }
                     }
                 });
-                },
+            },
 
             editInnerHtml: function () {
                 var el = canvas.getSelected();
@@ -245,7 +292,6 @@
                 });
             },
 
-            /* ---------- Прочее ---------- */
             designMode: function () { canvas.toggleDesignMode(); },
 
             front: function () {
