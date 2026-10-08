@@ -61,9 +61,27 @@
         </div>
     </div>
 
-    <!-- Center: canvas -->
-    <div region="center" style="padding:6px;background:#808080;">
-        <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
+    <!-- Center: Scene / Code -->
+    <div region="center" style="padding:0;background:#808080;position:relative;overflow:hidden;">
+
+        <div id="wb-center-tabs" class="wb-center-tabs">
+            <div class="wb-center-tab wb-active" data-pane="scene">Scene</div>
+            <div class="wb-center-tab" data-pane="code">Code</div>
+        </div>
+
+        <div id="wb-center-panes" style="position:absolute;top:28px;left:0;right:0;bottom:0;">
+
+            <div class="wb-center-pane" data-pane="scene"
+                 style="position:absolute;top:0;left:0;right:0;bottom:0;padding:6px;box-sizing:border-box;">
+                <iframe id="wb-canvas" frameborder="0"
+                        style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
+            </div>
+
+            <div class="wb-center-pane" data-pane="code"
+                 style="position:absolute;top:0;left:0;right:0;bottom:0;display:none;">
+                <!-- содержимое строится CodeView -->
+            </div>
+        </div>
     </div>
 
     <!-- Right: Tool Palette -->
@@ -126,7 +144,7 @@
 </div>
 
 <!-- =========================================================
-     Контекстное меню СЦЕНЫ (ПКМ по элементу в iframe)
+     Контекстное меню СЦЕНЫ
      ========================================================= -->
 <ul id="wb-contextmenu" class="mini-contextmenu">
     <li onclick="App.cmd('editHtml')">Edit HTML…</li>
@@ -145,7 +163,7 @@
 </ul>
 
 <!-- =========================================================
-     Контекстное меню ДЕРЕВА (ПКМ по узлу в Structure)
+     Контекстное меню ДЕРЕВА
      ========================================================= -->
 <ul id="wb-treemenu" class="mini-contextmenu">
     <li onclick="App.cmd('copy')">Copy</li>
@@ -165,7 +183,7 @@
 </ul>
 
 <!-- =========================================================
-     Контекстное меню КОРНЯ (ПКМ по html / cmpForm / div)
+     Контекстное меню КОРНЯ
      ========================================================= -->
 <ul id="wb-rootmenu" class="mini-contextmenu">
     <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
@@ -179,6 +197,7 @@
 <script src="ide/core.js"></script>
 <script src="lib/highlight/highlight.js"></script>
 <script src="ide/code-editor.js"></script>
+<script src="ide/code-view.js"></script>
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 

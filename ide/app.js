@@ -10,10 +10,24 @@
         var palette   = new Palette(document.getElementById('wb-palette'));
         var inspector = new Inspector(document.getElementById('wb-right') || document.body);
 
+        /* CodeView создаём ДО Canvas — он подписывается на 'canvas:ready'. */
+        var codePaneEl = document.querySelector('#wb-center-panes .wb-center-pane[data-pane="code"]');
+        var codeView = codePaneEl ? new CodeView(codePaneEl) : null;
+
         var canvas    = new Canvas(document.getElementById('wb-canvas'));
         History.attach(canvas);
 
         var clipboard = null;
+
+        /* ---------- Переключение вкладок Scene / Code ---------- */
+        $('#wb-center-tabs').delegate('.wb-center-tab', 'click', function () {
+            var paneName = $(this).attr('data-pane');
+            $('#wb-center-tabs .wb-center-tab').removeClass('wb-active');
+            $(this).addClass('wb-active');
+            $('#wb-center-panes .wb-center-pane').hide();
+            $('#wb-center-panes .wb-center-pane[data-pane="' + paneName + '"]').show();
+            if (codeView) codeView.setActive(paneName === 'code');
+        });
 
         EventBus.on('palette:selected', function (e) { canvas.setPending(e.component); });
 
@@ -59,9 +73,7 @@
             else if (e.keyCode === 46) { App.cmd('delete'); }
         });
 
-        /* Клавиатурный сдвиг / ресайз.
-           left/top считаем относительно offsetParent, а не body —
-           чтобы координаты корректно работали в субформе. */
+        /* Клавиатурный сдвиг / ресайз. */
         function moveSel(dx, dy, resize) {
             var el = canvas.getSelected();
             var body = canvas.getBody();
@@ -198,11 +210,7 @@
             return allowed.indexOf(tag) >= 0;
         }
 
-        /* Развёртка self-closing cmp*-тегов.
-           HTML-парсер игнорирует '/>' у нестандартных элементов,
-           из-за чего соседние <cmpXxx/> вкладываются друг в друга
-           при разборе текста в editHtml. Разворачиваем ВСЕ cmp*-теги;
-           обратное «уплотнение» делает _formatNode при сохранении. */
+        /* Развёртка self-closing cmp*-тегов. */
         var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
         function expandSelfClosingCmpTags(str) {
             return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
@@ -210,7 +218,7 @@
             });
         }
 
-        /* Теги, содержимое которых — CDATA (SQL или JS). */
+        /* Теги, содержимое которых — CDATA (SQL / JS / JSON). */
         var CDATA_TAGS = {
             cmpaction:              'sql',
             cmpdataset:             'sql',
@@ -417,8 +425,6 @@
                 var tagLower  = el.tagName.toLowerCase();
                 var cdataLang = CDATA_TAGS[tagLower] || null;
 
-                /* Сырое содержимое. textContent отдаёт реальные символы
-                   без HTML-эскейпинга — им и проверяем CDATA-обёртку. */
                 var rawText = el.textContent || '';
                 var rawHtml = el.innerHTML || '';
 
@@ -426,16 +432,6 @@
                 var initial  = '';
                 var wasCdata = false;
 
-                /* Если содержимое целиком (допускаются пробелы по краям)
-                   обёрнуто в <![CDATA[ … ]]> — снимаем обёртку для
-                   редактирования. Флаг wasCdata запоминаем, чтобы на OK
-                   вернуть её обратно.
-
-                   Работает универсально: cmpScript, cmpAction, cmpDataSet,
-                   cmpSubAction, cmpServerScript, cmpRepeaterStyler,
-                   cmpStatGridColumnHeader, а также любые HTML-элементы,
-                   внутри которых лежит CDATA (редкий, но возможный
-                   случай, например при ручной вставке). */
                 var cdataMatch = rawText.match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/);
 
                 if (cdataMatch) {
@@ -443,8 +439,6 @@
                     language = cdataLang || 'xml';
                     initial  = cdataMatch[1];
                 } else if (cdataLang) {
-                    /* CDATA-контейнер без обёртки (например, только что
-                       созданный и ещё не заполненный) — правим как есть. */
                     language = cdataLang;
                     initial  = rawText;
                 } else if (tagLower === 'script') {
@@ -454,7 +448,6 @@
                     language = 'css';
                     initial  = rawText;
                 } else {
-                    /* Обычный HTML-элемент. */
                     initial = rawHtml;
                 }
 
@@ -467,7 +460,6 @@
                         var v = editor.getValue();
 
                         if (wasCdata) {
-                            /* Возвращаем CDATA-обёртку. */
                             var doc = el.ownerDocument;
                             while (el.firstChild) el.removeChild(el.firstChild);
                             el.appendChild(doc.createTextNode('<![CDATA[' + v + ']]>'));
@@ -501,8 +493,7 @@
                     el.parentNode.insertBefore(el, el.parentNode.firstChild);
             },
 
-            /* Вспомогательный парсер HTML с CDATA-сентинелами —
-               используется в editHtml. */
+            /* Парсер HTML с CDATA-сентинелами. */
             _parseHtmlWithCdata: function (html) {
                 var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
                 var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
@@ -511,9 +502,6 @@
                     .replace(/<!\[CDATA\[/g, SENT_O)
                     .replace(/\]\]>/g, SENT_C);
 
-                /* Та же развёртка, что и в Canvas.loadHtml —
-                   иначе HTML-парсер вложит соседние self-closing
-                   cmp*-теги друг в друга. */
                 prepared = expandSelfClosingCmpTags(prepared);
 
                 var tmp = document.createElement('div');

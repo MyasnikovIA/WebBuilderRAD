@@ -120,5 +120,42 @@
     CodeEditor.prototype.setValue = function (v) { this.ta.value = v || ''; this._refresh(); };
     CodeEditor.prototype.focus    = function () { this.ta.focus(); };
 
+    /* Прокрутить к указанной позиции (offset в символах от начала
+       текста). Используется CodeView.navigateTo — при выборе элемента
+       в дереве IDE нужно показать его исходник. */
+    CodeEditor.prototype.revealOffset = function (offset) {
+        var v = this.ta.value || '';
+        if (offset == null || offset < 0) offset = 0;
+        if (offset > v.length) offset = v.length;
+
+        var before = v.slice(0, offset);
+
+        /* Число строк до offset. */
+        var line = before.split('\n').length - 1;
+
+        /* Высота строки. Если CSS не задал — берём 16px. */
+        var lh = 16;
+        try {
+            var cs = global.getComputedStyle(this.ta);
+            var parsed = parseFloat(cs.lineHeight);
+            if (!isNaN(parsed) && parsed > 0) lh = parsed;
+        } catch (e) {}
+
+        /* Вертикальный скролл. */
+        var targetY = line * lh - (this.ta.clientHeight || 0) / 3;
+        if (targetY < 0) targetY = 0;
+        this.ta.scrollTop = targetY;
+        this.pre.scrollTop = targetY;
+
+        /* Горизонтальный скролл — оценочно по числу символов в строке. */
+        var nl = before.lastIndexOf('\n');
+        var col = offset - (nl + 1);
+        var chW = 8;
+        var targetX = col * chW - (this.ta.clientWidth || 0) / 3;
+        if (targetX < 0) targetX = 0;
+        this.ta.scrollLeft = targetX;
+        this.pre.scrollLeft = targetX;
+    };
+
     global.CodeEditor = CodeEditor;
 })(window, jQuery);
