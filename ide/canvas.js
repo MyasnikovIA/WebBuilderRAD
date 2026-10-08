@@ -1,6 +1,6 @@
 /* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
    Поддерживает:
-     - три режима корневого контейнера: 'html', 'cmpForm', 'div';
+     - четыре режима корневого контейнера: 'html', 'cmpForm', 'm2Form', 'div';
      - D3-компоненты (<cmpButton>) и M2-компоненты (<component cmptype="Button">);
      - CDATA-контейнеры в обоих форматах;
      - nameTemplate для авто-присвоения имён;
@@ -166,6 +166,10 @@
         this._rootType = 'html';
         this._handles = null;
         this._handlesPending = false;
+        /* Массив навешанных обработчиков и документ, на который они навешаны.
+           Позволяет корректно снять их при повторном _bind(). */
+        this._handlers = null;
+        this._boundDoc = null;
         this._init();
     }
 
@@ -196,7 +200,6 @@
             '</html>';
     };
 
-    /* Текущая тема (единый источник истины — data-wb-theme на внешнем <html>). */
     Canvas.prototype._currentTheme = function () {
         try {
             return document.documentElement.getAttribute('data-wb-theme') || 'light';
@@ -211,8 +214,6 @@
         var old = doc.querySelector('style[data-wb-ide="1"]');
         if (old) old.parentNode.removeChild(old);
 
-        /* Тёмная или светлая сцена — синхронно с темой IDE.
-           Раньше body был всегда белым, что резало глаза в тёмной теме. */
         var dark = (this._currentTheme() === 'dark');
         var bodyBg    = dark ? '#1e1e1e' : '#ffffff';
         var bodyColor = dark ? '#d4d4d4' : '#1a1a1a';
@@ -227,18 +228,14 @@
 
             'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"], component[cmptype="tmp"], component[cmptype="Form"], div[cmptype="Form"] { position: relative; }' +
 
-            /* M2: компоненты — inline-block, чтобы уважали width/height при ресайзе. */
             'component[cmptype] { display: inline-block; vertical-align: top; box-sizing: border-box; }' +
-            /* M2-контейнеры — block. */
             'component[cmptype="Form"], component[cmptype="tmp"], component[cmptype="SubForm"], component[cmptype="PageControl"], component[cmptype="TabSheet"] { display: block; }' +
 
-            /* D3 невидимые */
             'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmppopupmenu, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
 
-            /* M2 невидимые (по cmptype) */
             'component[cmptype="Script"], component[cmptype="Action"], component[cmptype="ActionVar"], component[cmptype="DataSet"], component[cmptype="Variable"], component[cmptype="MaskInspector"], component[cmptype="DepControls"], component[cmptype="Broker"], component[cmptype="Comment"], component[cmptype="Completer"], component[cmptype="Dependences"], component[cmptype="Fetch"], component[cmptype="FetchVar"], component[cmptype="Locate"], component[cmptype="Module"], component[cmptype="ModuleVar"], component[cmptype="RepeaterStyler"], component[cmptype="ServerScript"], component[cmptype="Sort"], component[cmptype="SubAction"], component[cmptype="SubActionVar"] {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
@@ -364,8 +361,6 @@
             }, 0);
         });
 
-        /* Тема изменилась → переинжектим IDE-стили сцены,
-           чтобы фон и цвет текста соответствовали теме. */
         bus.on('theme:changed', function () {
             self._injectIdeStyle();
         });
@@ -444,7 +439,6 @@
             var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
             var ctype = k.getAttribute && k.getAttribute('cmptype');
             if (tag === 'cmpform' || wbTag === 'cmpForm') return 'cmpForm';
-            /* M2-форма — div cmptype="Form". Проверяем раньше обычного div. */
             if (tag === 'div' && ctype === 'Form') return 'm2Form';
             if (tag === 'div' && k.getAttribute('data-wb-root') === '1') return 'div';
         }
@@ -467,7 +461,6 @@
             var bWbTag = be.getAttribute && be.getAttribute('data-wb-tag');
             var bCmptype = be.getAttribute && be.getAttribute('cmptype');
             if (type === 'cmpForm') {
-                /* D3: <cmpForm> или <div cmptype="Form"> в runtime-нотации. */
                 if (bTag === 'cmpform' || bWbTag === 'cmpForm' ||
                     (bTag === 'div' && bCmptype === 'Form')) {
                     existingRoot = be;
@@ -496,7 +489,6 @@
                     existingRoot.setAttribute('class', 'd3form formBackground');
                 }
             } else if (type === 'm2Form') {
-                /* M2-форма: только cmptype, никаких data-wb-tag и d3form. */
                 if (!existingRoot.getAttribute('cmptype')) {
                     existingRoot.setAttribute('cmptype', 'Form');
                 }
@@ -589,6 +581,7 @@
 
         this._injectIdeStyle();
         this._injectComponentAssets();
+        this._bind();                     /* FIX: обработчики потеряны при doc.write — навешиваем заново. */
         this.pending = null;
         this.designMode = false;
         this._rootType = 'html';
@@ -716,6 +709,7 @@
 
         this._injectIdeStyle();
         this._injectComponentAssets();
+        this._bind();                     /* FIX: обработчики потеряны при doc.write — навешиваем заново. */
 
         this.pending = null;
         this.designMode = false;
@@ -853,22 +847,51 @@
         return eTarget;
     };
 
-    Canvas.prototype._bind = function () {
-        var self = this, doc = this.getDoc();
+    /* Снять ранее навешанные обработчики (если есть). */
+    Canvas.prototype._unbind = function () {
+        if (!this._handlers) return;
+        var doc = this._boundDoc || this.getDoc();
+        if (!doc) { this._handlers = null; this._boundDoc = null; return; }
+        for (var i = 0; i < this._handlers.length; i++) {
+            var h = this._handlers[i];
+            try { doc.removeEventListener(h.type, h.fn, h.capture); } catch (e) {}
+        }
+        this._handlers = null;
+        this._boundDoc = null;
+    };
 
-        doc.addEventListener('mousedown', function (e) {
+    Canvas.prototype._bind = function () {
+        /* FIX: идемпотентность. После doc.write обработчики могли быть
+           потеряны, поэтому просто навешиваем заново. Если старые всё
+           ещё живы — снимаем их через _unbind. */
+        this._unbind();
+
+        var self = this, doc = this.getDoc();
+        this._boundDoc = doc;
+        this._handlers = [];
+
+        function on(type, fn, capture) {
+            doc.addEventListener(type, fn, capture);
+            self._handlers.push({ type: type, fn: fn, capture: capture });
+        }
+
+        on('mousedown', function (e) {
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
-            if (e.target && e.target.classList &&
-                e.target.classList.contains('wb-resize-handle')) {
-                return;
-            }
-
+            /* FIX: сначала проверяем pending — если пользователь выбрал
+               компонент в палитре, любой клик по сцене должен вставить.
+               Проверка resize-handle идёт после, чтобы клик по handle
+               тоже вставлял компонент, если pending установлен. */
             if (self.pending) {
                 var target0 = self._placementTarget(e.target);
                 self._place(self.pending, target0);
                 e.preventDefault(); e.stopPropagation();
+                return;
+            }
+
+            if (e.target && e.target.classList &&
+                e.target.classList.contains('wb-resize-handle')) {
                 return;
             }
 
@@ -884,13 +907,13 @@
             e.preventDefault();
         }, true);
 
-        doc.addEventListener('mouseover', function (e) {
+        on('mouseover', function (e) {
             if (self.designMode) return;
             if (e.target && e.target.nodeType === 1 && !e.target.classList.contains(SEL))
                 e.target.classList.add(HOV);
         }, true);
 
-        doc.addEventListener('mouseout', function (e) {
+        on('mouseout', function (e) {
             if (self.designMode) return;
             if (e.target && e.target.nodeType === 1) {
                 e.target.classList.remove(HOV);
@@ -898,7 +921,7 @@
             }
         }, true);
 
-        doc.addEventListener('keydown', function (e) {
+        on('keydown', function (e) {
             if (self.designMode) return;
             if (e.keyCode === 46) { bus.emit('command:delete'); e.preventDefault(); }
             else if (e.keyCode >= 37 && e.keyCode <= 40) {
@@ -912,7 +935,7 @@
             else if (e.ctrlKey && e.keyCode === 89) { bus.emit('command:redo'); e.preventDefault(); }
         });
 
-        doc.addEventListener('contextmenu', function (e) {
+        on('contextmenu', function (e) {
             if (self.pending) { self.pending = null; bus.emit('palette:cancelled'); }
             if (!self.designMode && e.target && e.target.nodeType === 1) {
                 var target = self._resolveSelection(e.target);
@@ -923,7 +946,7 @@
             e.preventDefault();
         });
 
-        doc.addEventListener('click', function (e) {
+        on('click', function (e) {
             if (self.designMode) return;
             e.preventDefault();
             e.stopPropagation();
@@ -937,6 +960,8 @@
         if (!html) return null;
         if (!el || el.nodeType !== 1) return body;
 
+        /* FIX: fallback — если корневой контейнер определён, но target
+           вне него, всегда используем корневой контейнер. */
         if (this._rootType !== 'html') {
             var rc = this.getRootContainer();
             if (rc && el !== rc && !rc.contains(el)) return rc;
@@ -954,6 +979,13 @@
             n = n.parentNode;
         }
         if (n === head) return head;
+
+        /* FIX: если не нашли внутри — используем корневой контейнер
+           или body, чтобы вставка всегда была возможна. */
+        if (this._rootType !== 'html') {
+            var rc2 = this.getRootContainer();
+            if (rc2) return rc2;
+        }
         return body;
     };
 
