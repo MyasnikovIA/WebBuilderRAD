@@ -22,7 +22,6 @@
     <link rel="stylesheet" href="lib/highlight/styles/dark.css" id="wb-hljs-theme">
     <link rel="stylesheet" href="lib/miniui/themes/default/miniui.css">
     <link rel="stylesheet" href="lib/miniui/themes/icons.css">
-    <!-- Тема — ПОСЛЕ app_ide.css и MiniUI: перекрывает хардкод цветов. -->
     <link rel="stylesheet" href="css/theme.css">
 
     <!-- JS: jQuery + MiniUI -->
@@ -91,7 +90,7 @@
             <div class="wb-center-pane" data-pane="scene"
                  style="position:absolute;top:0;left:0;right:0;bottom:0;padding:6px;box-sizing:border-box;">
                 <iframe id="wb-canvas" frameborder="0"
-                        style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
+                        style="width:100%;height:100%;border:1px solid #404040;"></iframe>
             </div>
 
             <div class="wb-center-pane" data-pane="code"
@@ -213,6 +212,7 @@
 <ul id="wb-rootmenu" class="mini-contextmenu">
     <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
     <li onclick="App.cmd('setRootCmpForm')">Root: cmpForm (D3 Form)</li>
+    <li onclick="App.cmd('setRootM2Form')">Root: div (M2 Form)</li>
     <li onclick="App.cmd('setRootDiv')">Root: div</li>
 </ul>
 
@@ -342,13 +342,18 @@
 <!-- D3 brokers -->
 <script src="Component/d3/Broker/index.js"></script>
 
-
-<!-- M2 components -->
+<!-- =========================================================
+     M2 components
+     ========================================================= -->
+<script src="Component/m2/Form/index.js"></script>
 <script src="Component/m2/Button/index.js"></script>
 <script src="Component/m2/Edit/index.js"></script>
 <script src="Component/m2/Label/index.js"></script>
 <script src="Component/m2/Script/index.js"></script>
 
+<!-- =========================================================
+     Bootstrap app
+     ========================================================= -->
 <script src="ide/app.js"></script>
 
 </body>

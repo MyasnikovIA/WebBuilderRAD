@@ -13,7 +13,7 @@
    с !important там, где специфичность оригинальных правил
    слишком высока.
 
-   ВАЖНО: iframe-холст (canvas) и превью D3-компонентов
+   ВАЖНО: iframe-холст (canvas) и превью D3/M2-компонентов
    НЕ затрагиваются — они имитируют реальный рантайм и должны
    выглядеть одинаково в обеих темах.
    ========================================================= */
@@ -100,9 +100,15 @@ html, body {
     background: var(--wb-bg);
 }
 
-/* Центральная область (canvas / code) — чуть темнее фона. */
 #layout1 [region="center"] {
     background: var(--wb-bg-2) !important;
+}
+
+/* Iframe-холст: фон виден по краю и в момент до загрузки документа.
+   Внутренний <body> iframe стилизуется отдельно через _injectIdeStyle
+   в ide/canvas.js (синхронно с data-wb-theme). */
+#wb-canvas {
+    background: var(--wb-code-bg) !important;
 }
 
 /* Скроллбары (WebKit). */
@@ -341,21 +347,34 @@ html, body {
     color: var(--wb-text);
 }
 
-.wb-row {
+/* Строки инспектора. Специфичные селекторы нужны потому, что
+   app_ide.css задаёт .wb-row-name / .wb-row-value через составные
+   селекторы (.wb-itab-pane .wb-row-name и т.п.). */
+.wb-row,
+.wb-row-value,
+.wb-itab-pane .wb-row,
+.wb-itab-pane .wb-row-value,
+.wb-inspector-body .wb-row,
+.wb-inspector-body .wb-row-value {
     color: var(--wb-text) !important;
 }
-.wb-row-name {
+.wb-row-name,
+.wb-itab-pane .wb-row-name,
+.wb-inspector-body .wb-row-name,
+.wb-row > .wb-row-name,
+.wb-row .wb-row-name {
     color: var(--wb-text) !important;
+    background: transparent !important;
 }
-.wb-row-value {
-    color: var(--wb-text) !important;
-}
-.wb-row-separator {
+
+.wb-row-separator,
+.wb-itab-pane .wb-row-separator {
     color: var(--wb-text-muted) !important;
     border-bottom: 1px solid var(--wb-border) !important;
     background: var(--wb-panel-head-bg) !important;
 }
-.wb-empty {
+.wb-empty,
+.wb-itab-pane .wb-empty {
     color: var(--wb-text-muted) !important;
 }
 

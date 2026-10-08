@@ -126,6 +126,9 @@
             }
         }
     };
+    /* Публичные предикаты: используются в app.js при переключении вкладок. */
+    CodeView.prototype.isActive = function () { return !!this.active; };
+    CodeView.prototype.hasUnsavedChanges = function () { return !!this._codeDirty; };
 
     /* Открыть вкладку Code (кликнуть по соответствующему табу). */
     CodeView.prototype.openTab = function () {
@@ -151,8 +154,12 @@
         this._codeDirty = false;
     };
 
+    /* Применить правки в canvas.
+       Возвращает true при успехе, false при ошибке.
+       Возврат нужен, чтобы app.js мог решить, переключать ли вкладку
+       при автоматическом применении перед уходом с Code. */
     CodeView.prototype.apply = function () {
-        if (!this.canvas) return;
+        if (!this.canvas) return false;
         var html = this.editor.getValue();
         try {
             this.canvas.loadHtml(html);
@@ -160,9 +167,11 @@
             this._elemIndex = null;
             this._elemIndexStale = true;
             this._codeDirty = false;
+            return true;
         } catch (ex) {
             this.statusEl.text('Error: ' + (ex.message || ex))
                 .css('color', '#c62828');
+            return false;
         }
     };
 

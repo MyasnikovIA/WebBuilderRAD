@@ -18,9 +18,22 @@
 
         var clipboard = null;
 
-        /* ---------- Переключение вкладок Scene / Code ---------- */
+        /* ---------- Переключение вкладок Scene / Code ----------
+           При уходе с Code, если есть несохранённые правки —
+           сначала применяем их в canvas, только потом переключаем вкладку.
+           Если применение не удалось — вкладка НЕ переключается. */
         $('#wb-center-tabs').delegate('.wb-center-tab', 'click', function () {
             var paneName = $(this).attr('data-pane');
+
+            /* FIX: автоматический Apply при клике на Scene,
+               если есть несохранённые изменения в редакторе Code. */
+            if (codeView &&
+                paneName !== 'code' &&
+                codeView.isActive() &&
+                codeView.hasUnsavedChanges()) {
+                if (!codeView.apply()) return;
+            }
+
             $('#wb-center-tabs .wb-center-tab').removeClass('wb-active');
             $(this).addClass('wb-active');
             $('#wb-center-panes .wb-center-pane').hide();
@@ -535,6 +548,7 @@
 
             setRootHtml:    function () { canvas.setRootType('html'); },
             setRootCmpForm: function () { canvas.setRootType('cmpForm'); },
+            setRootM2Form:  function () { canvas.setRootType('m2Form'); },
             setRootDiv:     function () { canvas.setRootType('div'); },
 
             designMode: function () { canvas.toggleDesignMode(); },
@@ -580,8 +594,6 @@
 
         global.App = App;
 
-        /* Применяем сохранённую тему на случай, если inline-скрипт в <head>
-           не выполнился (например, был отключён браузером). */
         try {
             var savedTheme = localStorage.getItem('wb.theme') || 'light';
             App.setTheme(savedTheme);

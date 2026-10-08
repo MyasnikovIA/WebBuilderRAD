@@ -3,7 +3,8 @@
      - три режима корневого контейнера: 'html', 'cmpForm', 'div';
      - D3-компоненты (<cmpButton>) и M2-компоненты (<component cmptype="Button">);
      - CDATA-контейнеры в обоих форматах;
-     - nameTemplate для авто-присвоения имён. */
+     - nameTemplate для авто-присвоения имён;
+     - тёмную/светлую тему сцены (синхронно с IDE). */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -195,19 +196,36 @@
             '</html>';
     };
 
+    /* Текущая тема (единый источник истины — data-wb-theme на внешнем <html>). */
+    Canvas.prototype._currentTheme = function () {
+        try {
+            return document.documentElement.getAttribute('data-wb-theme') || 'light';
+        } catch (e) {
+            return 'light';
+        }
+    };
+
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         if (!doc) return;
         var old = doc.querySelector('style[data-wb-ide="1"]');
         if (old) old.parentNode.removeChild(old);
+
+        /* Тёмная или светлая сцена — синхронно с темой IDE.
+           Раньше body был всегда белым, что резало глаза в тёмной теме. */
+        var dark = (this._currentTheme() === 'dark');
+        var bodyBg    = dark ? '#1e1e1e' : '#ffffff';
+        var bodyColor = dark ? '#d4d4d4' : '#1a1a1a';
+
         var style = doc.createElement('style');
         style.setAttribute('data-wb-ide', '1');
         style.textContent =
             'html, body { min-height: 100%; }' +
-            'html { height: 100%; }' +
-            'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
+            'html { height: 100%; background: ' + bodyBg + '; }' +
+            'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative;' +
+            '       background: ' + bodyBg + '; color: ' + bodyColor + '; }' +
 
-            'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"], component[cmptype="tmp"], component[cmptype="Form"] { position: relative; }' +
+            'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"], component[cmptype="tmp"], component[cmptype="Form"], div[cmptype="Form"] { position: relative; }' +
 
             /* M2: компоненты — inline-block, чтобы уважали width/height при ресайзе. */
             'component[cmptype] { display: inline-block; vertical-align: top; box-sizing: border-box; }' +
@@ -346,6 +364,12 @@
             }, 0);
         });
 
+        /* Тема изменилась → переинжектим IDE-стили сцены,
+           чтобы фон и цвет текста соответствовали теме. */
+        bus.on('theme:changed', function () {
+            self._injectIdeStyle();
+        });
+
         bus.emit('canvas:ready', this);
 
         setTimeout(function () {
@@ -399,8 +423,11 @@
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
             var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            var ctype = k.getAttribute && k.getAttribute('cmptype');
             if (this._rootType === 'cmpForm' &&
                 (tag === 'cmpform' || wbTag === 'cmpForm')) return k;
+            if (this._rootType === 'm2Form' &&
+                tag === 'div' && ctype === 'Form') return k;
             if (this._rootType === 'div' &&
                 tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
         }
@@ -415,14 +442,17 @@
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
             var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            var ctype = k.getAttribute && k.getAttribute('cmptype');
             if (tag === 'cmpform' || wbTag === 'cmpForm') return 'cmpForm';
+            /* M2-форма — div cmptype="Form". Проверяем раньше обычного div. */
+            if (tag === 'div' && ctype === 'Form') return 'm2Form';
             if (tag === 'div' && k.getAttribute('data-wb-root') === '1') return 'div';
         }
         return 'html';
     };
 
     Canvas.prototype.setRootType = function (type) {
-        if (['html', 'cmpForm', 'div'].indexOf(type) < 0) return;
+        if (['html', 'cmpForm', 'm2Form', 'div'].indexOf(type) < 0) return;
         if (type === this._rootType) return;
 
         var doc = this.getDoc();
@@ -437,11 +467,17 @@
             var bWbTag = be.getAttribute && be.getAttribute('data-wb-tag');
             var bCmptype = be.getAttribute && be.getAttribute('cmptype');
             if (type === 'cmpForm') {
+                /* D3: <cmpForm> или <div cmptype="Form"> в runtime-нотации. */
                 if (bTag === 'cmpform' || bWbTag === 'cmpForm' ||
-                    bCmptype === 'Form') {
+                    (bTag === 'div' && bCmptype === 'Form')) {
                     existingRoot = be;
                     break;
                 }
+            }
+            if (type === 'm2Form' &&
+                bTag === 'div' && bCmptype === 'Form') {
+                existingRoot = be;
+                break;
             }
             if (type === 'div' && bTag === 'div' &&
                 be.getAttribute('data-wb-root') === '1') {
@@ -458,6 +494,14 @@
                 }
                 if (!existingRoot.getAttribute('class')) {
                     existingRoot.setAttribute('class', 'd3form formBackground');
+                }
+            } else if (type === 'm2Form') {
+                /* M2-форма: только cmptype, никаких data-wb-tag и d3form. */
+                if (!existingRoot.getAttribute('cmptype')) {
+                    existingRoot.setAttribute('cmptype', 'Form');
+                }
+                if (!existingRoot.getAttribute('class')) {
+                    existingRoot.setAttribute('class', 'formBackground');
                 }
             } else if (type === 'div') {
                 if (!existingRoot.getAttribute('data-wb-root')) {
@@ -501,6 +545,10 @@
             newRoot.setAttribute('data-wb-tag', 'cmpForm');
             newRoot.setAttribute('data-cmptype', 'd3.form');
             newRoot.setAttribute('class', 'd3form formBackground');
+        } else if (type === 'm2Form') {
+            newRoot = doc.createElement('div');
+            newRoot.setAttribute('cmptype', 'Form');
+            newRoot.setAttribute('class', 'formBackground');
         } else if (type === 'div') {
             newRoot = doc.createElement('div');
             newRoot.setAttribute('data-cmptype', 'd3.rootdiv');
@@ -1093,7 +1141,6 @@
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
-        /* Ищем прямой дочерний preview-узел без :scope (совместимость). */
         var preview = null;
         for (var k = 0; k < el.children.length; k++) {
             var ch = el.children[k];
@@ -1742,8 +1789,11 @@
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
             var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            var ctype = k.getAttribute && k.getAttribute('cmptype');
             if (this._rootType === 'cmpForm' &&
                 (tag === 'cmpform' || wbTag === 'cmpForm')) return k;
+            if (this._rootType === 'm2Form' &&
+                tag === 'div' && ctype === 'Form') return k;
             if (this._rootType === 'div' &&
                 tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
         }

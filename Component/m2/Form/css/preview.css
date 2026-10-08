@@ -1,0 +1,10 @@
+/* Превью M2 Form.
+
+   Форма — корневой контейнер, preview не рисуется (preview: null
+   в регистрации). Файл нужен только для автоматического разрешения
+   пути previewCssUrls. */
+
+cmpForm, div[cmptype="Form"] {
+    display: block;
+    position: relative;
+}
