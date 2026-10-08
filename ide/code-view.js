@@ -5,7 +5,8 @@
    При выборе элемента в дереве (selection:changed) позиционирует
    курсор редактора на начало исходника этого элемента.
 
-   Использует CodeEditor для подсветки синтаксиса. */
+   По событиям codeview:show и codeview:navigate-function — открывает
+   вкладку Code и позиционирует курсор на объявлении функции формы. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -25,6 +26,14 @@
         bus.on('canvas:refreshed',  function ()  { if (self.active) self.refresh(); });
         bus.on('selection:changed', function (e) {
             self.navigateTo(e.element);
+        });
+
+        /* Внешние запросы на открытие вкладки Code и навигацию. */
+        bus.on('codeview:show', function () {
+            self.openTab();
+        });
+        bus.on('codeview:navigate-function', function (e) {
+            self.navigateToFunctionSignature(e && e.signature);
         });
     }
 
@@ -54,7 +63,6 @@
         this.statusEl = toolbar.find('.wb-code-view-status');
     };
 
-    /* Переключение вкладки Code: on = true — открываемся. */
     CodeView.prototype.setActive = function (on) {
         this.active = !!on;
         if (this.active) {
@@ -66,8 +74,14 @@
         }
     };
 
-    /* Пересобрать текст из canvas (cleanHtml). Сохраняем позицию
-       курсора, чтобы правки не сбрасывали её. */
+    /* Открыть вкладку Code (кликнуть по соответствующему табу). */
+    CodeView.prototype.openTab = function () {
+        var tab = $('#wb-center-tabs .wb-center-tab[data-pane="code"]');
+        if (tab.length && !tab.hasClass('wb-active')) {
+            tab.click();
+        }
+    };
+
     CodeView.prototype.refresh = function () {
         if (!this.canvas) return;
         var pos = this.editor.ta.selectionStart;
@@ -79,7 +93,6 @@
         this.statusEl.text('').css('color', '');
     };
 
-    /* Применить правки: разобрать текст через canvas.loadHtml. */
     CodeView.prototype.apply = function () {
         if (!this.canvas) return;
         var html = this.editor.getValue();
@@ -92,22 +105,53 @@
         }
     };
 
-    /* Выделили элемент в дереве → держим ссылку, а если вкладка Code
-       открыта — сразу прокручиваем редактор. */
     CodeView.prototype.navigateTo = function (el) {
         this._pendingEl = el || null;
         if (this.active) this._scrollToElement(el);
     };
 
-    /* Прокрутка к началу исходника элемента в текущем тексте.
+    /* Навигация к объявлению JS-функции по сигнатуре вызова.
 
-       Алгоритм:
-         1. Определяем уровень вложенности элемента в форматируемом
-            дереве (сколько узлов-родителей до корневого контейнера).
-         2. Сериализуем элемент через canvas._formatNode(el, level) —
-            это даст ровно тот же блок, что и в cleanHtml().
-         3. Ищем блок в тексте редактора. Первое совпадение — и есть
-            начало исходника. При неудаче пробуем уровень 0. */
+       Вход: строка вида 'Form.onClick(this);' или 'onClickBtn(event);'.
+       Разбираем имя, ищем в тексте редактора объявление:
+         1) '<name> = function'  (Form.onClick = function)
+         2) 'function <name>'    (function onClick)
+         3) просто '<name>'      (на случай нестандартных объявлений). */
+    CodeView.prototype.navigateToFunctionSignature = function (signature) {
+        if (!signature) return;
+        this.openTab();
+
+        var m = String(signature).match(/^\s*([^()\s]+)\s*\(/);
+        if (!m) return;
+        var name = m[1].trim();
+        if (!name) return;
+
+        var code = this.editor.getValue();
+        if (!code) return;
+
+        var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var idx = -1;
+
+        var re1 = new RegExp('\\b' + esc + '\\s*=\\s*function');
+        var m1 = code.match(re1);
+        if (m1) idx = m1.index;
+
+        if (idx < 0) {
+            var re2 = new RegExp('\\bfunction\\s+' + esc + '\\b');
+            var m2 = code.match(re2);
+            if (m2) idx = m2.index;
+        }
+        if (idx < 0) {
+            idx = code.indexOf(name);
+        }
+        if (idx < 0) return;
+
+        this.editor.ta.focus();
+        this.editor.ta.setSelectionRange(idx, idx);
+        this.editor.revealOffset(idx);
+    };
+
+    /* Прокрутка к началу исходника DOM-элемента. */
     CodeView.prototype._scrollToElement = function (el) {
         if (!el || !this.canvas) return;
         var code = this.editor.getValue();
@@ -116,7 +160,6 @@
         var root = this.canvas.getRootContainer();
         if (!root) return;
 
-        /* Проверяем, что элемент внутри корня. */
         var inRoot = false;
         var cur = el;
         while (cur) {
@@ -125,7 +168,6 @@
         }
         if (!inRoot) return;
 
-        /* Уровень = число узлов-родителей от el до root (не считая el). */
         var level = 0;
         cur = el;
         while (cur && cur !== root) {

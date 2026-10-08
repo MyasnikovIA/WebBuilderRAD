@@ -55,13 +55,8 @@
 
     /* ============================================================
        Извлечение JS-функций из cmpScript / inline <script> формы.
-
-       Используется вкладкой Events в инспекторе: dropdown со списком
-       функций + сигнатуры вызова.
        ============================================================ */
 
-    /* Парсим строку аргументов "a, b, c" в массив ["a","b","c"].
-       Пробелы и лишние запятые отбрасываем. */
     function parseArgsList(raw) {
         if (!raw) return [];
         return String(raw).split(',')
@@ -69,10 +64,6 @@
             .filter(function (s) { return s.length > 0; });
     }
 
-    /* Сформировать строку вызова:
-       - args = список параметров из объявления;
-       - если первый параметр называется dom или начинается с _this —
-         заменяем на "this" (inline-обработчики передают элемент как this). */
     function buildCallSignature(name, args) {
         var out = args.slice();
         if (out.length > 0) {
@@ -84,24 +75,17 @@
         return name + '(' + out.join(', ') + ');';
     }
 
-    /* Приоритет для сортировки: 0 — имя начинается с on (регистр не важен),
-       1 — все остальные. */
     function eventNamePriority(name) {
         var last = String(name).split('.').pop();
         return /^on/i.test(last) ? 0 : 1;
     }
 
-    /* Собрать все функции формы. Возвращает массив объектов
-       { name, args, call } — уже отсортированный:
-       сначала "on*", потом остальные, в каждой группе по алфавиту. */
     function collectFormFunctions(canvas) {
         var out = [];
         if (!canvas || !canvas.getDoc) return out;
         var doc = canvas.getDoc();
         if (!doc) return out;
 
-        /* Источники: cmpscript + inline <script> без src.
-           Из каждого берём содержимое CDATA (если есть) либо весь текст. */
         var sources = [];
         var scripts = doc.querySelectorAll('cmpscript, script');
         for (var i = 0; i < scripts.length; i++) {
@@ -128,22 +112,17 @@
             });
         }
 
-        /* 1. Form.xxx = function(args)  |  some.obj.method = function(args) */
         var reAssign = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*=\s*function\s*\(([^)]*)\)/g;
         var m;
         while ((m = reAssign.exec(combined)) !== null) {
             add(m[1], m[2]);
         }
 
-        /* 2. function name(args) { ... } — обычные именованные функции.
-           \bfunction\s+(\w+) не поймает анонимные function(...),
-           поэтому пересечения с reAssign не будет. */
         var reFunc = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g;
         while ((m = reFunc.exec(combined)) !== null) {
             add(m[1], m[2]);
         }
 
-        /* Сортировка: сначала on*, потом остальные; внутри — по алфавиту. */
         out.sort(function (a, b) {
             var pa = eventNamePriority(a.name);
             var pb = eventNamePriority(b.name);
@@ -152,6 +131,25 @@
         });
 
         return out;
+    }
+
+    /* Словарь известных суффиксов для генерации имени функции события. */
+    var EVENT_CAMEL_MAP = {
+        onclick: 'Click', ondblclick: 'DblClick',
+        onmousedown: 'MouseDown', onmouseup: 'MouseUp',
+        onmouseover: 'MouseOver', onmouseout: 'MouseOut', onmousemove: 'MouseMove',
+        onkeydown: 'KeyDown', onkeyup: 'KeyUp', onkeypress: 'KeyPress',
+        onchange: 'Change', oninput: 'Input',
+        onfocus: 'Focus', onblur: 'Blur',
+        onsubmit: 'Submit', onreset: 'Reset',
+        onload: 'Load', onerror: 'Error'
+    };
+
+    function eventNameToCamel(name) {
+        var lc = String(name || '').toLowerCase();
+        if (EVENT_CAMEL_MAP[lc]) return EVENT_CAMEL_MAP[lc];
+        var rest = lc.replace(/^on/, '');
+        return rest.charAt(0).toUpperCase() + rest.slice(1);
     }
 
     /* ============================================================
@@ -337,7 +335,6 @@
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');
         var tag = custom || el.tagName.toLowerCase();
 
-        /* Комментарий показываем как <!-- text -->. */
         if (tag === 'cmpComment') {
             var ctext = (el.textContent || '').replace(/\s+/g, ' ').trim();
             if (ctext.length > 60) ctext = ctext.substr(0, 60) + '…';
@@ -375,7 +372,6 @@
         var id  = el.id ? '#' + el.id : '';
         var cls = '';
         if (typeof el.className === 'string' && el.className && el.className.trim() !== '') {
-            /* Отфильтровываем служебные классы IDE. */
             var parts = stripServiceClasses(el.className).split(/\s+/).filter(function (c) {
                 return c;
             });
@@ -479,7 +475,6 @@
         this.canvas.insertComponent(def, target, zone);
     };
 
-    /* ---------- contextmenu ---------- */
     DomTree.prototype._installContextMenu = function () {
         var self = this;
         var $root = this._getRoot();
@@ -519,7 +514,6 @@
         });
     };
 
-    /* ---------- drag & drop ---------- */
     DomTree.prototype._installDnD = function () {
         var self = this;
         var $root = this._getRoot();
@@ -699,7 +693,6 @@
                     .attr('data-comp-id', c.id);
 
                 if (c.iconUrl) {
-                    /* jQuery 1.6.2: .on() отсутствует — используем .bind() */
                     var $img = $('<img/>')
                         .addClass('wb-palette-icon')
                         .attr('alt', '')
@@ -777,10 +770,14 @@
         this.element = null;
         this.def = null;
         this.tab = 'properties';
+        this._internalChange = false;
         this._bindTabs();
         var self = this;
         bus.on('selection:changed', function (e) { self.show(e.element); });
-        bus.on('canvas:changed',    function ()  { if (self.element) self.refresh(); });
+        bus.on('canvas:changed', function () {
+            if (self._internalChange) return;
+            if (self.element) self.refresh();
+        });
     }
 
     Inspector.prototype._bindTabs = function () {
@@ -826,9 +823,6 @@
         if (tab === 'properties') {
             if (f.get) return f.get(el);
 
-            /* Class / className: не показываем служебные классы IDE
-               (wb-selected, wb-hover, wb-moving) — они удаляются при
-               сохранении и не должны быть видны пользователю. */
             if (f.name === 'class' || f.name === 'className') {
                 var raw = f.attr ? (el.getAttribute('class') || '')
                     : (el.className || '');
@@ -863,8 +857,6 @@
                     else    el.removeAttribute(f.name);
                 }
             } else if (f.name === 'class' || f.name === 'className') {
-                /* Служебные классы IDE остаются на элементе — заменяем
-                   только пользовательскую часть. */
                 var preserved = getServiceClasses(el.getAttribute('class') || '');
                 var userCls   = stripServiceClasses(v);
                 var merged    = (userCls + ' ' + preserved).replace(/\s+/g, ' ').trim();
@@ -886,7 +878,6 @@
             if (v) el.setAttribute(f.name, v); else el.removeAttribute(f.name);
         }
 
-        /* Обновить превью D3-компонента и его родителя */
         var canvas = global.IDE && global.IDE._canvas;
         if (canvas && canvas.refreshPreviewAndParent) {
             var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
@@ -898,10 +889,11 @@
             }
         }
 
+        this._internalChange = true;
         bus.emit('canvas:changed');
+        this._internalChange = false;
     };
 
-    /* Полное удаление атрибута / стиля / события. */
     Inspector.prototype._unset = function (tab, f) {
         var el = this.element;
         if (!el) return;
@@ -943,11 +935,12 @@
             }
         }
 
+        this._internalChange = true;
         bus.emit('canvas:changed');
+        this._internalChange = false;
     };
 
     Inspector.prototype._row = function (tab, f) {
-        /* Разделитель группы */
         if (f.type === 'separator') {
             return $('<div class="wb-row-separator"></div>').text(f.caption || '');
         }
@@ -957,7 +950,6 @@
         var box = $('<div class="wb-row-value"></div>').append(this._editor(tab, f));
         row.append(box);
 
-        /* Кнопка удаления атрибута / стиля / события. */
         var del = $('<button type="button" class="wb-row-del"></button>')
             .attr('title', 'Удалить')
             .text('\u00D7');
@@ -1053,34 +1045,9 @@
             return mBtn;
         }
 
-        /* Вкладка Events: input + выпадающий список функций формы.
-           Ручной ввод сохраняется в input, выбор в select подставляет
-           готовую сигнатуру вызова. */
+        /* События: input + select с функциями формы. */
         if (t === 'code' && tab === 'events') {
-            var evRow = $('<div class="wb-event-row"></div>');
-
-            var evInp = $('<input type="text" class="wb-event-input">')
-                .val(val == null ? '' : val);
-            evInp.change(function () { commit(evInp.val()); });
-
-            var evSel = $('<select class="wb-event-select" title="Выбрать функцию формы"></select>');
-            evSel.append($('<option></option>').val('').text('⋯'));
-
-            var canvas = global.IDE && global.IDE._canvas;
-            var fns = collectFormFunctions(canvas);
-            fns.forEach(function (fn) {
-                evSel.append($('<option></option>').val(fn.call).text(fn.call));
-            });
-
-            evSel.change(function () {
-                var v = evSel.val();
-                if (!v) return;
-                evInp.val(v);
-                commit(v);
-            });
-
-            evRow.append(evInp).append(evSel);
-            return evRow;
+            return self._buildEventEditor(f, val, commit);
         }
 
         if (t === 'code') {
@@ -1100,22 +1067,18 @@
             var btn2 = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn2.click(function () {
                 var current = self._get(tab, f);
-
                 var lang = 'xml';
                 if (typeof f.language === 'function') {
                     lang = f.language(self.element) || 'xml';
                 } else if (typeof f.language === 'string') {
                     lang = f.language;
                 }
-
                 var editor = new CodeEditor({ value: current, language: lang });
-
                 Modal.open({
                     title: f.caption || f.name,
                     content: editor.el,
                     onOk: function () { commit(editor.getValue()); }
                 });
-
                 setTimeout(function () { editor.focus(); }, 50);
             });
             return btn2;
@@ -1123,6 +1086,197 @@
         var inp = $('<input type="text">').val(val == null ? '' : val);
         inp.change(function () { commit(inp.val()); });
         return inp;
+    };
+
+    /* ============================================================
+   Events editor: input + dropdown со списком функций формы.
+   ============================================================ */
+    Inspector.prototype._buildEventEditor = function (f, val, commit) {
+        var self = this;
+        var evRow = $('<div class="wb-event-row"></div>');
+
+        var evInp = $('<input type="text" class="wb-event-input">')
+            .val(val == null ? '' : val);
+
+        var evSel = $('<select class="wb-event-select" title="Выбрать функцию формы"></select>');
+        evSel.append($('<option></option>').val('').text('⋯'));
+
+        var canvas = global.IDE && global.IDE._canvas;
+        var fns = collectFormFunctions(canvas);
+        fns.forEach(function (fn) {
+            evSel.append($('<option></option>').val(fn.call).text(fn.call));
+        });
+
+        /* Текущее значение из input — показать выбранным в select,
+           даже если его нет среди найденных функций. */
+        if (val) {
+            if (evSel.find('option[value="' + val.replace(/"/g, '\\"') + '"]').length === 0) {
+                evSel.append($('<option></option>').val(val).text(val));
+            }
+            evSel.val(val);
+        }
+
+        /* input: change → commit; dblclick → модальный редактор JS. */
+        evInp.change(function () { commit(evInp.val()); });
+        evInp.dblclick(function () {
+            var current = evInp.val();
+            var editor = new CodeEditor({ value: current, language: 'javascript' });
+            Modal.open({
+                title: f.caption || f.name,
+                content: editor.el,
+                onOk: function () {
+                    var v = editor.getValue();
+                    evInp.val(v);
+                    commit(v);
+                }
+            });
+            setTimeout(function () { editor.focus(); }, 50);
+        });
+
+        /* select: change → скопировать значение в input (затирая старое). */
+        evSel.change(function () {
+            var v = evSel.val();
+            if (!v) return;
+            evInp.val(v);
+            commit(v);
+        });
+
+        /* select: dblclick →
+             - если выбрано значение → открыть вкладку Code и позиционировать
+               курсор на исходнике функции;
+             - если ничего не выбрано и input пуст → создать новую функцию,
+               затем открыть вкладку Code и позиционировать курсор на ней. */
+        evSel.dblclick(function () {
+            var v = evSel.val();
+            if (v) {
+                bus.emit('codeview:show');
+                bus.emit('codeview:navigate-function', { signature: v });
+                return;
+            }
+            if (!evInp.val()) {
+                var call = self._createEventFunction(f);
+                if (call) {
+                    evInp.val(call);
+                    /* Обновить select: добавить опцию, если её нет. */
+                    if (evSel.find('option[value="' + call.replace(/"/g, '\\"') + '"]').length === 0) {
+                        evSel.append($('<option></option>').val(call).text(call));
+                    }
+                    evSel.val(call);
+                    commit(call);
+
+                    /* FIX: после генерации новой функции — переключиться на
+                       вкладку Code и позиционировать курсор на её объявлении.
+                       Порядок вызовов важен: сначала codeview:show (открытие
+                       вкладки + refresh редактора актуальным cleanHtml()),
+                       потом codeview:navigate-function (поиск объявления и
+                       установка курсора). */
+                    bus.emit('codeview:show');
+                    bus.emit('codeview:navigate-function', { signature: call });
+                }
+            }
+        });
+
+        evRow.append(evInp).append(evSel);
+        return evRow;
+    };
+    
+    /* Создать новую функцию-обработчик в первом найденном блоке
+       cmpScript / inline <script>. Если ни одного нет — создать cmpScript
+       в начале корневого контейнера.
+
+       Возвращает сигнатуру вызова (например "Form.onClickBtn(this);")
+       либо null при неудаче. */
+    Inspector.prototype._createEventFunction = function (f) {
+        var el = this.element;
+        if (!el) return null;
+        var canvas = global.IDE && global.IDE._canvas;
+        if (!canvas || !canvas.getDoc) return null;
+        var doc = canvas.getDoc();
+        if (!doc) return null;
+
+        /* Имя функции: on + CamelEvent + Name/Id контрола. */
+        var camelEvent = eventNameToCamel(f.name);
+        var ctrlName = '';
+        if (el.getAttribute) {
+            ctrlName = el.getAttribute('name') || el.getAttribute('id') || '';
+        }
+        var funcName = 'on' + camelEvent + ctrlName;
+
+        /* Ищем первый подходящий блок. */
+        var cmpScript = doc.querySelector('cmpscript');
+        var scriptEl = cmpScript ? null : doc.querySelector('script:not([src])');
+        var createdCmpScript = false;
+
+        if (!cmpScript && !scriptEl) {
+            /* Создать новый cmpScript в начале корневого контейнера. */
+            cmpScript = doc.createElement('cmpscript');
+            cmpScript.setAttribute('data-wb-tag', 'cmpScript');
+            cmpScript.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
+            var root = canvas.getRootContainer() || canvas.getBody();
+            if (root) {
+                if (root.firstChild) root.insertBefore(cmpScript, root.firstChild);
+                else root.appendChild(cmpScript);
+            }
+            createdCmpScript = true;
+        }
+
+        /* Шаблон функции. Если пользователь задал f.template —
+           используем его, подставляя плейсхолдеры. Иначе — по умолчанию. */
+        var funcBody;
+        var isFormFunc;
+
+        if (cmpScript) {
+            if (f.template && typeof f.template === 'string') {
+                funcBody = String(f.template)
+                    .replace(/\{name\}/g, funcName)
+                    .replace(/\{event\}/g, camelEvent)
+                    .replace(/\{ctrl\}/g, ctrlName);
+            } else {
+                funcBody = 'Form.' + funcName + ' = function(dom) {\n\n};';
+            }
+            isFormFunc = /^\s*Form\s*\./.test(funcBody);
+        } else {
+            if (f.template && typeof f.template === 'string') {
+                funcBody = String(f.template)
+                    .replace(/\{name\}/g, funcName)
+                    .replace(/\{event\}/g, camelEvent)
+                    .replace(/\{ctrl\}/g, ctrlName);
+            } else {
+                funcBody = funcName + ' = function(dom) {\n\n};';
+            }
+            isFormFunc = false;
+        }
+
+        /* Вставка в cmpScript (внутрь CDATA). */
+        if (cmpScript) {
+            var textNode = null;
+            for (var i = 0; i < cmpScript.childNodes.length; i++) {
+                var cn = cmpScript.childNodes[i];
+                if (cn.nodeType === 3) { textNode = cn; break; }
+            }
+            if (!textNode) {
+                textNode = doc.createTextNode('<![CDATA[\n]]>');
+                cmpScript.appendChild(textNode);
+            }
+            var raw = textNode.nodeValue || '';
+            var cdataMatch = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+            var innerBody = cdataMatch ? cdataMatch[1] : raw;
+            innerBody = innerBody.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
+            textNode.nodeValue = '<![CDATA[' + innerBody + ']]>';
+        } else if (scriptEl) {
+            var rawS = scriptEl.textContent || '';
+            rawS = rawS.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
+            scriptEl.textContent = rawS;
+        }
+
+        /* Перерисовка превью / перезапуск наблюдателя. */
+        if (createdCmpScript) {
+            canvas._reobserve && canvas._reobserve();
+        }
+
+        /* Сигнатура вызова. */
+        var callSig = (isFormFunc ? ('Form.' + funcName) : funcName) + '(this);';
+        return callSig;
     };
 
     global.DomTree   = DomTree;
