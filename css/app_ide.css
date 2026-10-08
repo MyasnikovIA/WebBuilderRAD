@@ -224,3 +224,32 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
     user-select: none;
 }
 .wb-row-separator:first-child { border-top: 0; }
+
+.wb-row-del {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    padding: 0;
+    margin: 0 0 0 2px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    color: #c62828;
+    background: #ffffff;
+    border: 1px solid #c0c0c0;
+    border-radius: 2px;
+    cursor: pointer;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+}
+.wb-row-del:hover {
+    background: #ffebee;
+    border-color: #c62828;
+    color: #b71c1c;
+}
+.wb-row-del:active {
+    background: #ffcdd2;
+}

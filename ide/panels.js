@@ -800,15 +800,92 @@
         bus.emit('canvas:changed');
     };
 
+    /* Полное удаление атрибута / стиля / события — в отличие от _set,
+       который пишет пустое значение как «атрибут = ""».
+
+       Семантика:
+         - Properties с attr:true         → el.removeAttribute(name)
+         - Properties с кастомным set     → f.set(el, '')
+         - Properties с кастомным unset   → f.unset(el)     (если задан)
+         - Properties без attr            → el[name] = ''
+         - Styles                         → el.style.removeProperty(name)
+         - Events                         → el.removeAttribute(name)
+
+       Особый случай — class / className: полностью атрибут снять нельзя,
+       потому что на элементе висят служебные классы IDE
+       (wb-selected / wb-hover / wb-moving). Чистим только пользовательскую
+       часть, служебные сохраняем. */
+    Inspector.prototype._unset = function (tab, f) {
+        var el = this.element;
+        if (!el) return;
+
+        if (tab === 'properties') {
+            if (typeof f.unset === 'function') {
+                f.unset(el);
+            } else if (typeof f.set === 'function') {
+                f.set(el, '');
+            } else if (f.type === 'boolean') {
+                el[f.name] = false;
+                if (f.attr) el.removeAttribute(f.name);
+            } else if (f.attr) {
+                el.removeAttribute(f.name);
+            } else {
+                try { el[f.name] = ''; } catch (e) {}
+            }
+
+            /* class / className: чистим только пользовательскую часть. */
+            if (f.name === 'class' || f.name === 'className') {
+                var preserved = getServiceClasses(el.getAttribute('class') || '');
+                if (preserved) el.setAttribute('class', preserved);
+                else el.removeAttribute('class');
+            }
+        } else if (tab === 'styles') {
+            try { el.style.removeProperty(f.name); }
+            catch (e) { el.style[f.name] = ''; }
+        } else if (tab === 'events') {
+            el.removeAttribute(f.name);
+        }
+
+        /* Обновить превью D3-компонента и его родителя — как в _set. */
+        var canvas = global.IDE && global.IDE._canvas;
+        if (canvas && canvas.refreshPreviewAndParent) {
+            var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
+            var isRoot = canvas.getRootContainer && canvas.getRootContainer() === el;
+            if (isCmp || isRoot) {
+                canvas.refreshPreviewAndParent(el);
+            } else if (canvas.refreshPreview) {
+                canvas.refreshPreview(el);
+            }
+        }
+
+        /* canvas:changed → Inspector.refresh() через подписку. */
+        bus.emit('canvas:changed');
+    };
+
     Inspector.prototype._row = function (tab, f) {
         /* Разделитель группы */
         if (f.type === 'separator') {
             return $('<div class="wb-row-separator"></div>').text(f.caption || '');
         }
+        var self = this;
         var row = $('<div class="wb-row"></div>');
         row.append($('<div class="wb-row-name"></div>').text(f.caption || f.name));
         var box = $('<div class="wb-row-value"></div>').append(this._editor(tab, f));
         row.append(box);
+
+        /* Кнопка удаления атрибута / стиля / события. */
+        var del = $('<button type="button" class="wb-row-del"></button>')
+            .attr('title', 'Удалить')
+            .text('\u00D7');
+        del.click(function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            /* setTimeout — чтобы jQuery успел завершить dispatch
+               до того, как refresh() пересоберёт DOM панели. */
+            setTimeout(function () { self._unset(tab, f); }, 0);
+        });
+        row.append(del);
+
         return row;
     };
 

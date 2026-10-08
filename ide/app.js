@@ -212,11 +212,12 @@
 
         /* Теги, содержимое которых — CDATA (SQL или JS). */
         var CDATA_TAGS = {
-            cmpaction:       'sql',
-            cmpdataset:      'sql',
-            cmpsubaction:    'sql',
-            cmpscript:       'javascript',
-            cmpserverscript: 'javascript'
+            cmpaction:              'sql',
+            cmpdataset:             'sql',
+            cmpsubaction:           'sql',
+            cmpscript:              'javascript',
+            cmpserverscript:        'javascript',
+            cmprepeaterstyler:      'json'
         };
 
         var App = {
@@ -413,29 +414,48 @@
                 var el = canvas.getSelected();
                 if (!el) return;
 
-                var tagLower = el.tagName.toLowerCase();
+                var tagLower  = el.tagName.toLowerCase();
                 var cdataLang = CDATA_TAGS[tagLower] || null;
-                var isCdata   = !!cdataLang;
-                var language  = 'xml';
-                var initial   = '';
 
-                if (isCdata) {
-                    /* cmpAction/cmpDataSet/cmpSubAction (SQL) и
-                       cmpScript/cmpServerScript (JS) — содержимое в CDATA.
-                       Достаём тело CDATA, чтобы пользователь редактировал
-                       чистый SQL или JS. */
+                /* Сырое содержимое. textContent отдаёт реальные символы
+                   без HTML-эскейпинга — им и проверяем CDATA-обёртку. */
+                var rawText = el.textContent || '';
+                var rawHtml = el.innerHTML || '';
+
+                var language = 'xml';
+                var initial  = '';
+                var wasCdata = false;
+
+                /* Если содержимое целиком (допускаются пробелы по краям)
+                   обёрнуто в <![CDATA[ … ]]> — снимаем обёртку для
+                   редактирования. Флаг wasCdata запоминаем, чтобы на OK
+                   вернуть её обратно.
+
+                   Работает универсально: cmpScript, cmpAction, cmpDataSet,
+                   cmpSubAction, cmpServerScript, cmpRepeaterStyler,
+                   cmpStatGridColumnHeader, а также любые HTML-элементы,
+                   внутри которых лежит CDATA (редкий, но возможный
+                   случай, например при ручной вставке). */
+                var cdataMatch = rawText.match(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/);
+
+                if (cdataMatch) {
+                    wasCdata = true;
+                    language = cdataLang || 'xml';
+                    initial  = cdataMatch[1];
+                } else if (cdataLang) {
+                    /* CDATA-контейнер без обёртки (например, только что
+                       созданный и ещё не заполненный) — правим как есть. */
                     language = cdataLang;
-                    var raw = el.textContent || '';
-                    var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-                    initial = m ? m[1] : raw;
+                    initial  = rawText;
                 } else if (tagLower === 'script') {
                     language = 'javascript';
-                    initial = el.textContent || '';
+                    initial  = rawText;
                 } else if (tagLower === 'style') {
                     language = 'css';
-                    initial = el.textContent || '';
+                    initial  = rawText;
                 } else {
-                    initial = el.innerHTML;
+                    /* Обычный HTML-элемент. */
+                    initial = rawHtml;
                 }
 
                 var editor = new CodeEditor({ value: initial, language: language });
@@ -446,9 +466,8 @@
                     onOk: function () {
                         var v = editor.getValue();
 
-                        if (isCdata) {
-                            /* Полностью пересобираем содержимое: чистим всё
-                               и вставляем один текстовый узел с CDATA. */
+                        if (wasCdata) {
+                            /* Возвращаем CDATA-обёртку. */
                             var doc = el.ownerDocument;
                             while (el.firstChild) el.removeChild(el.firstChild);
                             el.appendChild(doc.createTextNode('<![CDATA[' + v + ']]>'));
