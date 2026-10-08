@@ -239,6 +239,13 @@
             });
         }
 
+        var COMPONENT_SELF_CLOSE_RE = /<component((?:\s+[^<>]*?)?)\s*\/>/g;
+        function expandSelfClosingComponentTags(str) {
+            return String(str).replace(COMPONENT_SELF_CLOSE_RE, function (m, attrs) {
+                return '<component' + (attrs || '') + '></component>';
+            });
+        }
+
         var CDATA_TAGS = {
             cmpaction:              'sql',
             cmpdataset:             'sql',
@@ -572,6 +579,7 @@
                     .replace(/\]\]>/g, SENT_C);
 
                 prepared = expandSelfClosingCmpTags(prepared);
+                prepared = expandSelfClosingComponentTags(prepared);
 
                 var tmp = document.createElement('div');
                 tmp.innerHTML = prepared;

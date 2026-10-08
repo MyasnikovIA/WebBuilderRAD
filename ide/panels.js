@@ -169,6 +169,23 @@
        ============================================================ */
     var _idCounter = 0;
 
+    /* Единый фильтр дочерних элементов дерева — используется и в
+       _build, и в _collapseSubtree, чтобы поведение совпадало. */
+    function collectTreeKids(el) {
+        var kids = [];
+        for (var i = 0; i < el.children.length; i++) {
+            var c = el.children[i];
+            if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
+            if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+            if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
+            if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+            if (c.tagName && (c.tagName.toLowerCase() === 'wb-images'
+                || c.tagName.toLowerCase() === 'wb-image')) continue;
+            kids.push(c);
+        }
+        return kids;
+    }
+
     function DomTree(rootEl) {
         var self = this;
         this.rootId = (typeof rootEl === 'string') ? rootEl : rootEl.id;
@@ -186,8 +203,12 @@
             self.rebuild();
         });
         bus.on('canvas:changed',   function () { self.rebuild(); });
-        bus.on('canvas:refreshed', function () {
-            self._collapseAll = true;
+        bus.on('canvas:refreshed', function (e) {
+            /* collapseTree !== false → сворачиваем всё (Load HTML, New).
+               collapseTree === false → сохраняем раскрытие (Apply из Code). */
+            if (!e || e.collapseTree !== false) {
+                self._collapseAll = true;
+            }
             self.rebuild();
         });
         bus.on('selection:changed',function (e) { self.highlight(e.element); });
@@ -225,31 +246,19 @@
 
     DomTree.prototype._getRoot = function () { return $('#' + this.rootId); };
 
-    DomTree.prototype._collapseSubtree = function (root, keepRootOpen) {
+    DomTree.prototype._collapseSubtree = function (root) {
         var self = this;
-        function hasMeaningfulKids(el) {
-            for (var i = 0; i < el.children.length; i++) {
-                var c = el.children[i];
-                if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
-                if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
-                if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
-                if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
-                if (c.tagName && (c.tagName.toLowerCase() === 'wb-images'
-                    || c.tagName.toLowerCase() === 'wb-image')) continue;
-                return true;
-            }
-            return false;
-        }
-        function walk(el, isRoot) {
+        function walk(el, path, isRoot) {
             if (!el || el.nodeType !== 1) return;
-            if (hasMeaningfulKids(el) && !(isRoot && keepRootOpen)) {
-                self._collapsed[self._nid(el)] = true;
+            var kids = collectTreeKids(el);
+            if (kids.length > 0 && !isRoot) {
+                self._collapsed[path] = true;
             }
-            for (var i = 0; i < el.children.length; i++) {
-                walk(el.children[i], false);
+            for (var j = 0; j < kids.length; j++) {
+                walk(kids[j], path + '.' + j, false);
             }
         }
-        walk(root, true);
+        walk(root, 'r', true);
     };
 
     DomTree.prototype.rebuild = function () {
@@ -269,20 +278,20 @@
         if (this._collapseAll) {
             this._collapseAll = false;
             this._collapsed = {};
-            this._collapseSubtree(startEl, true);
+            this._collapseSubtree(startEl);
         }
 
         $root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
 
-        this._build(startEl, ul);
+        this._build(startEl, ul, 'r');
         $root.append(ul);
 
         var sel = this.canvas.getSelected();
         if (sel) this.highlight(sel);
     };
 
-    DomTree.prototype._build = function (el, parentUl) {
+    DomTree.prototype._build = function (el, parentUl, path) {
         if (!el || el.nodeType !== 1) return;
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
         if (el.getAttribute && el.getAttribute('data-wb-preview') === '1') return;
@@ -293,6 +302,7 @@
 
         var self = this;
         var li = $('<li></li>');
+        var collKey = path;
 
         var html = this.canvas.getHtml();
         var head = this.canvas.getHead();
@@ -308,19 +318,9 @@
 
         var nid = this._nid(el);
 
-        var kids = [];
-        for (var i = 0; i < el.children.length; i++) {
-            var child = el.children[i];
-            if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') continue;
-            if (child.getAttribute && child.getAttribute('data-wb-preview') === '1') continue;
-            if (child.getAttribute && child.getAttribute('data-wb-comp-asset') === '1') continue;
-            if (child.tagName && child.tagName.toLowerCase() === 'wb-cdata') continue;
-            if (child.tagName && (child.tagName.toLowerCase() === 'wb-images'
-                || child.tagName.toLowerCase() === 'wb-image')) continue;
-            kids.push(child);
-        }
+        var kids = collectTreeKids(el);
         var hasKids = kids.length > 0;
-        var collapsed = !!this._collapsed[nid];
+        var collapsed = !!this._collapsed[collKey];
 
         var toggle = $('<span class="wb-toggle"></span>')
             .text(collapsed ? '+' : '\u2212')
@@ -337,7 +337,7 @@
 
         if (hasKids) {
             var cul = $('<ul></ul>');
-            for (var j = 0; j < kids.length; j++) self._build(kids[j], cul);
+            for (var j = 0; j < kids.length; j++) self._build(kids[j], cul, collKey + '.' + j);
             if (collapsed) cul.hide();
             li.append(cul);
         }
@@ -373,8 +373,8 @@
         if (hasKids) {
             toggle.click(function (e) {
                 e.stopPropagation();
-                var nowCollapsed = !self._collapsed[nid];
-                self._collapsed[nid] = nowCollapsed;
+                var nowCollapsed = !self._collapsed[collKey];
+                self._collapsed[collKey] = nowCollapsed;
                 toggle.text(nowCollapsed ? '+' : '\u2212');
                 var $ul = li.children('ul').first();
                 if (nowCollapsed) $ul.hide(); else $ul.show();

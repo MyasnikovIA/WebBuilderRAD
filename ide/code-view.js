@@ -162,7 +162,7 @@
         if (!this.canvas) return false;
         var html = this.editor.getValue();
         try {
-            this.canvas.loadHtml(html);
+            this.canvas.loadHtml(html, { collapseTree: false });
             this.statusEl.text('Applied.').css('color', '#2e7d32');
             this._elemIndex = null;
             this._elemIndexStale = true;

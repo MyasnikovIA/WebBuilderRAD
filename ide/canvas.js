@@ -38,6 +38,16 @@
         });
     }
 
+    /* M2: <component cmptype="X" …/> → <component cmptype="X" …></component>.
+       HTML-парсер игнорирует '/>' у нестандартного тега <component>,
+       из-за чего соседние компоненты вкладываются друг в друга. */
+    var COMPONENT_SELF_CLOSE_RE = /<component((?:\s+[^<>]*?)?)\s*\/>/g;
+    function expandSelfClosingComponentTags(str) {
+        return String(str).replace(COMPONENT_SELF_CLOSE_RE, function (m, attrs) {
+            return '<component' + (attrs || '') + '></component>';
+        });
+    }
+
     function generateComponentName(doc, tagName, nameTemplate) {
         if (!doc || !nameTemplate) return '';
         var tagLower = String(tagName).toLowerCase();
@@ -594,7 +604,7 @@
         if (global.IDE) global.IDE._canvas = this;
         this._reobserve();
 
-        bus.emit('canvas:refreshed');
+        bus.emit('canvas:refreshed', { collapseTree: true });
         bus.emit('canvas:changed');
         var self = this;
         setTimeout(function () {
@@ -603,7 +613,7 @@
         }, 0);
     };
 
-    Canvas.prototype.loadHtml = function (html) {
+    Canvas.prototype.loadHtml = function (html, opts) {
         var self = this;
         var doc = this.getDoc();
         if (!doc) return;
@@ -619,6 +629,7 @@
         });
 
         prepared = expandSelfClosingCmpTags(prepared);
+        prepared = expandSelfClosingComponentTags(prepared);
 
         var isFullDoc = /<!DOCTYPE/i.test(prepared)
             || /<html[\s>]/i.test(prepared)
@@ -724,7 +735,8 @@
         this._cleanClass(this.getBody());
         this._reobserve();
 
-        bus.emit('canvas:refreshed');
+        var collapseTree = !opts || opts.collapseTree !== false;
+        bus.emit('canvas:refreshed', { collapseTree: collapseTree });
         bus.emit('canvas:changed');
         bus.emit('canvas:selection:reset');
 
@@ -1547,6 +1559,7 @@
             var c = node.childNodes[i];
             if (c.nodeType === 1) {
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
                 return true;
             }
@@ -1643,6 +1656,8 @@
             var c = node.childNodes[i];
             if (c.nodeType === 1) {
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') {
                     var cv = c.textContent || '';
                     var cm = cv.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
@@ -1783,6 +1798,7 @@
             var c = childNodes[i];
             if (c.nodeType === 1) {
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
                 if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
                 children.push(c);
