@@ -89,12 +89,12 @@
 
         function cleanClone(node) {
             if (!node || node.nodeType !== 1) return;
-            node.classList.remove('wb-selected', 'wb-hover');
+            node.classList.remove('wb-selected', 'wb-hover', 'wb-moving');
             if (node.classList.length === 0) node.removeAttribute('class');
             node.removeAttribute('data-wb-editable');
-            var kids = node.querySelectorAll('.wb-selected, .wb-hover, [data-wb-editable]');
+            var kids = node.querySelectorAll('.wb-selected, .wb-hover, .wb-moving, [data-wb-editable]');
             for (var i = 0; i < kids.length; i++) {
-                kids[i].classList.remove('wb-selected', 'wb-hover');
+                kids[i].classList.remove('wb-selected', 'wb-hover', 'wb-moving');
                 if (kids[i].classList.length === 0) kids[i].removeAttribute('class');
                 kids[i].removeAttribute('data-wb-editable');
             }
@@ -211,7 +211,6 @@
             for (var i = 0; i < kids.length; i++) restoreCmpTags(kids[i]);
         }
 
-        /* Проверка parentOnly с поддержкой массива. */
         function parentMatches(def, node) {
             if (!def || !def.parentOnly || !node) return false;
             var allowed = Array.isArray(def.parentOnly) ? def.parentOnly : [def.parentOnly];
@@ -338,8 +337,6 @@
                 var parent = el.parentNode;
                 parent.removeChild(el);
 
-                /* Обновить превью родителя — ComboBox после удаления ComboItem
-                   должен убрать <option>. */
                 if (parent && parent.nodeType === 1 &&
                     parent.getAttribute && parent.getAttribute('data-wb-tag')) {
                     canvas._renderPreview(parent);

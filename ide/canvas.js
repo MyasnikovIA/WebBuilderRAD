@@ -1,7 +1,10 @@
 /* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
    Поддерживает три режима корневого контейнера: 'html', 'cmpForm', 'div'.
    Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs).
-   Умеет ресайзить выделенный элемент за 8 маркеров по периметру. */
+   Умеет:
+     - ресайзить выделенный элемент за 8 маркеров по периметру;
+     - перемещать выделенный элемент перетаскиванием за тело;
+     - выделять и тащить как D3-компоненты, так и обычные HTML-теги. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -26,6 +29,12 @@
         cmpfetchvar:1, cmpsubfetchvar:1, cmpmodulevar:1,
         cmpimage:1,
         'wb-image':1, cmptagitem:1
+    };
+
+    /* Страховка для компонентов, у которых в D3.register забыли parentOnly.
+       Используется Canvas.insertComponent. */
+    var PARENT_FALLBACK = {
+        cmpselectlistitem: 'cmpselectlist'
     };
 
     var CMP_TAGS = {
@@ -108,6 +117,7 @@
     var INDENT = '    ';
 
     var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
+    var MOVE_THRESHOLD = 3;
 
     function Canvas(iframeEl) {
         this.iframe = iframeEl;
@@ -185,19 +195,18 @@
             '  pointer-events: auto;' +
             '  user-select: none; -webkit-user-select: none;' +
             '}' +
-            '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }';
+            '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }' +
+
+            /* --- Элемент во время перетаскивания --- */
+            '.wb-moving { cursor: move !important; }';
         if (doc.head) doc.head.appendChild(style);
     };
 
-    /* Подключение CSS/JS-ресурсов превью, объявленных D3-компонентами.
-       Компонент может указать D3.register({ previewCss: [...], previewJs: [...] }),
-       относительные пути автоматически преобразуются в абсолютные URL
-       из папки Component/d3/<Имя>/ (см. d3/core.js). */
+    /* Подключение CSS/JS-ресурсов превью, объявленных D3-компонентами. */
     Canvas.prototype._injectComponentAssets = function () {
         var doc = this.getDoc();
         if (!doc || !doc.head) return;
 
-        /* Удалить прежние ресурсы превью (переустановка). */
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
@@ -259,7 +268,6 @@
             });
         }
 
-        /* Перепозиционируем (или снимаем) ручки ресайза после любых правок. */
         bus.on('canvas:changed', function () {
             if (self._handlesPending) return;
             self._handlesPending = true;
@@ -471,6 +479,37 @@
         this.setDesignMode(!this.designMode);
     };
 
+    /* Определить «логическую» цель выделения по кликнутому элементу.
+       - Если попали внутрь [data-wb-preview] — возвращаем владельца-компонент.
+       - Если попали в chrome-узел [data-wb-ide="1"] — тоже владельца.
+       - Иначе — сам кликнутый элемент (в т.ч. обычный HTML-тег). */
+    Canvas.prototype._resolveSelection = function (eTarget) {
+        if (!eTarget || eTarget.nodeType !== 1) return null;
+        var doc = this.getDoc();
+
+        var cur = eTarget;
+        while (cur && cur !== doc.body && cur !== doc.documentElement) {
+            if (cur.getAttribute && cur.getAttribute('data-wb-preview') === '1') {
+                var owner = cur.parentNode;
+                while (owner && owner !== doc.body) {
+                    if (owner.getAttribute && owner.getAttribute('data-wb-tag')) return owner;
+                    owner = owner.parentNode;
+                }
+                return eTarget;
+            }
+            if (cur.getAttribute && cur.getAttribute('data-wb-ide') === '1') {
+                var p = cur.parentNode;
+                while (p && p !== doc.body) {
+                    if (p.getAttribute && p.getAttribute('data-wb-tag')) return p;
+                    p = p.parentNode;
+                }
+                return null;
+            }
+            cur = cur.parentNode;
+        }
+        return eTarget;
+    };
+
     Canvas.prototype._bind = function () {
         var self = this, doc = this.getDoc();
 
@@ -478,29 +517,29 @@
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
-            /* Клик по маркеру ресайза — не перехватываем, обрабатывает
-               сам маркер (см. _startResize). */
+            /* Клик по маркеру ресайза — не перехватываем. */
             if (e.target && e.target.classList &&
                 e.target.classList.contains('wb-resize-handle')) {
                 return;
             }
 
             if (self.pending) {
-                var target = self._placementTarget(e.target);
-                self._place(self.pending, target);
+                var target0 = self._placementTarget(e.target);
+                self._place(self.pending, target0);
                 e.preventDefault(); e.stopPropagation();
                 return;
             }
-            var clicked = e.target;
-            while (clicked && clicked !== doc.body) {
-                if (clicked.getAttribute && clicked.getAttribute('data-wb-tag')) {
-                    self.select(clicked);
-                    e.preventDefault();
-                    return;
-                }
-                clicked = clicked.parentNode;
-            }
-            if (e.target && e.target.nodeType === 1) self.select(e.target);
+
+            var target = self._resolveSelection(e.target);
+            if (!target) return;
+            if (target === doc.body || target === doc.documentElement) return;
+
+            var current = self.getSelected();
+            if (current !== target) self.select(target);
+            else if (!self._handles) self._addResizeHandles(target);
+
+            self._startMove(e, target);
+            e.preventDefault();
         }, true);
 
         doc.addEventListener('mouseover', function (e) {
@@ -534,15 +573,8 @@
         doc.addEventListener('contextmenu', function (e) {
             if (self.pending) { self.pending = null; bus.emit('palette:cancelled'); }
             if (!self.designMode && e.target && e.target.nodeType === 1) {
-                var clicked = e.target;
-                while (clicked && clicked !== doc.body) {
-                    if (clicked.getAttribute && clicked.getAttribute('data-wb-tag')) {
-                        self.select(clicked);
-                        break;
-                    }
-                    clicked = clicked.parentNode;
-                }
-                if (!clicked) self.select(e.target);
+                var target = self._resolveSelection(e.target);
+                if (target) self.select(target);
             }
             var pt = self._pageCoordsFromIframeEvent(e);
             bus.emit('contextmenu:element', { x: pt.x, y: pt.y });
@@ -577,16 +609,16 @@
         return body;
     };
 
-    /* Найти ближайшего родителя из массива def.parentOnly (или одного тега). */
-    Canvas.prototype._findParentFor = function (def, target) {
+    /* Найти ближайшего родителя из массива parentOnly (или одного тега). */
+    Canvas.prototype._findParentFor = function (parentOnly, target) {
         var doc = this.getDoc();
         var html = this.getHtml();
 
         var wanted;
-        if (Array.isArray(def.parentOnly)) {
-            wanted = def.parentOnly.map(function (t) { return String(t).toLowerCase(); });
+        if (Array.isArray(parentOnly)) {
+            wanted = parentOnly.map(function (t) { return String(t).toLowerCase(); });
         } else {
-            wanted = [String(def.parentOnly).toLowerCase()];
+            wanted = [String(parentOnly).toLowerCase()];
         }
 
         var t = target;
@@ -623,8 +655,14 @@
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
         if (def.xmlTag)  el.setAttribute('data-wb-tag', def.xmlTag);
 
-        if (def.parentOnly) {
-            var parent = this._findParentFor(def, target);
+        /* parentOnly может быть задан в D3.register либо в страховочной карте. */
+        var parentOnly = def.parentOnly;
+        if (!parentOnly && def.tagName) {
+            parentOnly = PARENT_FALLBACK[String(def.tagName).toLowerCase()];
+        }
+
+        if (parentOnly) {
+            var parent = this._findParentFor(parentOnly, target);
             if (!parent) {
                 this.pending = null;
                 bus.emit('palette:placed');
@@ -704,8 +742,6 @@
         }
     };
 
-    /* Перерисовать превью элемента И его ближайшего родителя с data-wb-tag.
-       Нужно для comboItem → comboBox, datasetVar → dataset и т.п. */
     Canvas.prototype.refreshPreviewAndParent = function (el) {
         if (!el || el.nodeType !== 1) return;
         this.refreshPreview(el);
@@ -737,7 +773,57 @@
     };
 
     /* ============================================================
-       Ресайз выделенного элемента мышью за 8 маркеров по периметру
+       Хелпер: применяем размер/позицию к элементу И к его preview-узлу.
+       ============================================================ */
+
+    Canvas.prototype._applyBox = function (el, left, top, width, height, setAttrs) {
+        el.style.left   = left   + 'px';
+        el.style.top    = top    + 'px';
+        el.style.width  = width  + 'px';
+        el.style.height = height + 'px';
+
+        /* Для D3-компонентов продублируем размер в атрибуты width/height —
+           чтобы после регенерации превью (или при сохранении XML)
+           компонент остался нужного размера. */
+        if (setAttrs && el.getAttribute && el.getAttribute('data-wb-tag')) {
+            el.setAttribute('width',  Math.round(width)  + 'px');
+            el.setAttribute('height', Math.round(height) + 'px');
+        }
+
+        /* Preview-узел — реальная визуальная часть D3-компонента —
+           иначе ресайз «корня» визуально не изменит ничего. */
+        var preview = el.querySelector(':scope > [data-wb-preview="1"]');
+        if (preview) {
+            preview.style.width     = width  + 'px';
+            preview.style.height    = height + 'px';
+            preview.style.boxSizing = 'border-box';
+        }
+    };
+
+    /* ============================================================
+       Хелпер: перевод элемента в absolute-позиционирование.
+       ============================================================ */
+
+    Canvas.prototype._makeAbsolute = function (el) {
+        var doc  = this.getDoc();
+        var body = this.getBody();
+        if (!body) return false;
+        var cs = doc.defaultView.getComputedStyle(el);
+        if (cs.position !== 'absolute' && cs.position !== 'fixed') {
+            var r  = el.getBoundingClientRect();
+            var br = body.getBoundingClientRect();
+            el.style.position = 'absolute';
+            el.style.left     = Math.round(r.left - br.left) + 'px';
+            el.style.top      = Math.round(r.top  - br.top)  + 'px';
+            el.style.width    = Math.round(r.width)  + 'px';
+            el.style.height   = Math.round(r.height) + 'px';
+            return true;
+        }
+        return false;
+    };
+
+    /* ============================================================
+       Ресайз выделенного элемента мышью за 8 маркеров
        ============================================================ */
 
     Canvas.prototype._addResizeHandles = function (el) {
@@ -822,6 +908,47 @@
         }
     };
 
+    /* Общий трекинг мыши (координаты в системе iframe). */
+    Canvas.prototype._trackMouse = function (onMove, onUp) {
+        var doc      = this.getDoc();
+        var iframe   = this.iframe;
+        var outerDoc = global.document;
+        var body     = this.getBody();
+
+        var oldIframeCursor = body ? (body.style.cursor || '') : '';
+        var oldOuterCursor  = (outerDoc && outerDoc.body)
+            ? (outerDoc.body.style.cursor || '') : '';
+
+        function handleIframe(ev) {
+            onMove(ev.clientX, ev.clientY);
+        }
+        function handleOuter(ev) {
+            var rect = iframe.getBoundingClientRect();
+            onMove(ev.clientX - rect.left, ev.clientY - rect.top);
+        }
+        function handleUp() {
+            doc.removeEventListener('mousemove', handleIframe, true);
+            doc.removeEventListener('mouseup',   handleUp,     true);
+            if (outerDoc) {
+                outerDoc.removeEventListener('mousemove', handleOuter, true);
+                outerDoc.removeEventListener('mouseup',   handleUp,    true);
+            }
+            if (body) body.style.cursor = oldIframeCursor;
+            if (outerDoc && outerDoc.body) outerDoc.body.style.cursor = oldOuterCursor;
+            if (onUp) onUp();
+        }
+
+        if (body) body.style.cursor = 'move';
+        if (outerDoc && outerDoc.body) outerDoc.body.style.cursor = 'move';
+
+        doc.addEventListener('mousemove', handleIframe, true);
+        doc.addEventListener('mouseup',   handleUp,     true);
+        if (outerDoc) {
+            outerDoc.addEventListener('mousemove', handleOuter, true);
+            outerDoc.addEventListener('mouseup',   handleUp,    true);
+        }
+    };
+
     Canvas.prototype._startResize = function (e, dir) {
         var self = this;
         var el = this.getSelected();
@@ -836,17 +963,8 @@
 
         var r  = el.getBoundingClientRect();
         var br = body.getBoundingClientRect();
-        var cs = doc.defaultView.getComputedStyle(el);
 
-        /* Элемент должен быть абсолютно спозиционирован, чтобы
-           left/top/width/height задавали его однозначно. */
-        if (cs.position !== 'absolute' && cs.position !== 'fixed') {
-            el.style.position = 'absolute';
-            el.style.left   = (r.left - br.left) + 'px';
-            el.style.top    = (r.top  - br.top)  + 'px';
-            el.style.width  = r.width  + 'px';
-            el.style.height = r.height + 'px';
-        }
+        this._makeAbsolute(el);
 
         var startLeft   = parseFloat(el.style.left);
         var startTop    = parseFloat(el.style.top);
@@ -885,35 +1003,84 @@
                 nh = th;
             }
 
-            el.style.left   = nl + 'px';
-            el.style.top    = nt + 'px';
-            el.style.width  = nw + 'px';
-            el.style.height = nh + 'px';
-
+            self._applyBox(el, nl, nt, nw, nh, true);
             self._positionResizeHandles(el);
         }
 
-        function onMove(ev) {
-            /* Координаты внутри iframe. Слушатели — на doc iframe,
-               значит ev.clientX/Y уже в системе координат iframe. */
-            applyResize(ev.clientX, ev.clientY);
-        }
-
-        var outerDoc = global.document;
-        function onUp() {
-            doc.removeEventListener('mousemove', onMove, true);
-            doc.removeEventListener('mouseup', onUp, true);
-            if (outerDoc) outerDoc.removeEventListener('mouseup', onUp, true);
+        this._trackMouse(applyResize, function () {
             for (var k = 0; k < (self._handles || []).length; k++) {
                 self._handles[k].classList.remove('wb-resize-active');
             }
             bus.emit('canvas:changed');
             bus.emit('selection:changed', { element: el });
+        });
+    };
+
+    /* ============================================================
+       Перемещение выделенного элемента мышью за тело
+       ============================================================ */
+
+    Canvas.prototype._startMove = function (e, el) {
+        if (!el || el.nodeType !== 1) return;
+        if (this.designMode) return;
+
+        var html = this.getHtml();
+        var head = this.getHead();
+        var body = this.getBody();
+        if (!html || !body) return;
+        if (el === html || el === body || el === head) return;
+        if (head && head.contains(el)) return;
+
+        var rc = this.getRootContainer();
+        if (this._rootType !== 'html' && rc && el === rc) return;
+
+        if (e.target && e.target.classList &&
+            e.target.classList.contains('wb-resize-handle')) return;
+
+        var self = this;
+        var startX = e.clientX;
+        var startY = e.clientY;
+        var moved = false;
+        var startLeft = 0, startTop = 0, curW = 0, curH = 0;
+
+        function onMove(clientX, clientY) {
+            var dx = clientX - startX;
+            var dy = clientY - startY;
+
+            if (!moved) {
+                if (Math.abs(dx) < MOVE_THRESHOLD && Math.abs(dy) < MOVE_THRESHOLD) return;
+                moved = true;
+
+                self._makeAbsolute(el);
+
+                var sl = parseFloat(el.style.left);
+                var st = parseFloat(el.style.top);
+                if (isNaN(sl) || isNaN(st)) {
+                    var r  = el.getBoundingClientRect();
+                    var br = body.getBoundingClientRect();
+                    if (isNaN(sl)) { sl = r.left - br.left; el.style.left = sl + 'px'; }
+                    if (isNaN(st)) { st = r.top  - br.top;  el.style.top  = st + 'px'; }
+                }
+                startLeft = sl;
+                startTop  = st;
+                curW = el.getBoundingClientRect().width;
+                curH = el.getBoundingClientRect().height;
+
+                el.classList.add('wb-moving');
+            }
+
+            el.style.left = (startLeft + dx) + 'px';
+            el.style.top  = (startTop  + dy) + 'px';
+            self._positionResizeHandles(el);
         }
 
-        doc.addEventListener('mousemove', onMove, true);
-        doc.addEventListener('mouseup', onUp, true);
-        if (outerDoc) outerDoc.addEventListener('mouseup', onUp, true);
+        this._trackMouse(onMove, function () {
+            el.classList.remove('wb-moving');
+            if (moved) {
+                bus.emit('canvas:changed');
+                bus.emit('selection:changed', { element: el });
+            }
+        });
     };
 
     /* ============================================================
@@ -944,7 +1111,7 @@
 
             if (name === 'class') {
                 var parts = val.split(/\s+/).filter(function (c) {
-                    return c && c !== 'wb-selected' && c !== 'wb-hover';
+                    return c && c !== 'wb-selected' && c !== 'wb-hover' && c !== 'wb-moving';
                 });
                 if (parts.length === 0) continue;
                 val = parts.join(' ');
@@ -961,7 +1128,7 @@
         var cls = el.getAttribute('class');
         if (!cls) return;
         var parts = cls.split(/\s+/).filter(function (c) {
-            return c && c !== 'wb-selected' && c !== 'wb-hover';
+            return c && c !== 'wb-selected' && c !== 'wb-hover' && c !== 'wb-moving';
         });
         if (parts.length === 0) el.removeAttribute('class');
         else el.setAttribute('class', parts.join(' '));
@@ -1091,10 +1258,8 @@
             return pad + '<!--' + commentText + '-->\n';
         }
 
-        /* Служебный контейнер CDATA — не выводим */
         if (tagLower === 'wb-cdata') return '';
 
-        /* Служебный контейнер картинок — выводим как есть */
         if (tagLower === 'wb-images') {
             var outImg = '';
             var kidsImg = node.children;

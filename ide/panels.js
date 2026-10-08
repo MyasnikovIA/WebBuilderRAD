@@ -29,7 +29,8 @@
         cmplayoutcell:   'cmplayoutrow',
         cmppopupitem:      ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         cmppopupgroupitem: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
-        cmptagitem:      'cmpbuttonedit'
+        cmptagitem:      'cmpbuttonedit',
+        cmpselectlistitem: 'cmpselectlist'
     };
 
     /* ============================================================
