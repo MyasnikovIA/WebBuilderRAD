@@ -1,0 +1,16 @@
+.d3-preview-statgridsumm {
+    display: inline-block;
+    padding: 1px 6px;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 10px;
+    color: #b71c1c;
+    background: #ffebee;
+    border: 1px dashed #ef9a9a;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+.d3-preview-statgridsumm::before {
+    content: '\2211'; /* ∑ */
+    margin-right: 3px;
+}
+

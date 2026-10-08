@@ -1,0 +1,24 @@
+/* Превью cmpSort.
+
+   Sort — служебный контрол, в рантайме невидим
+   (style="display:none"), в IDE тоже скрыт правилом ide-style
+   (canvas.js). Этот файл — задел на будущее. */
+
+.d3-preview-sort {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #4a148c;
+    background: #f3e5f5;
+    border: 1px dashed #ce93d8;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-sort::before {
+    content: '\2195'; /* ↕ */
+    margin-right: 4px;
+    opacity: 0.8;
+}

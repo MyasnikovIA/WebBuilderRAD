@@ -1,0 +1,129 @@
+/* Превью cmpSortItem — соответствует .sort_item / Sort.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   Четыре состояния:
+     - ordonnone — нейтральная (обе стрелки серые);
+     - orderasc — сортировка по возрастанию (вверх — тёмная);
+     - orderdesc — сортировка по убыванию (вниз — тёмная);
+     - nextsort — промежуточное (не используется, оставлено для совместимости). */
+
+cmpSortItem {
+    display: inline-block;
+    line-height: 0;
+    font-size: 0;
+    vertical-align: middle;
+}
+
+cmpSortItem[visible="false"] { display: none; }
+cmpSortItem[enabled="false"] { opacity: 0.5; }
+
+/* Сброс IDE-рамки. */
+cmpSortItem > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-sortitem {
+    display: inline-block;
+    position: relative;
+    width: 14px;
+    height: 28px;
+    vertical-align: middle;
+    cursor: pointer;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+}
+
+/* Скрыть при constant="true" */
+.d3-preview-sortitem.is-constant {
+    visibility: hidden;
+    width: 0;
+    height: 0;
+}
+
+/* ---------- Иконка: две стрелки (вверх / вниз) ---------- */
+.d3-preview-sortitem-icon {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    width: 10px;
+    height: 20px;
+    margin-left: -5px;
+    box-sizing: border-box;
+}
+
+/* Стрелка вверх (треугольник) */
+.d3-preview-sortitem-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 8px solid #cfcfcf;
+    box-sizing: border-box;
+}
+
+/* Стрелка вниз (треугольник) */
+.d3-preview-sortitem-icon::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid #cfcfcf;
+    box-sizing: border-box;
+}
+
+/* ---------- Состояния ---------- */
+
+/* ordonnone / nextsort — обе стрелки серые (по умолчанию) */
+
+/* orderasc — верхняя стрелка тёмная */
+.d3-preview-sortitem-sort-orderasc .d3-preview-sortitem-icon::before {
+    border-bottom-color: #333;
+}
+
+/* orderdesc — нижняя стрелка тёмная */
+.d3-preview-sortitem-sort-orderdesc .d3-preview-sortitem-icon::after {
+    border-top-color: #333;
+}
+
+/* ---------- Номер уровня ---------- */
+.d3-preview-sortitem-level {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 9px;
+    line-height: 1;
+    color: #333;
+    background: #fff;
+    padding: 0 1px;
+    border-radius: 2px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+/* ---------- Disabled ---------- */
+.d3-preview-sortitem.ctrl_disable {
+    opacity: 0.5;
+    cursor: default;
+}

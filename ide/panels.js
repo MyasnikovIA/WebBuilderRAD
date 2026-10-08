@@ -21,6 +21,8 @@
         cmpfilteritem:   'cmpfilter',
         cmpcolumn:       'cmpgrid',
         cmpgridfooter:   'cmpgrid',
+        cmptreecolumn: 'cmptree',
+        cmptreefooter: 'cmptree',
         cmptabsheet:     'cmppagecontrol',
         cmplayoutrow:    'cmplayout',
         cmpradioitem: 'cmpradiogroup',
@@ -857,6 +859,34 @@
                 });
             });
             return btn;
+        }
+        if (t === 'code-editor') {
+            var btn2 = $('<button type="button" class="wb-code-btn">Edit…</button>');
+            btn2.click(function () {
+                var current = self._getValue(tab, f);
+
+                /* Определяем язык для подсветки: либо функция, которая
+                   смотрит на элемент, либо строка из описания поля. */
+                var lang = 'xml';
+                if (typeof f.language === 'function') {
+                    lang = f.language(self.element) || 'xml';
+                } else if (typeof f.language === 'string') {
+                    lang = f.language;
+                }
+
+                /* Используем CodeEditor вместо обычного textarea —
+                   получаем подсветку синтаксиса. */
+                var editor = new CodeEditor({ value: current, language: lang });
+
+                Modal.open({
+                    title: f.caption || f.name,
+                    content: editor.el,
+                    onOk: function () { commit(editor.getValue()); }
+                });
+
+                setTimeout(function () { editor.focus(); }, 50);
+            });
+            return btn2;
         }
         var inp = $('<input type="text">').val(val == null ? '' : val);
         inp.change(function () { commit(inp.val()); });

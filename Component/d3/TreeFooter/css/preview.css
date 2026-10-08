@@ -1,0 +1,15 @@
+.d3-preview-treefooter {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #455a64;
+    background: #F0F0EB;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+}
+.d3-preview-treefooter::before {
+    content: '\25AC';
+    margin-right: 4px;
+    opacity: 0.7;
+}

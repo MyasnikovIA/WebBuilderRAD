@@ -1,0 +1,207 @@
+/* Превью cmpUnitEditGenerate.
+
+   В рантайме сервер генерирует целую форму с полями, вкладками,
+   кнопками и двумя Action-ами. Содержимое зависит от БД, поэтому
+   в IDE показываем «скелет» — карточку с заголовком, параметрами,
+   примером полей, вкладками и кнопками. */
+
+cmpUnitEditGenerate {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpUnitEditGenerate[visible="false"] { display: none; }
+cmpUnitEditGenerate[enabled="false"] { opacity: 0.75; }
+
+/* Сброс IDE-рамки. */
+cmpUnitEditGenerate > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: block !important;
+    box-sizing: border-box;
+}
+
+/* ---------- Карточка формы ---------- */
+.d3-preview-uniteditgenerate {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 320px;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-radius: 4px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+/* ---------- Заголовок ---------- */
+.d3-preview-uniteditgenerate-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #f5f7f9;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #37474f;
+}
+
+.d3-preview-uniteditgenerate-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    font-size: 12px;
+    color: #fff;
+    background: #607d8b;
+    border-radius: 3px;
+    flex: 0 0 auto;
+}
+
+.d3-preview-uniteditgenerate-title {
+    font-size: 13px;
+    color: #37474f;
+}
+
+/* ---------- Параметры ---------- */
+.d3-preview-uniteditgenerate-params {
+    padding: 6px 12px;
+    background: #fafbfc;
+    border-bottom: 1px solid #eceff1;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px;
+    color: #546e7a;
+}
+
+.d3-preview-uniteditgenerate-param {
+    display: block;
+    line-height: 1.6;
+}
+
+.d3-preview-uniteditgenerate-param .lbl {
+    display: inline-block;
+    min-width: 60px;
+    color: #37474f;
+    font-weight: 600;
+}
+
+.d3-preview-uniteditgenerate-param .empty {
+    color: #b0bec5;
+    font-style: italic;
+}
+
+/* ---------- Скелет таблицы ---------- */
+.d3-preview-uniteditgenerate-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin: 0;
+}
+
+.d3-preview-uniteditgenerate-table td.caption {
+    width: 30%;
+    padding: 8px 6px 8px 12px;
+    vertical-align: top;
+    color: #555;
+    font-size: 12px;
+}
+
+.d3-preview-uniteditgenerate-table td.value {
+    padding: 6px 12px 6px 0;
+    vertical-align: top;
+}
+
+.d3-preview-uniteditgenerate-table input[type="text"] {
+    width: 100%;
+    padding: 3px 6px;
+    border: 1px solid #c0c0c0;
+    border-radius: 3px;
+    background: #fff;
+    font: inherit;
+    color: #999;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+/* ---------- Вкладки PageControl ---------- */
+.d3-preview-uniteditgenerate-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px 12px 0;
+    border-top: 1px solid #eceff1;
+    background: #fafbfc;
+}
+
+.d3-preview-uniteditgenerate-tab {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #0066CC;
+    background: #f5f7f9;
+    border: 1px solid #cfd8dc;
+    border-bottom: 0;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    cursor: pointer;
+    user-select: none;
+    -moz-user-select: none;
+}
+
+.d3-preview-uniteditgenerate-tab.active {
+    color: #000;
+    background: #fff;
+    font-weight: 600;
+    border-bottom: 1px solid #fff;
+    margin-bottom: -1px;
+    padding-bottom: 5px;
+}
+
+/* ---------- Кнопки ---------- */
+.d3-preview-uniteditgenerate-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 10px 12px;
+    border-top: 1px solid #eceff1;
+    background: #fff;
+}
+
+.d3-preview-uniteditgenerate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 16px;
+    font-size: 12px;
+    color: #222;
+    background: #f5f7f9;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    cursor: pointer;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+}
+
+.d3-preview-uniteditgenerate-btn:hover {
+    background: #e8eef5;
+}
+
+.d3-preview-uniteditgenerate-btn.primary {
+    background: #1e88e5;
+    border-color: #1565c0;
+    color: #fff;
+}
+
+.d3-preview-uniteditgenerate-btn.primary:hover {
+    background: #1976d2;
+}

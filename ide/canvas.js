@@ -14,8 +14,11 @@
 
     var RAW_TAGS = { script:1, style:1, pre:1, textarea:1 };
 
-    var CDATA_CONTAINERS = { cmpaction:1, cmpdataset:1, cmpscript:1, cmpsubaction:1, cmprepeaterstyler:1 };
-
+    var CDATA_CONTAINERS = {
+        cmpaction:1, cmpdataset:1, cmpscript:1, cmpsubaction:1,
+        cmprepeaterstyler:1, cmpserverscript:1,
+        cmpstatgridcolumnheader:1
+    };
 
     var XML_SELF_CLOSE = {
         cmpactionvar:1, cmpdatasetvar:1, cmpcomboitem:1, cmpsubactionvar:1,
@@ -52,6 +55,22 @@
         'cmpbroker':      'cmpBroker',
         'cmpbuttonedit':  'cmpButtonEdit',
         'cmptagitem':     'cmpTagItem',
+        'cmpserverscript': 'cmpServerScript',
+        'cmpuniteditgenerate': 'cmpUnitEditGenerate',
+        'cmpunitview': 'cmpUnitView',
+        'cmpunitprops': 'cmpUnitProps',
+        'cmptextarea': 'cmpTextArea',
+        'cmpstoredvalues': 'cmpStoredValues',
+        'cmpsort':     'cmpSort',
+        'cmpsortitem': 'cmpSortItem',
+        'cmpstatgrid':             'cmpStatGrid',
+        'cmpstatgridcolumn':       'cmpStatGridColumn',
+        'cmpstatgridcolumnheader': 'cmpStatGridColumnHeader',
+        'cmpstatgridfooter':       'cmpStatGridFooter',
+        'cmpstatsumm':             'cmpStatSumm',
+        'cmptree':       'cmpTree',
+        'cmptreecolumn': 'cmpTreeColumn',
+        'cmptreefooter': 'cmpTreeFooter',
         'cmpcelllabel':   'cmpCellLabel',
         'cmpcharts':      'cmpCharts',
         'cmpcompleter':   'cmpCompleter',
@@ -134,7 +153,7 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
 
-            'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler {' +
+            'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
