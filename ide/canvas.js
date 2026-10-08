@@ -36,11 +36,11 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* FIX: развёртка self-closing cmp*-тегов.
+    /* FIX (problem 1): развёртка self-closing cmp*-тегов.
        HTML-парсер игнорирует '/>' у нестандартных элементов,
        из-за чего соседние <cmpXxx/> вкладываются друг в друга.
-       Разворачиваем ВСЕ cmp*-теги (не только XML_SELF_CLOSE),
-       а обратное «уплотнение» делает _formatNode при сохранении. */
+       Разворачиваем ВСЕ cmp*-теги; обратное «уплотнение» делает
+       _formatNode при сохранении. */
     var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
     function expandSelfClosingCmpTags(str) {
         return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
@@ -130,6 +130,24 @@
         'cmpcheckbox':    'cmpCheckBox'
     };
 
+    /* FIX (problem 2): маппинг runtime-атрибута cmptype → XML-тег.
+       Сервер рендерит D3-компоненты как <div cmptype="Form"> и т.п.
+       При загрузке такого HTML IDE должна распознать эти элементы
+       и повесить на них data-wb-tag, чтобы дальнейшая логика
+       (root type, сохранение) работала корректно. */
+    var RUNTIME_CMPTYPE_TO_TAG = {
+        'Form':         'cmpform',
+        'SubForm':      'cmpsubform',
+        'Button':       'cmpbutton',
+        'Edit':         'cmpedit',
+        'DataSet':      'cmpdataset',
+        'Script':       'cmpscript',
+        'Action':       'cmpaction',
+        'ComboBox':     'cmpcombobox',
+        'Grid':         'cmpgrid',
+        'Tree':         'cmptree'
+    };
+
     var INDENT = '    ';
 
     var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
@@ -191,9 +209,10 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
 
-            /* Корневые контейнеры — тоже position: relative,
-               чтобы left/top детей отсчитывались от их края, а не от body. */
-            'cmpForm, cmpSubForm, [data-wb-root="1"] { position: relative; }' +
+            /* FIX (problem 2): корневой <div> с data-wb-tag="cmpForm"
+               тоже должен быть position: relative, как и настоящий
+               <cmpForm>. */
+            'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"] { position: relative; }' +
 
             'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
@@ -352,6 +371,9 @@
 
     Canvas.prototype.getRootType = function () { return this._rootType; };
 
+    /* FIX (problem 2): распознаём корень-форму не только по тегу
+       <cmpform>, но и по data-wb-tag="cmpForm" (случай, когда
+       загрузили <div cmptype="Form"> и он был помечен как форма). */
     Canvas.prototype.getRootContainer = function () {
         if (this._rootType === 'html') return this.getHtml();
         var body = this.getBody();
@@ -360,12 +382,17 @@
         for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
-            if (this._rootType === 'cmpForm' && tag === 'cmpform') return k;
-            if (this._rootType === 'div' && tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
+            var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            if (this._rootType === 'cmpForm' &&
+                (tag === 'cmpform' || wbTag === 'cmpForm')) return k;
+            if (this._rootType === 'div' &&
+                tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
         }
         return null;
     };
 
+    /* FIX (problem 2): та же логика, что и в getRootContainer —
+       определяем корень и по тегу, и по data-wb-tag. */
     Canvas.prototype._detectRootType = function () {
         var body = this.getBody();
         if (!body) return 'html';
@@ -373,12 +400,16 @@
         for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
-            if (tag === 'cmpform') return 'cmpForm';
+            var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            if (tag === 'cmpform' || wbTag === 'cmpForm') return 'cmpForm';
             if (tag === 'div' && k.getAttribute('data-wb-root') === '1') return 'div';
         }
         return 'html';
     };
 
+    /* FIX (problem 2): если корень нужного типа уже есть на верхнем
+       уровне body — переиспользуем его, доновешиваем недостающие
+       атрибуты. Иначе создаём новый wrapper как раньше. */
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'div'].indexOf(type) < 0) return;
         if (type === this._rootType) return;
@@ -387,6 +418,56 @@
         var body = this.getBody();
         if (!body) return;
 
+        /* Ищем существующий корень прямо в body. */
+        var existingRoot = null;
+        var bKids0 = body.children;
+        for (var e = 0; e < bKids0.length; e++) {
+            var be = bKids0[e];
+            var bTag = be.tagName.toLowerCase();
+            var bWbTag = be.getAttribute && be.getAttribute('data-wb-tag');
+            var bCmptype = be.getAttribute && be.getAttribute('cmptype');
+            if (type === 'cmpForm') {
+                if (bTag === 'cmpform' || bWbTag === 'cmpForm' ||
+                    bCmptype === 'Form') {
+                    existingRoot = be;
+                    break;
+                }
+            }
+            if (type === 'div' && bTag === 'div' &&
+                be.getAttribute('data-wb-root') === '1') {
+                existingRoot = be;
+                break;
+            }
+        }
+
+        if (existingRoot) {
+            /* Переиспользуем: донашиваем недостающие атрибуты, чтобы
+               дальнейшая логика (сохранение, превью, CSS) работала. */
+            if (type === 'cmpForm') {
+                existingRoot.setAttribute('data-wb-tag', 'cmpForm');
+                if (!existingRoot.getAttribute('data-cmptype')) {
+                    existingRoot.setAttribute('data-cmptype', 'd3.form');
+                }
+                if (!existingRoot.getAttribute('class')) {
+                    existingRoot.setAttribute('class', 'd3form formBackground');
+                }
+            } else if (type === 'div') {
+                if (!existingRoot.getAttribute('data-wb-root')) {
+                    existingRoot.setAttribute('data-wb-root', '1');
+                }
+                if (!existingRoot.getAttribute('data-cmptype')) {
+                    existingRoot.setAttribute('data-cmptype', 'd3.rootdiv');
+                }
+            }
+            this._rootType = type;
+            this._renderPreview(existingRoot);
+            bus.emit('canvas:changed');
+            bus.emit('selection:changed', { element: existingRoot });
+            return;
+        }
+
+        /* Иначе — старая логика: создать новый корень и перенести
+           в него всё содержимое. */
         var oldRoot = (this._rootType === 'html') ? null : this.getRootContainer();
         var source = oldRoot || body;
         var moved = [];
@@ -484,7 +565,8 @@
          3. Обёртка в шаблон, если это фрагмент.
          4. document.write.
          5. Плейсхолдеры → текстовые узлы, содержащие <![CDATA[...]]>.
-         6. Чистка service-узлов и классов, восстановление data-wb-tag.
+         6. Чистка service-узлов и классов, восстановление data-wb-tag
+            (в т.ч. из runtime-атрибута cmptype).
          7. Переинжект IDE-инфраструктуры, определение root type,
             отрисовка превью, переподписка MutationObserver.
        ============================================================ */
@@ -504,11 +586,7 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
-        /* 2. Самозакрывающиеся кастомные теги → явные open/close.
-              FIX: разворачиваем ВСЕ cmp*-теги, а не только те, что
-              в XML_SELF_CLOSE. HTML-парсер игнорирует '/>' у
-              нестандартных элементов, из-за чего соседние
-              <cmpXxx/> вкладываются друг в друга. */
+        /* 2. Разворачиваем self-closing cmp*-теги. */
         prepared = expandSelfClosingCmpTags(prepared);
 
         /* 3. Обёртка в шаблон, если это фрагмент. */
@@ -571,7 +649,8 @@
             if (sn.parentNode) sn.parentNode.removeChild(sn);
         }
 
-        /* 6b. Восстановление data-wb-tag по camelCase-словарю. */
+        /* 6b. Восстановление data-wb-tag по camelCase-словарю
+               (в т.ч. из runtime-атрибута cmptype). */
         this._restoreCmpTags(doc.documentElement);
 
         /* 6c. Снятие служебных классов. */
@@ -624,12 +703,27 @@
         }
     };
 
+    /* FIX (problem 2): если у элемента нет data-wb-tag, но есть
+       runtime-атрибут cmptype — мапим его на XML-тег из
+       RUNTIME_CMPTYPE_TO_TAG и ставим data-wb-tag. Это позволяет
+       IDE распознать <div cmptype="Form"> как корень формы. */
     Canvas.prototype._restoreCmpTags = function (root) {
         if (!root || root.nodeType !== 1) return;
         var lower = root.tagName.toLowerCase();
+        var wbTag = null;
+
         if (CMP_TAGS[lower]) {
-            root.setAttribute('data-wb-tag', CMP_TAGS[lower]);
+            wbTag = CMP_TAGS[lower];
+        } else {
+            var cmptype = root.getAttribute && root.getAttribute('cmptype');
+            if (cmptype && RUNTIME_CMPTYPE_TO_TAG[cmptype]) {
+                var mappedTag = RUNTIME_CMPTYPE_TO_TAG[cmptype];
+                if (CMP_TAGS[mappedTag]) wbTag = CMP_TAGS[mappedTag];
+            }
         }
+
+        if (wbTag) root.setAttribute('data-wb-tag', wbTag);
+
         var kids = root.children;
         for (var i = 0; i < kids.length; i++) this._restoreCmpTags(kids[i]);
     };
@@ -1267,6 +1361,8 @@
         return el.tagName.toLowerCase();
     };
 
+    /* FIX (problem 2): фильтруем runtime-атрибут cmptype (без data-),
+       чтобы он не попадал в XML при сохранении. */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
@@ -1274,6 +1370,7 @@
             var a = attrs[i];
             var name = a.name;
             if (name === 'data-cmptype') continue;
+            if (name === 'cmptype') continue;                    /* FIX */
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
             if (name === 'data-wb-tag') continue;
@@ -1336,6 +1433,9 @@
         }
     };
 
+    /* FIX (problem 1): теперь собираем в childCmp ещё и комментарии
+       (nodeType === 8), чтобы _formatNode их распечатал. Раньше они
+       молча выпадали при сохранении <cmpForm>. */
     Canvas.prototype._formatCmpNode = function (node, level, xmlTag) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
@@ -1365,6 +1465,10 @@
                 } else {
                     childCmp.push(c);
                 }
+            } else if (c.nodeType === 8) {
+                /* FIX (problem 1): комментарий. _formatNode
+                   для nodeType === 8 умеет печатать <!--...-->. */
+                childCmp.push(c);
             }
         }
 
@@ -1419,6 +1523,7 @@
             return pad + norm + '\n';
         }
         if (node.nodeType === 8) {
+            /* FIX (problem 1): печатаем HTML-комментарий. */
             return pad + '<!--' + node.nodeValue + '-->\n';
         }
         if (node.nodeType !== 1) return '';
@@ -1481,6 +1586,10 @@
                 if (c.nodeValue == null || c.nodeValue.trim() === '') continue;
                 if (/<!\[CDATA\[/.test(c.nodeValue)) continue;
                 children.push(c);
+            } else if (c.nodeType === 8) {
+                /* FIX (problem 1): комментарии внутри обычных
+                   HTML-элементов тоже сохраняем. */
+                children.push(c);
             }
         }
 
@@ -1509,8 +1618,11 @@
         for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
             var tag = k.tagName.toLowerCase();
-            if (this._rootType === 'cmpForm' && tag === 'cmpform') return k;
-            if (this._rootType === 'div' && tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
+            var wbTag = k.getAttribute && k.getAttribute('data-wb-tag');
+            if (this._rootType === 'cmpForm' &&
+                (tag === 'cmpform' || wbTag === 'cmpForm')) return k;
+            if (this._rootType === 'div' &&
+                tag === 'div' && k.getAttribute('data-wb-root') === '1') return k;
         }
         return null;
     };
