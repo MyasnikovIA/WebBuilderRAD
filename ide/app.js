@@ -108,6 +108,7 @@
         var CMP_TAGS = {
             'cmpaction':      'cmpAction',
             'cmpactionvar':   'cmpActionVar',
+            'cmpcomment':     'cmpComment',
             'cmpdataset':     'cmpDataSet',
             'cmpfilter':     'cmpFilter',
             'cmpinfobox': 'cmpInfoBox',
@@ -197,7 +198,7 @@
             return allowed.indexOf(tag) >= 0;
         }
 
-        /* FIX: развёртка self-closing cmp*-тегов.
+        /* Развёртка self-closing cmp*-тегов.
            HTML-парсер игнорирует '/>' у нестандартных элементов,
            из-за чего соседние <cmpXxx/> вкладываются друг в друга
            при разборе текста в editHtml. Разворачиваем ВСЕ cmp*-теги;
@@ -491,7 +492,7 @@
                     .replace(/<!\[CDATA\[/g, SENT_O)
                     .replace(/\]\]>/g, SENT_C);
 
-                /* FIX: та же развёртка, что и в Canvas.loadHtml —
+                /* Та же развёртка, что и в Canvas.loadHtml —
                    иначе HTML-парсер вложит соседние self-closing
                    cmp*-теги друг в друга. */
                 prepared = expandSelfClosingCmpTags(prepared);

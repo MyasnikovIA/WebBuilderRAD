@@ -235,6 +235,14 @@
     DomTree.prototype._label = function (el) {
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');
         var tag = custom || el.tagName.toLowerCase();
+
+        /* Комментарий показываем как <!-- text -->. */
+        if (tag === 'cmpComment') {
+            var ctext = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (ctext.length > 60) ctext = ctext.substr(0, 60) + '…';
+            return '<!-- ' + ctext + ' -->';
+        }
+
         var extra = '';
 
         if (tag === 'meta') {

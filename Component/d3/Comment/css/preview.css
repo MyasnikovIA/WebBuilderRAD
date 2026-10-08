@@ -1,16 +1,33 @@
-/* Превью cmpComment.
-   Элемент скрыт в canvas правилом ide-style (см. canvas.js), поэтому
-   этот файл — задел на будущее (если понадобится показывать комментарий
-   плашкой). Сейчас не влияет ни на что. */
+/* Превью cmpComment — компактный ярлык <!-- … --> в canvas.
+   Подключается в iframe автоматически через D3.register({ previewCss }).
+   В финальный HTML не попадает. */
+
+/* Сброс IDE-рамки, которую [data-wb-preview] навешивает по умолчанию.
+   Селектор специфичнее ([class][attr] = 0,2,0 vs [attr] = 0,1,0). */
+.d3-preview-comment[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+}
 
 .d3-preview-comment {
-    font-family: Consolas, 'Courier New', monospace;
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: 'Consolas', 'Courier New', monospace;
     font-size: 11px;
-    color: #6a9955;
-    background: #f7faf7;
-    border-left: 3px solid #a5d6a7;
-    padding: 2px 6px;
-    white-space: pre-wrap;
-    word-break: break-word;
+    line-height: 1.4;
+    color: #546e7a;
+    background: #eceff1;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
     box-sizing: border-box;
 }

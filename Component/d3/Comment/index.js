@@ -1,75 +1,67 @@
 /* cmpComment — HTML-комментарий.
 
-   Серверный контрол: CommentCtrl.inc (class Comment).
-   В рантайме Show() оборачивает _showtext в <!-- ... -->,
-   поэтому в готовом HTML комментарий выглядит как обычный <!-- text -->.
+   В DOM представляется кастомным тегом <cmpcomment> с атрибутом
+   data-wb-tag="cmpComment". В дереве IDE отображается как
+   <!-- text -->. При сохранении сериализуется в реальный HTML-
+   комментарий <!-- text -->. При загрузке HTML с комментариями
+   (nodeType === 8) ядро автоматически заменяет их на <cmpcomment>
+   (см. Canvas.loadHtml, шаг 5.5).
 
-   В IDE: элемент невидим в canvas (как и в браузере), но доступен в дереве
-   и в инспекторе. Текст хранится как простой текстовый узел. */
+   Свойства:
+     text — содержимое комментария.
+
+   Категория: HTML (в палитре — в блоке HTML).
+
+   Регистрация через D3.register — ради автоматического разрешения
+   относительных путей previewCss/icon относительно папки компонента. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
-    var CS = global.CommonSchema;
 
-    /* Текст комментария — единственный прямой текстовый ребёнок.
-       Служебные узлы (data-wb-preview) пропускаем. */
+    /* Читаем текст комментария. */
     function getText(el) {
-        var out = '';
-        var kids = el.childNodes;
-        for (var i = 0; i < kids.length; i++) {
-            var n = kids[i];
-            if (n.nodeType === 3) out += n.nodeValue;
-        }
-        return out;
+        return el.textContent || '';
     }
 
-    function setText(el, text) {
-        var kids = el.childNodes;
-        for (var i = kids.length - 1; i >= 0; i--) {
-            if (kids[i].nodeType === 3) el.removeChild(kids[i]);
+    /* Записываем текст: удаляем все текстовые узлы и вставляем один. */
+    function setText(el, v) {
+        var doc = el.ownerDocument;
+        for (var i = el.childNodes.length - 1; i >= 0; i--) {
+            var c = el.childNodes[i];
+            if (c.nodeType === 3) el.removeChild(c);
         }
-        var v = (text == null) ? '' : String(text);
-        /* Недопустимо иметь "--" внутри HTML-комментария. */
-        v = v.replace(/--/g, '- -');
-        el.insertBefore(el.ownerDocument.createTextNode(v), el.firstChild);
+        el.insertBefore(doc.createTextNode(v == null ? '' : String(v)),
+            el.firstChild);
     }
 
     D3.register({
-        id: 'd3.comment', tagName: 'cmpComment', caption: 'Comment',
+        id: 'html.comment',
+        tagName: 'cmpComment',
+        caption: 'Comment',
+        category: 'HTML',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],
-        attrs: { name: '' },
+        attrs: {},
 
-        /* Невидим в canvas — как и в браузере. Пользователь работает
-           с ним через дерево и инспектор. */
         create: function (doc) {
             var el = doc.createElement('cmpcomment');
             el.setAttribute('data-wb-tag', 'cmpComment');
-            el.setAttribute('name', '');
             el.appendChild(doc.createTextNode('Комментарий'));
             return el;
         },
 
-        /* Превью не нужно: элемент скрыт стилем IDE. */
+        /* Превью не нужно: компонент невидим в canvas (display: none из ide-style), виден только в дереве Structure. */
         preview: null,
 
         /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
-            { type: 'separator', caption: 'HTML attributes' },
-            { name: 'id',    caption: 'Id',    type: 'string', attr: true },
-            { name: 'class', caption: 'Class', type: 'string', attr: true },
-            { name: 'style', caption: 'Style', type: 'string', attr: true },
-
-            /* --- Comment --- */
             { type: 'separator', caption: 'Comment' },
-            { name: 'name', caption: 'Name', type: 'string', attr: true },
             {
                 name: 'text',
                 caption: 'Text',
-                type: 'code',
-                get: function (el) { return getText(el); },
-                set: function (el, v) { setText(el, v); }
+                type: 'text',
+                get: getText,
+                set: setText
             }
         ],
 
@@ -77,7 +69,7 @@
         events: [],
 
         /* ---------------- Styles ---------------- */
-        styles: CS.STYLE_FIELDS.slice()
+        styles: []
     });
 
 })(window);

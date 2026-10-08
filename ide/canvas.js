@@ -36,7 +36,7 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* FIX (problem 1): развёртка self-closing cmp*-тегов.
+    /* FIX: развёртка self-closing cmp*-тегов.
        HTML-парсер игнорирует '/>' у нестандартных элементов,
        из-за чего соседние <cmpXxx/> вкладываются друг в друга.
        Разворачиваем ВСЕ cmp*-теги; обратное «уплотнение» делает
@@ -56,6 +56,7 @@
     var CMP_TAGS = {
         'cmpaction':      'cmpAction',
         'cmpactionvar':   'cmpActionVar',
+        'cmpcomment':     'cmpComment',
         'cmpdataset':     'cmpDataSet',
         'cmpdatasetvar':  'cmpDataSetVar',
         'cmpscript':      'cmpScript',
@@ -130,7 +131,7 @@
         'cmpcheckbox':    'cmpCheckBox'
     };
 
-    /* FIX (problem 2): маппинг runtime-атрибута cmptype → XML-тег.
+    /* Маппинг runtime-атрибута cmptype → XML-тег.
        Сервер рендерит D3-компоненты как <div cmptype="Form"> и т.п.
        При загрузке такого HTML IDE должна распознать эти элементы
        и повесить на них data-wb-tag, чтобы дальнейшая логика
@@ -209,12 +210,13 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
 
-            /* FIX (problem 2): корневой <div> с data-wb-tag="cmpForm"
-               тоже должен быть position: relative, как и настоящий
-               <cmpForm>. */
+            /* Корневые контейнеры — тоже position: relative,
+               чтобы left/top детей отсчитывались от их края, а не от body. */
             'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"] { position: relative; }' +
 
-            'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
+            /* cmpcomment намеренно НЕ в этом списке — комментарии
+               должны быть видны в canvas (через превью-узел). */
+            'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
@@ -371,9 +373,8 @@
 
     Canvas.prototype.getRootType = function () { return this._rootType; };
 
-    /* FIX (problem 2): распознаём корень-форму не только по тегу
-       <cmpform>, но и по data-wb-tag="cmpForm" (случай, когда
-       загрузили <div cmptype="Form"> и он был помечен как форма). */
+    /* Распознаём корень-форму не только по тегу <cmpform>,
+       но и по data-wb-tag="cmpForm". */
     Canvas.prototype.getRootContainer = function () {
         if (this._rootType === 'html') return this.getHtml();
         var body = this.getBody();
@@ -391,8 +392,7 @@
         return null;
     };
 
-    /* FIX (problem 2): та же логика, что и в getRootContainer —
-       определяем корень и по тегу, и по data-wb-tag. */
+    /* Определяем корень и по тегу, и по data-wb-tag. */
     Canvas.prototype._detectRootType = function () {
         var body = this.getBody();
         if (!body) return 'html';
@@ -407,9 +407,9 @@
         return 'html';
     };
 
-    /* FIX (problem 2): если корень нужного типа уже есть на верхнем
-       уровне body — переиспользуем его, доновешиваем недостающие
-       атрибуты. Иначе создаём новый wrapper как раньше. */
+    /* Если корень нужного типа уже есть на верхнем уровне body —
+       переиспользуем его, доновешиваем недостающие атрибуты.
+       Иначе создаём новый wrapper как раньше. */
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'div'].indexOf(type) < 0) return;
         if (type === this._rootType) return;
@@ -565,8 +565,8 @@
          3. Обёртка в шаблон, если это фрагмент.
          4. document.write.
          5. Плейсхолдеры → текстовые узлы, содержащие <![CDATA[...]]>.
-         6. Чистка service-узлов и классов, восстановление data-wb-tag
-            (в т.ч. из runtime-атрибута cmptype).
+         5.5. HTML-комментарии → <cmpcomment data-wb-tag="cmpComment">.
+         6. Чистка service-узлов и классов, восстановление data-wb-tag.
          7. Переинжект IDE-инфраструктуры, определение root type,
             отрисовка превью, переподписка MutationObserver.
        ============================================================ */
@@ -642,6 +642,32 @@
             })(doc.documentElement);
         }
 
+        /* 5.5. HTML-комментарии → <cmpcomment> элементы.
+           Нужно, чтобы комментарии отображались в дереве и могли
+           редактироваться через инспектор. Идём только по body —
+           комментарии в head оставляем как есть. */
+        var bodyEl = this.getBody();
+        if (bodyEl) {
+            var comments = [];
+            (function collect(node) {
+                for (var i = 0; i < node.childNodes.length; i++) {
+                    var cn = node.childNodes[i];
+                    if (cn.nodeType === 8) {
+                        comments.push(cn);
+                    } else if (cn.nodeType === 1) {
+                        collect(cn);
+                    }
+                }
+            })(bodyEl);
+            for (var ci = 0; ci < comments.length; ci++) {
+                var cNode = comments[ci];
+                var cEl = doc.createElement('cmpcomment');
+                cEl.setAttribute('data-wb-tag', 'cmpComment');
+                cEl.textContent = cNode.nodeValue || '';
+                cNode.parentNode.replaceChild(cEl, cNode);
+            }
+        }
+
         /* 6a. Служебные узлы (могли попасть из старого дампа). */
         var servs = doc.querySelectorAll('[data-wb-ide="1"], [data-wb-preview="1"]');
         for (var s = servs.length - 1; s >= 0; s--) {
@@ -649,8 +675,7 @@
             if (sn.parentNode) sn.parentNode.removeChild(sn);
         }
 
-        /* 6b. Восстановление data-wb-tag по camelCase-словарю
-               (в т.ч. из runtime-атрибута cmptype). */
+        /* 6b. Восстановление data-wb-tag (в т.ч. из runtime-атрибута cmptype). */
         this._restoreCmpTags(doc.documentElement);
 
         /* 6c. Снятие служебных классов. */
@@ -703,10 +728,8 @@
         }
     };
 
-    /* FIX (problem 2): если у элемента нет data-wb-tag, но есть
-       runtime-атрибут cmptype — мапим его на XML-тег из
-       RUNTIME_CMPTYPE_TO_TAG и ставим data-wb-tag. Это позволяет
-       IDE распознать <div cmptype="Form"> как корень формы. */
+    /* Восстановление data-wb-tag: сначала по тегу, потом по runtime-
+       атрибуту cmptype (для <div cmptype="Form"> и т.п.). */
     Canvas.prototype._restoreCmpTags = function (root) {
         if (!root || root.nodeType !== 1) return;
         var lower = root.tagName.toLowerCase();
@@ -1104,6 +1127,13 @@
         if (!el || el.nodeType !== 1) return;
         if (this.designMode) return;
 
+        /* Невидимые компоненты (display:none, напр. cmpComment) —
+           resize-handles вокруг них смысла не имеют. */
+        try {
+            var cs = this.getDoc().defaultView.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return;
+        } catch (e) {}
+
         var html = this.getHtml();
         var head = this.getHead();
         var body = this.getBody();
@@ -1361,8 +1391,8 @@
         return el.tagName.toLowerCase();
     };
 
-    /* FIX (problem 2): фильтруем runtime-атрибут cmptype (без data-),
-       чтобы он не попадал в XML при сохранении. */
+    /* Фильтруем runtime-атрибут cmptype (без data-), чтобы он не попадал
+       в XML при сохранении. */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
@@ -1370,7 +1400,7 @@
             var a = attrs[i];
             var name = a.name;
             if (name === 'data-cmptype') continue;
-            if (name === 'cmptype') continue;                    /* FIX */
+            if (name === 'cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
             if (name === 'data-wb-tag') continue;
@@ -1433,9 +1463,8 @@
         }
     };
 
-    /* FIX (problem 1): теперь собираем в childCmp ещё и комментарии
-       (nodeType === 8), чтобы _formatNode их распечатал. Раньше они
-       молча выпадали при сохранении <cmpForm>. */
+    /* Собираем в childCmp ещё и комментарии (nodeType === 8),
+       чтобы _formatNode их распечатал. */
     Canvas.prototype._formatCmpNode = function (node, level, xmlTag) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
@@ -1466,8 +1495,8 @@
                     childCmp.push(c);
                 }
             } else if (c.nodeType === 8) {
-                /* FIX (problem 1): комментарий. _formatNode
-                   для nodeType === 8 умеет печатать <!--...-->. */
+                /* Комментарий. _formatNode для nodeType === 8
+                   умеет печатать <!--...-->. */
                 childCmp.push(c);
             }
         }
@@ -1523,7 +1552,7 @@
             return pad + norm + '\n';
         }
         if (node.nodeType === 8) {
-            /* FIX (problem 1): печатаем HTML-комментарий. */
+            /* HTML-комментарий. */
             return pad + '<!--' + node.nodeValue + '-->\n';
         }
         if (node.nodeType !== 1) return '';
@@ -1587,8 +1616,7 @@
                 if (/<!\[CDATA\[/.test(c.nodeValue)) continue;
                 children.push(c);
             } else if (c.nodeType === 8) {
-                /* FIX (problem 1): комментарии внутри обычных
-                   HTML-элементов тоже сохраняем. */
+                /* Комментарии внутри обычных HTML-элементов. */
                 children.push(c);
             }
         }
@@ -1610,6 +1638,9 @@
         return out;
     };
 
+    /* Корень-форму ищем не только по тегу <cmpform>, но и по
+       data-wb-tag="cmpForm" — случай, когда загрузили
+       <div cmptype="Form"> и он был помечен как форма. */
     Canvas.prototype._findRootInClone = function (clone) {
         if (this._rootType === 'html') return null;
         var body = clone.querySelector('body');
