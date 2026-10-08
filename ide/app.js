@@ -197,6 +197,18 @@
             return allowed.indexOf(tag) >= 0;
         }
 
+        /* FIX: развёртка self-closing cmp*-тегов.
+           HTML-парсер игнорирует '/>' у нестандартных элементов,
+           из-за чего соседние <cmpXxx/> вкладываются друг в друга
+           при разборе текста в editHtml. Разворачиваем ВСЕ cmp*-теги;
+           обратное «уплотнение» делает _formatNode при сохранении. */
+        var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
+        function expandSelfClosingCmpTags(str) {
+            return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
+                return '<' + tag + (attrs || '') + '></' + tag + '>';
+            });
+        }
+
         /* Теги, содержимое которых — CDATA (SQL или JS). */
         var CDATA_TAGS = {
             cmpaction:       'sql',
@@ -478,6 +490,11 @@
                 var prepared = String(html)
                     .replace(/<!\[CDATA\[/g, SENT_O)
                     .replace(/\]\]>/g, SENT_C);
+
+                /* FIX: та же развёртка, что и в Canvas.loadHtml —
+                   иначе HTML-парсер вложит соседние self-closing
+                   cmp*-теги друг в друга. */
+                prepared = expandSelfClosingCmpTags(prepared);
 
                 var tmp = document.createElement('div');
                 tmp.innerHTML = prepared;

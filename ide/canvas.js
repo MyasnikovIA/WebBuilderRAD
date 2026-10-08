@@ -36,6 +36,18 @@
         'wb-image':1, cmptagitem:1
     };
 
+    /* FIX: развёртка self-closing cmp*-тегов.
+       HTML-парсер игнорирует '/>' у нестандартных элементов,
+       из-за чего соседние <cmpXxx/> вкладываются друг в друга.
+       Разворачиваем ВСЕ cmp*-теги (не только XML_SELF_CLOSE),
+       а обратное «уплотнение» делает _formatNode при сохранении. */
+    var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
+    function expandSelfClosingCmpTags(str) {
+        return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
+            return '<' + tag + (attrs || '') + '></' + tag + '>';
+        });
+    }
+
     /* Страховка для компонентов, у которых в D3.register забыли parentOnly. */
     var PARENT_FALLBACK = {
         cmpselectlistitem: 'cmpselectlist'
@@ -492,17 +504,12 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
-        /* 2. Самозакрывающиеся кастомные теги → явные open/close. */
-        prepared = prepared.replace(
-            /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g,
-            function (m, tag, attrs) {
-                var lower = String(tag).toLowerCase();
-                if (XML_SELF_CLOSE[lower]) {
-                    return '<' + tag + (attrs || '') + '></' + tag + '>';
-                }
-                return m;
-            }
-        );
+        /* 2. Самозакрывающиеся кастомные теги → явные open/close.
+              FIX: разворачиваем ВСЕ cmp*-теги, а не только те, что
+              в XML_SELF_CLOSE. HTML-парсер игнорирует '/>' у
+              нестандартных элементов, из-за чего соседние
+              <cmpXxx/> вкладываются друг в друга. */
+        prepared = expandSelfClosingCmpTags(prepared);
 
         /* 3. Обёртка в шаблон, если это фрагмент. */
         var isFullDoc = /<!DOCTYPE/i.test(prepared)
