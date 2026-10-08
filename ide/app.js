@@ -240,13 +240,11 @@
 
             /* ---------- Тема оформления ---------- */
 
-            /* Установить тему. Аргумент — 'light' | 'dark'. */
             setTheme: function (theme) {
                 if (theme !== 'light' && theme !== 'dark') theme = 'light';
                 document.documentElement.setAttribute('data-wb-theme', theme);
                 try { localStorage.setItem('wb.theme', theme); } catch (e) {}
 
-                /* Подсветка кода Highlight.js. */
                 var link = document.getElementById('wb-hljs-theme');
                 if (link) {
                     var href = (theme === 'dark')
@@ -268,7 +266,7 @@
                 App.setTheme(App.getTheme() === 'dark' ? 'light' : 'dark');
             },
 
-            /* ---------- Остальные команды ---------- */
+            /* ---------- HTML ---------- */
 
             new: function () {
                 if (!confirm('Очистить холст?')) return;
@@ -310,6 +308,26 @@
                     onOk: function () { try { ta.focus(); ta.select(); document.execCommand('copy'); } catch (e) {} }
                 });
             },
+
+            /* ---------- JSON ---------- */
+
+            saveJson: function () {
+                if (global.FormJSON) {
+                    global.FormJSON.save(canvas);
+                } else {
+                    alert('Модуль FormJSON не подключён.');
+                }
+            },
+
+            loadJson: function () {
+                if (global.FormJSON) {
+                    global.FormJSON.load(canvas);
+                } else {
+                    alert('Модуль FormJSON не подключён.');
+                }
+            },
+
+            /* ---------- Остальные команды ---------- */
 
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
