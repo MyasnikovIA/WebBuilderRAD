@@ -31,10 +31,6 @@
                     codeView.setActive(true);
                 } else {
                     codeView.setActive(false);
-                    /* Возвращаемся на Scene — перевыделяем элемент,
-                       который был отслежен в коде. Это нужно, чтобы
-                       resize-handles пересчитали свою позицию после
-                       того, как iframe снова стал видимым. */
                     var el = codeView.getCurrentElement();
                     if (el && canvas) {
                         setTimeout(function () { canvas.select(el); }, 0);
@@ -241,6 +237,38 @@
 
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
+
+            /* ---------- Тема оформления ---------- */
+
+            /* Установить тему. Аргумент — 'light' | 'dark'. */
+            setTheme: function (theme) {
+                if (theme !== 'light' && theme !== 'dark') theme = 'light';
+                document.documentElement.setAttribute('data-wb-theme', theme);
+                try { localStorage.setItem('wb.theme', theme); } catch (e) {}
+
+                /* Подсветка кода Highlight.js. */
+                var link = document.getElementById('wb-hljs-theme');
+                if (link) {
+                    var href = (theme === 'dark')
+                        ? 'lib/highlight/styles/dark.css'
+                        : 'lib/highlight/styles/default.css';
+                    if (link.getAttribute('href') !== href) {
+                        link.setAttribute('href', href);
+                    }
+                }
+
+                EventBus.emit('theme:changed', { theme: theme });
+            },
+
+            getTheme: function () {
+                return document.documentElement.getAttribute('data-wb-theme') || 'light';
+            },
+
+            toggleTheme: function () {
+                App.setTheme(App.getTheme() === 'dark' ? 'light' : 'dark');
+            },
+
+            /* ---------- Остальные команды ---------- */
 
             new: function () {
                 if (!confirm('Очистить холст?')) return;
@@ -533,5 +561,14 @@
         };
 
         global.App = App;
+
+        /* Применяем сохранённую тему на случай, если inline-скрипт в <head>
+           не выполнился (например, был отключён браузером). */
+        try {
+            var savedTheme = localStorage.getItem('wb.theme') || 'light';
+            App.setTheme(savedTheme);
+        } catch (e) {
+            App.setTheme('light');
+        }
     });
 })(window, jQuery);

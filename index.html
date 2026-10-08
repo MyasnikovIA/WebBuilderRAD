@@ -4,11 +4,26 @@
     <meta charset="UTF-8">
     <title>WebBuilder RAD — MiniUI edition</title>
 
+    <!-- Применяем сохранённую тему ДО загрузки CSS, чтобы не было FOUC. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('wb.theme') || 'light';
+                if (t !== 'dark') t = 'light';
+                document.documentElement.setAttribute('data-wb-theme', t);
+            } catch (e) {
+                document.documentElement.setAttribute('data-wb-theme', 'light');
+            }
+        })();
+    </script>
+
     <!-- CSS -->
     <link rel="stylesheet" href="css/app_ide.css">
-    <link rel="stylesheet" href="lib/highlight/styles/dark.css">
+    <link rel="stylesheet" href="lib/highlight/styles/dark.css" id="wb-hljs-theme">
     <link rel="stylesheet" href="lib/miniui/themes/default/miniui.css">
     <link rel="stylesheet" href="lib/miniui/themes/icons.css">
+    <!-- Тема — ПОСЛЕ app_ide.css и MiniUI: перекрывает хардкод цветов. -->
+    <link rel="stylesheet" href="css/theme.css">
 
     <!-- JS: jQuery + MiniUI -->
     <script src="lib/jquery-1.6.2.min.js"></script>
@@ -26,10 +41,9 @@
             <a class="mini-menubutton" plain="true" menu="#componentMenu">Component</a>
             <a class="mini-menubutton" plain="true" menu="#viewMenu">View</a>
             <span class="mini-separator"></span>
-            <a class="mini-button" iconCls="icon-save" onclick="App.cmd('save')">Save HTML</a>
-            <a class="mini-button" onclick="App.cmd('undo')" title="Ctrl+Z">Undo</a>
-            <a class="mini-button" onclick="App.cmd('redo')" title="Ctrl+Y">Redo</a>
             <a class="mini-button" onclick="App.cmd('designMode')" title="Toggle Design Mode">Design Mode</a>
+            <span class="mini-separator"></span>
+            <a class="mini-button" onclick="App.cmd('toggleTheme')" title="Toggle Theme">Theme</a>
         </div>
     </div>
 
@@ -127,6 +141,11 @@
 
 <ul id="viewMenu" class="mini-menu" style="display:none;">
     <li onclick="App.cmd('designMode')">Toggle Design Mode</li>
+    <li class="separator"></li>
+    <li onclick="App.setTheme('light')">Theme: Light</li>
+    <li onclick="App.setTheme('dark')">Theme: Dark</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('toggleTheme')">Toggle Theme</li>
 </ul>
 
 <!-- =========================================================

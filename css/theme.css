@@ -1,0 +1,509 @@
+/* =========================================================
+   WebBuilder RAD — тема оформления IDE.
+
+   Тема задаётся атрибутом data-wb-theme на <html>:
+     - "light" — светлая (по умолчанию)
+     - "dark"  — тёмная
+
+   Переключение — App.setTheme() в ide/app.js.
+   Выбор сохраняется в localStorage под ключом 'wb.theme'.
+
+   Этот файл подключается ПОСЛЕ css/app_ide.css и перекрывает
+   хардкод цветов через CSS-переменные и точечные правила
+   с !important там, где специфичность оригинальных правил
+   слишком высока.
+
+   ВАЖНО: iframe-холст (canvas) и превью D3-компонентов
+   НЕ затрагиваются — они имитируют реальный рантайм и должны
+   выглядеть одинаково в обеих темах.
+   ========================================================= */
+
+/* ============================================================
+   1. Переменные тем
+   ============================================================ */
+
+:root,
+[data-wb-theme="light"] {
+    --wb-bg:              #f0f0f0;
+    --wb-bg-2:            #808080;
+    --wb-panel-bg:        #f5f5f5;
+    --wb-panel-head-bg:   #dfe4e8;
+    --wb-toolbar-bg:      #e8e8e8;
+    --wb-text:            #1a1a1a;
+    --wb-text-muted:      #666666;
+    --wb-border:          #c0c0c0;
+    --wb-border-strong:   #909090;
+    --wb-input-bg:        #ffffff;
+    --wb-input-border:    #b0b0b0;
+    --wb-input-focus:     #1e88e5;
+    --wb-accent:          #1e88e5;
+    --wb-accent-hover:    #1565c0;
+    --wb-accent-text:     #ffffff;
+    --wb-selected-bg:     #cce4f7;
+    --wb-selected-text:   #0d47a1;
+    --wb-hover-bg:        #e8f0f8;
+    --wb-danger:          #c62828;
+    --wb-danger-bg:       #ffebee;
+    --wb-split:           #c0c0c0;
+    --wb-scroll-track:    #e8e8e8;
+    --wb-scroll-thumb:    #b0b0b0;
+    --wb-tab-bg:          #e0e5e9;
+    --wb-tab-active-bg:   #ffffff;
+    --wb-tab-active-text: #1a1a1a;
+    --wb-code-bg:         #ffffff;
+    --wb-code-text:       #333333;
+    --wb-shadow:          0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+[data-wb-theme="dark"] {
+    --wb-bg:              #1e1e1e;
+    --wb-bg-2:            #141414;
+    --wb-panel-bg:        #252526;
+    --wb-panel-head-bg:   #2d2d30;
+    --wb-toolbar-bg:      #2d2d30;
+    --wb-text:            #d4d4d4;
+    --wb-text-muted:      #858585;
+    --wb-border:          #3e3e42;
+    --wb-border-strong:   #555558;
+    --wb-input-bg:        #1e1e1e;
+    --wb-input-border:    #3e3e42;
+    --wb-input-focus:     #0e639c;
+    --wb-accent:          #0e639c;
+    --wb-accent-hover:    #1177bb;
+    --wb-accent-text:     #ffffff;
+    --wb-selected-bg:     #094771;
+    --wb-selected-text:   #ffffff;
+    --wb-hover-bg:        #2a2d2e;
+    --wb-danger:          #f48771;
+    --wb-danger-bg:       #3a1d1d;
+    --wb-split:           #3e3e42;
+    --wb-scroll-track:    #1e1e1e;
+    --wb-scroll-thumb:    #424242;
+    --wb-tab-bg:          #2d2d30;
+    --wb-tab-active-bg:   #1e1e1e;
+    --wb-tab-active-text: #ffffff;
+    --wb-code-bg:         #1e1e1e;
+    --wb-code-text:       #d4d4d4;
+    --wb-shadow:          0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================
+   2. Базовое
+   ============================================================ */
+
+html, body {
+    background: var(--wb-bg);
+    color: var(--wb-text);
+}
+
+#layout1 {
+    background: var(--wb-bg);
+}
+
+/* Центральная область (canvas / code) — чуть темнее фона. */
+#layout1 [region="center"] {
+    background: var(--wb-bg-2) !important;
+}
+
+/* Скроллбары (WebKit). */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--wb-scroll-track); }
+::-webkit-scrollbar-thumb {
+    background: var(--wb-scroll-thumb);
+    border-radius: 5px;
+    border: 2px solid var(--wb-scroll-track);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--wb-border-strong); }
+
+/* ============================================================
+   3. MiniUI: layout, splitter
+   ============================================================ */
+
+.mini-layout-split,
+.mini-layout-proxy {
+    background: var(--wb-split) !important;
+}
+.mini-layout-split {
+    border: 0 !important;
+}
+
+/* ============================================================
+   4. MiniUI: toolbar и кнопки
+   ============================================================ */
+
+.mini-toolbar {
+    background: var(--wb-toolbar-bg) !important;
+    border-color: var(--wb-border) !important;
+    color: var(--wb-text) !important;
+}
+
+.mini-toolbar .mini-separator {
+    background: var(--wb-border-strong) !important;
+    width: 1px !important;
+    height: 18px !important;
+    margin: 0 4px !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+}
+
+.mini-button,
+.mini-menubutton {
+    background-image: none !important;
+    background-color: var(--wb-input-bg) !important;
+    border: 1px solid var(--wb-input-border) !important;
+    color: var(--wb-text) !important;
+    border-radius: 3px !important;
+    box-sizing: border-box !important;
+}
+.mini-button:hover,
+.mini-menubutton:hover {
+    background-color: var(--wb-hover-bg) !important;
+    border-color: var(--wb-border-strong) !important;
+}
+.mini-button.mini-button-pressed,
+.mini-menubutton.mini-menubutton-pressed {
+    background-color: var(--wb-selected-bg) !important;
+    color: var(--wb-selected-text) !important;
+}
+.mini-button .mini-button-text,
+.mini-menubutton .mini-button-text {
+    color: inherit !important;
+}
+
+/* ============================================================
+   5. MiniUI: меню и контекстные меню
+   ============================================================ */
+
+.mini-menu,
+.mini-contextmenu {
+    background: var(--wb-panel-bg) !important;
+    border: 1px solid var(--wb-border) !important;
+    color: var(--wb-text) !important;
+    box-shadow: var(--wb-shadow) !important;
+    padding: 3px 0 !important;
+}
+.mini-menuitem,
+.mini-contextmenuitem {
+    color: var(--wb-text) !important;
+}
+.mini-menuitem-hover,
+.mini-contextmenuitem-hover {
+    background: var(--wb-selected-bg) !important;
+    color: var(--wb-selected-text) !important;
+}
+.mini-menuitem .mini-menuitem-text,
+.mini-contextmenuitem .mini-contextmenuitem-text {
+    color: inherit !important;
+}
+.mini-menu .separator,
+.mini-contextmenu .separator {
+    border-top: 1px solid var(--wb-border) !important;
+    background: transparent !important;
+}
+
+/* ============================================================
+   6. MiniUI: окно (модальные редакторы)
+   ============================================================ */
+
+.mini-window {
+    background: var(--wb-panel-bg) !important;
+    border: 1px solid var(--wb-border) !important;
+    box-shadow: var(--wb-shadow) !important;
+}
+.mini-window .mini-window-header {
+    background: var(--wb-panel-head-bg) !important;
+    color: var(--wb-text) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+}
+.mini-window .mini-window-header .mini-window-title {
+    color: var(--wb-text) !important;
+}
+.mini-window .mini-window-caption {
+    color: var(--wb-text) !important;
+}
+.mini-window .mini-window-body,
+.mini-window .mini-panel-border {
+    background: var(--wb-panel-bg) !important;
+    color: var(--wb-text) !important;
+}
+.mini-window .mini-window-footer,
+.mini-window .mini-toolbar {
+    background: var(--wb-panel-head-bg) !important;
+    border-color: var(--wb-border) !important;
+}
+
+.mini-mask,
+.mini-modal {
+    background-color: rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ============================================================
+   7. Панели IDE (.wb-panel и т.п.)
+   ============================================================ */
+
+.wb-panel {
+    background: var(--wb-panel-bg) !important;
+    color: var(--wb-text) !important;
+}
+
+.wb-panel-head {
+    background: var(--wb-panel-head-bg) !important;
+    color: var(--wb-text) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+}
+.wb-panel-head span {
+    color: var(--wb-text) !important;
+}
+
+.wb-scroll {
+    background: var(--wb-panel-bg);
+    color: var(--wb-text);
+}
+
+/* ============================================================
+   8. Дерево (Structure) и палитра
+   ============================================================ */
+
+.wb-tree,
+.wb-tree-root {
+    background: transparent !important;
+    color: var(--wb-text) !important;
+}
+.wb-tree-label {
+    color: var(--wb-text) !important;
+}
+.wb-tree-label.wb-selected {
+    background: var(--wb-selected-bg) !important;
+    color: var(--wb-selected-text) !important;
+}
+.wb-tree-label.wb-hover:not(.wb-selected) {
+    background: var(--wb-hover-bg) !important;
+}
+.wb-tree-label.wb-invisible {
+    color: var(--wb-text-muted) !important;
+    font-style: italic;
+}
+.wb-cat-label {
+    color: var(--wb-text) !important;
+    font-weight: bold;
+}
+.wb-comp-label {
+    color: var(--wb-text) !important;
+}
+.wb-comp-label.wb-active,
+.wb-palette-btn.wb-active {
+    background: var(--wb-selected-bg) !important;
+    color: var(--wb-selected-text) !important;
+}
+.wb-toggle {
+    color: var(--wb-text-muted) !important;
+}
+.wb-toggle.wb-leaf {
+    color: transparent !important;
+}
+
+.wb-tree-label.wb-dragging {
+    opacity: 0.5;
+}
+.wb-tree-label.wb-drop-before  { box-shadow: inset 0  2px 0 0 var(--wb-accent) !important; }
+.wb-tree-label.wb-drop-after   { box-shadow: inset 0 -2px 0 0 var(--wb-accent) !important; }
+.wb-tree-label.wb-drop-inside  { background: var(--wb-selected-bg) !important; }
+.wb-tree-label.wb-drop-forbidden { background: var(--wb-danger-bg) !important; }
+
+.wb-palette-icon {
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+/* ============================================================
+   9. Inspector
+   ============================================================ */
+
+.wb-inspector-tabs {
+    background: var(--wb-panel-head-bg) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+}
+.wb-itab {
+    color: var(--wb-text-muted) !important;
+    background: transparent !important;
+}
+.wb-itab.wb-active {
+    color: var(--wb-text) !important;
+    background: var(--wb-panel-bg) !important;
+    border-bottom: 2px solid var(--wb-accent) !important;
+}
+.wb-inspector-body {
+    background: var(--wb-panel-bg) !important;
+    color: var(--wb-text) !important;
+}
+.wb-itab-pane {
+    background: var(--wb-panel-bg);
+    color: var(--wb-text);
+}
+
+.wb-row {
+    color: var(--wb-text) !important;
+}
+.wb-row-name {
+    color: var(--wb-text) !important;
+}
+.wb-row-value {
+    color: var(--wb-text) !important;
+}
+.wb-row-separator {
+    color: var(--wb-text-muted) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+    background: var(--wb-panel-head-bg) !important;
+}
+.wb-empty {
+    color: var(--wb-text-muted) !important;
+}
+
+/* Кнопка удаления атрибута. */
+.wb-row-del {
+    color: var(--wb-danger) !important;
+    background: var(--wb-input-bg) !important;
+    border: 1px solid var(--wb-input-border) !important;
+}
+.wb-row-del:hover {
+    background: var(--wb-danger-bg) !important;
+    border-color: var(--wb-danger) !important;
+}
+
+/* Инпуты внутри инспектора. */
+.wb-itab-pane input[type="text"],
+.wb-itab-pane input[type="number"],
+.wb-itab-pane input[type="color"],
+.wb-itab-pane select,
+.wb-itab-pane textarea,
+.wb-row-value input[type="text"],
+.wb-row-value input[type="number"],
+.wb-row-value select,
+.wb-row-value textarea {
+    background: var(--wb-input-bg) !important;
+    color: var(--wb-text) !important;
+    border: 1px solid var(--wb-input-border) !important;
+    border-radius: 2px !important;
+    box-sizing: border-box !important;
+}
+.wb-itab-pane input:focus,
+.wb-itab-pane select:focus,
+.wb-itab-pane textarea:focus,
+.wb-row-value input:focus,
+.wb-row-value select:focus,
+.wb-row-value textarea:focus {
+    border-color: var(--wb-input-focus) !important;
+    outline: none !important;
+}
+
+/* ============================================================
+   10. Events: input + select
+   ============================================================ */
+
+.wb-event-row {
+    color: var(--wb-text) !important;
+}
+.wb-event-input {
+    background: var(--wb-input-bg) !important;
+    color: var(--wb-text) !important;
+    border: 1px solid var(--wb-input-border) !important;
+}
+.wb-event-select {
+    background: var(--wb-input-bg) !important;
+    color: var(--wb-text) !important;
+    border: 1px solid var(--wb-input-border) !important;
+}
+
+/* ============================================================
+   11. Кнопки-редакторы кода (.wb-code-btn)
+   ============================================================ */
+
+.wb-code-btn {
+    background: var(--wb-input-bg) !important;
+    color: var(--wb-text) !important;
+    border: 1px solid var(--wb-input-border) !important;
+    border-radius: 3px !important;
+}
+.wb-code-btn:hover {
+    background: var(--wb-hover-bg) !important;
+    border-color: var(--wb-border-strong) !important;
+}
+
+/* ============================================================
+   12. Редактор кода (CodeEditor)
+   ============================================================ */
+
+.wb-code-wrap,
+.wb-code-wrap pre,
+.wb-code-wrap code,
+.wb-code-wrap textarea,
+.wb-code-hl,
+.wb-code-hl-inner,
+.wb-code-ta {
+    background: var(--wb-code-bg) !important;
+    color: var(--wb-code-text) !important;
+}
+.wb-code-wrap {
+    border: 1px solid var(--wb-border) !important;
+}
+.wb-code-wrap textarea {
+    caret-color: var(--wb-code-text) !important;
+}
+
+/* ============================================================
+   13. CodeView (вкладка Code)
+   ============================================================ */
+
+.wb-code-view {
+    background: var(--wb-code-bg) !important;
+    color: var(--wb-code-text) !important;
+}
+.wb-code-view-toolbar {
+    background: var(--wb-panel-head-bg) !important;
+    color: var(--wb-text) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+}
+.wb-code-view-editor {
+    background: var(--wb-code-bg) !important;
+}
+.wb-code-view-status {
+    color: var(--wb-text-muted) !important;
+}
+
+/* ============================================================
+   14. Центральные табы Scene / Code
+   ============================================================ */
+
+#wb-center-tabs {
+    background: var(--wb-panel-head-bg) !important;
+    border-bottom: 1px solid var(--wb-border) !important;
+}
+.wb-center-tab {
+    background: var(--wb-tab-bg) !important;
+    color: var(--wb-text-muted) !important;
+    border: 1px solid var(--wb-border) !important;
+    border-bottom: 0 !important;
+}
+.wb-center-tab:hover {
+    color: var(--wb-text) !important;
+}
+.wb-center-tab.wb-active {
+    background: var(--wb-tab-active-bg) !important;
+    color: var(--wb-tab-active-text) !important;
+}
+
+/* ============================================================
+   15. Модальное содержимое (.wb-code-editor и др.)
+   ============================================================ */
+
+.wb-code-editor {
+    background: var(--wb-code-bg) !important;
+    color: var(--wb-code-text) !important;
+    border: 1px solid var(--wb-border) !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: 200px !important;
+    font-family: 'Consolas', 'Courier New', monospace !important;
+    font-size: 12px !important;
+    padding: 6px !important;
+}
