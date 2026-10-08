@@ -1,0 +1,22 @@
+/* LayoutRow / LayoutCell — как tr / td. */
+cmpLayout > cmpLayoutRow,
+cmpLayout > tbody > cmpLayoutRow {
+    display: table-row;
+}
+
+cmpLayout > cmpLayoutRow > cmpLayoutCell,
+cmpLayout > tbody > cmpLayoutRow > cmpLayoutCell {
+    display: table-cell;
+    padding: 4px 10px;
+    vertical-align: top;
+    box-sizing: border-box;
+    border: 1px dotted #e0e0e0;
+}
+
+/* Пустая LayoutRow не должна «пропадать» — даём минимальную высоту
+   через псевдоячейку. */
+cmpLayout > cmpLayoutRow:empty::before {
+    content: '';
+    display: table-cell;
+    min-height: 20px;
+}

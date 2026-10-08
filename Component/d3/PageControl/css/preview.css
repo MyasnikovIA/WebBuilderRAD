@@ -1,0 +1,177 @@
+/* Превью cmpPageControl — соответствует .ctrl_pageControl / PageControl.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+cmpPageControl {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 200px;
+    min-height: 100px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+}
+
+cmpPageControl[visible="false"] { display: none; }
+cmpPageControl[enabled="false"] { opacity: 0.75; }
+
+/* Скрываем детей — TabSheet видны только в дереве. */
+cmpPageControl > cmpTabSheet {
+    display: none !important;
+}
+
+/* Сброс IDE-рамки на preview-узле. */
+cmpPageControl > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    position: static !important;
+    display: block !important;
+}
+
+/* ---------- Обёртка превью ---------- */
+.d3-preview-pagecontrol {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-height: 100px;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.d3-preview-pagecontrol-nobg {
+    border-bottom: 0;
+}
+
+/* ---------- Горизонтальный режим ---------- */
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 6px 8px 0;
+    background: #f5f7f9;
+    border-bottom: 2px solid #5C98BB;
+    min-height: 30px;
+    box-sizing: border-box;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-tab {
+    display: inline-block;
+    padding: 4px 12px 5px;
+    font-size: 12px;
+    color: #0066CC;
+    cursor: pointer;
+    border-bottom: 5px solid #DDDDDD;
+    border-radius: 2px 2px 0 0;
+    background: transparent;
+    user-select: none;
+    -moz-user-select: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-tab:hover {
+    border-bottom-color: #0066CC;
+}
+
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-tab.active {
+    color: #000;
+    border-bottom-color: #000;
+    background: #fff;
+}
+
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-tab.disabled {
+    color: #C5C5C5;
+    cursor: default;
+    border-bottom-color: #DDDDDD;
+}
+
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-tab-empty {
+    color: #90a4ae;
+    font-style: italic;
+    border-bottom: 0;
+    cursor: default;
+}
+
+/* ---------- Вертикальный режим ---------- */
+.d3-preview-pagecontrol-vertical {
+    flex-direction: row;
+}
+
+.d3-preview-pagecontrol-vertical .d3-preview-pagecontrol-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 4px;
+    background: #f5f7f9;
+    border-right: 1px solid #cfd8dc;
+    min-width: 120px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.d3-preview-pagecontrol-vertical .d3-preview-pagecontrol-tab {
+    display: block;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #0066CC;
+    cursor: pointer;
+    border-left: 5px solid #DDDDDD;
+    background: transparent;
+    user-select: none;
+    -moz-user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+    border-radius: 0 2px 2px 0;
+}
+
+.d3-preview-pagecontrol-vertical .d3-preview-pagecontrol-tab:hover {
+    border-left-color: #0066CC;
+}
+
+.d3-preview-pagecontrol-vertical .d3-preview-pagecontrol-tab.active {
+    color: #000;
+    border-left-color: #000;
+    background: #fff;
+}
+
+.d3-preview-pagecontrol-vertical .d3-preview-pagecontrol-tab.disabled {
+    color: #C5C5C5;
+    cursor: default;
+    border-left-color: #DDDDDD;
+}
+
+/* ---------- Тело (активная страница) ---------- */
+.d3-preview-pagecontrol-body {
+    flex: 1 1 auto;
+    padding: 12px;
+    min-height: 60px;
+    background: #fff;
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+.d3-preview-pagecontrol-placeholder {
+    display: inline-block;
+    color: #90a4ae;
+    font-style: italic;
+    font-size: 12px;
+    user-select: none;
+    -moz-user-select: none;
+    pointer-events: none;
+}
+
+/* Тонкая вертикальная линия-разделитель в горизонтальном режиме */
+.d3-preview-pagecontrol-horizontal .d3-preview-pagecontrol-body {
+    border-top: 1px solid #e0e0e0;
+}

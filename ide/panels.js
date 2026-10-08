@@ -16,10 +16,17 @@
         cmpsubactionvar: 'cmpsubaction',
         cmpdatasetvar:   'cmpdataset',
         cmpfetchvar:     'cmpfetch',
+        cmpmodulevar:    'cmpmodule',
         cmpcomboitem:    'cmpcombobox',
         cmpfilteritem:   'cmpfilter',
         cmpcolumn:       'cmpgrid',
         cmpgridfooter:   'cmpgrid',
+        cmptabsheet:     'cmppagecontrol',
+        cmplayoutrow:    'cmplayout',
+        cmpradioitem: 'cmpradiogroup',
+        cmplayoutcell:   'cmplayoutrow',
+        cmppopupitem:      ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
+        cmppopupgroupitem: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         cmptagitem:      'cmpbuttonedit'
     };
 

@@ -1,0 +1,39 @@
+/* Превью cmpLayoutCell — соответствует <td> внутри <tr> (LayoutRow).
+   Подключается в iframe через D3.register({ previewCss: [...] }). */
+
+cmpLayoutCell {
+    display: table-cell;
+    padding: 4px 10px;               /* как .ctrl_layout > tbody > tr > td */
+    vertical-align: top;
+    box-sizing: border-box;
+    border: 1px dotted #e0e0e0;      /* мягкая подсветка границ в IDE */
+    min-width: 40px;
+    min-height: 20px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    line-height: 1.4;
+}
+
+cmpLayoutCell[visible="false"] { display: none; }
+cmpLayoutCell[enabled="false"] { opacity: 0.75; }
+
+/* Placeholder для пустой ячейки. */
+.d3-preview-layoutcell-placeholder[data-wb-preview] {
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline !important;
+}
+
+.d3-preview-layoutcell-placeholder {
+    display: inline;
+    color: #90a4ae;
+    font-style: italic;
+    font-size: 11px;
+    user-select: none;
+    -moz-user-select: none;
+    pointer-events: none;
+}

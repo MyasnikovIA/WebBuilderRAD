@@ -1,0 +1,29 @@
+/* Превью cmpLayoutRow — соответствует <tr> внутри <table class="ctrl_layout">.
+   Подключается в iframe через D3.register({ previewCss: [...] }). */
+
+cmpLayoutRow {
+    display: table-row;
+    box-sizing: border-box;
+}
+
+cmpLayoutRow[visible="false"] { display: none; }
+cmpLayoutRow[enabled="false"] { opacity: 0.75; }
+
+/* Подсветка строки в IDE, чтобы её было видно даже без ячеек.
+   В рантайме строки рамки не имеют — это чисто визуальный маркер. */
+cmpLayoutRow:empty::before {
+    content: '';
+    display: table-cell;
+    min-height: 20px;
+    background: #fafbfc;
+    border: 1px dashed #cfd8dc;
+}
+
+/* Сброс IDE-рамки на случай, если строка окажется preview-узлом. */
+cmpLayoutRow[data-wb-preview] {
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}

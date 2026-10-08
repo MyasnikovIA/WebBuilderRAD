@@ -1,0 +1,142 @@
+/* Превью cmpPopupMenu — соответствует .popupMenu / PopupMenu.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме .popupMenu имеет position: fixed и display: none.
+   В IDE меняем на static + block, чтобы пользователь видел скелет. */
+
+cmpPopupMenu {
+    display: inline-block;
+    line-height: 0;
+    font-size: 0;
+    vertical-align: middle;
+}
+
+cmpPopupMenu[visible="false"] { display: none; }
+cmpPopupMenu[enabled="false"] { opacity: 0.7; }
+
+/* Скрываем дочерние PopupItem / PopupGroupItem — они видны только через
+   preview родителя. */
+cmpPopupMenu > cmpPopupItem,
+cmpPopupMenu > cmpPopupGroupItem {
+    display: none !important;
+}
+
+/* Сброс IDE-рамки. */
+cmpPopupMenu > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    position: static !important;
+    display: block !important;
+}
+
+/* ---------- Обёртка меню ---------- */
+.d3-preview-popupmenu {
+    display: inline-block;
+    min-width: 160px;
+    position: relative;
+    cursor: pointer;
+    background-color: #fff;
+    border: 1px solid rgb(165, 165, 165);
+    border-radius: 6px;
+    box-shadow: 0 3px 10px -1px rgba(0, 0, 0, 0.45);
+    padding: 5px 0;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 13px;
+    color: #222;
+    box-sizing: border-box;
+    line-height: 1.4;
+}
+
+/* ---------- Пункт ---------- */
+.d3-preview-popupitem {
+    position: relative;
+    padding: 4px 30px 4px 28px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+    -moz-user-select: none;
+    cursor: pointer;
+    min-height: 22px;
+    box-sizing: border-box;
+    line-height: 1.4;
+}
+
+.d3-preview-popupitem::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    background: #e0e0e0;
+    border: 1px solid #b0b0b0;
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.d3-preview-popupitem:hover {
+    background-color: #0081C2;
+    color: #fff;
+}
+
+.d3-preview-popupitem.disabled {
+    color: #999;
+    cursor: default;
+}
+
+.d3-preview-popupitem.disabled::before {
+    opacity: 0.5;
+}
+
+/* ---------- Разделитель ---------- */
+.d3-preview-popupitem-separator {
+    padding: 0;
+    height: 1px;
+    margin: 9px 1px;
+    border-top: 1px solid #E5E5E5;
+    min-height: 0;
+    cursor: default;
+    pointer-events: none;
+}
+
+.d3-preview-popupitem-separator::before {
+    display: none;
+}
+
+.d3-preview-popupitem-separator:hover {
+    background: transparent;
+}
+
+/* ---------- Пустое меню ---------- */
+.d3-preview-popupmenu-empty {
+    padding: 6px 14px;
+    color: #90a4ae;
+    font-style: italic;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* ---------- Бейдж «menu» ---------- */
+.d3-preview-popupmenu-badge {
+    position: absolute;
+    top: -8px;
+    right: 4px;
+    padding: 0 4px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 9px;
+    color: #90a4ae;
+    background: #fafbfc;
+    border: 1px dashed #cfd8dc;
+    border-radius: 2px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+    line-height: 12px;
+}

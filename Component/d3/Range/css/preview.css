@@ -1,0 +1,181 @@
+/* Превью cmpRange — соответствует .ctrl_range / Range.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+cmpRange {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpRange[visible="false"] { display: none; }
+cmpRange[enabled="false"] { opacity: 0.7; }
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+cmpRange > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-flex !important;
+}
+
+/* ---------- Обёртка пагинатора ---------- */
+.d3-preview-range {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0;
+    padding: 0;
+    height: 30px;
+    position: relative;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    line-height: 1;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+/* ---------- Кнопки ‹ › » ---------- */
+.d3-preview-range-btn {
+    display: inline-block;
+    width: 38px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid #DDDDDD;
+    border-left-width: 0;
+    background: #FFFFFF;
+    font-size: 14px;
+    color: #444;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+}
+
+.d3-preview-range-prior {
+    border-left-width: 1px;
+    border-radius: 4px 0 0 4px;
+}
+
+.d3-preview-range-next {
+    border-radius: 0 4px 4px 0;
+}
+
+.d3-preview-range-last {
+    border-left-width: 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.d3-preview-range-next:not(:has(+ .d3-preview-range-last)) {
+    border-radius: 0 4px 4px 0;
+}
+
+.d3-preview-range-btn:hover {
+    background-color: #F5F5F5;
+}
+
+/* ---------- Кнопки страниц ---------- */
+.d3-preview-range-pages {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.d3-preview-range-page {
+    display: inline-block;
+    min-width: 32px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    padding: 0 3px;
+    background-color: #FFFFFF;
+    border: 1px solid #DDDDDD;
+    border-left-width: 0;
+    cursor: pointer;
+    color: #333;
+    font-size: 12px;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+}
+
+.d3-preview-range-page:first-child {
+    border-left-width: 0;
+}
+
+.d3-preview-range-page:hover {
+    background-color: #F5F5F5;
+}
+
+.d3-preview-range-page.active {
+    color: #0088CC;
+    cursor: default;
+    background-color: #F5F5F5;
+}
+
+/* ---------- Навигация «по N записей, стр. X из Y» ---------- */
+.d3-preview-range-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 20px;
+    height: 28px;
+    line-height: 28px;
+    font-size: 12px;
+    color: #444;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.d3-preview-range-amount,
+.d3-preview-range-pageinfo {
+    display: inline-block;
+    padding: 0 10px;
+    height: 22px;
+    line-height: 22px;
+    background: linear-gradient(top, #F5F7F9, #E0E5E9);
+    background: -webkit-linear-gradient(top, #F5F7F9, #E0E5E9);
+    border: 1px solid #BBBBBB;
+    border-radius: 4px;
+    color: #333;
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 1px 0 #FFFFFF inset;
+    text-shadow: 0 1px 0 #FFFFFF;
+    vertical-align: middle;
+    box-sizing: border-box;
+    user-select: none;
+    -moz-user-select: none;
+}
+
+.d3-preview-range-amount:hover,
+.d3-preview-range-pageinfo:hover {
+    background: #E0E5E9;
+    border-color: #BBBBBB;
+}
+
+/* ---------- Бейдж «range» ---------- */
+.d3-preview-range-badge {
+    position: absolute;
+    top: -8px;
+    right: 2px;
+    padding: 0 4px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 9px;
+    color: #90a4ae;
+    background: #fafbfc;
+    border: 1px dashed #cfd8dc;
+    border-radius: 2px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+    line-height: 12px;
+}

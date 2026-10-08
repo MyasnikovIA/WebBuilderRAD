@@ -1,0 +1,121 @@
+/* Превью cmpRadioGroup — соответствует .ctrl_radiogroup / RadioGroup.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В рантайме .ctrl_radiogroup.gorizontal делает пункты inline-block.
+   По умолчанию (vertical) пункты идут блоками. */
+
+cmpRadioGroup {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpRadioGroup[visible="false"] { display: none; }
+cmpRadioGroup[enabled="false"] { opacity: 0.7; }
+
+/* Скрываем детей cmpRadioItem — они видны только через preview родителя. */
+cmpRadioGroup > cmpRadioItem {
+    display: none !important;
+}
+
+/* Сброс IDE-рамки. */
+cmpRadioGroup > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    position: static !important;
+    display: block !important;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-radiogroup {
+    display: inline-block;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    line-height: 1.4;
+    min-width: 80px;
+    vertical-align: top;
+}
+
+.d3-preview-radiogroup.readonly {
+    opacity: 0.85;
+}
+
+/* ---------- Пункт ---------- */
+.d3-preview-radioitem {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 1px 2px;
+    min-height: 20px;
+    line-height: 1.4;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+.d3-preview-radioitem input[type="radio"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #1e88e5;
+    flex: 0 0 auto;
+}
+
+.d3-preview-radioitem-caption {
+    display: inline-block;
+    line-height: 1.4;
+    color: #222;
+}
+
+.d3-preview-radioitem.disabled {
+    cursor: default;
+    color: #999;
+}
+.d3-preview-radioitem.disabled input[type="radio"] {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.d3-preview-radioitem.disabled .d3-preview-radioitem-caption {
+    color: #999;
+}
+
+/* ---------- Горизонтальный режим (mode="gorizontal") ---------- */
+.d3-preview-radiogroup-gorizontal {
+    display: inline-block;
+}
+.d3-preview-radiogroup-gorizontal .d3-preview-radioitem {
+    display: inline-flex;
+    margin-right: 12px;
+    vertical-align: middle;
+}
+.d3-preview-radiogroup-gorizontal .d3-preview-radioitem:last-child {
+    margin-right: 0;
+}
+
+/* ---------- Вертикальный режим (по умолчанию) ---------- */
+.d3-preview-radiogroup-vertical .d3-preview-radioitem {
+    display: flex;
+}
+
+/* ---------- Пустая группа ---------- */
+.d3-preview-radiogroup-empty {
+    display: inline-block;
+    padding: 2px 4px;
+    color: #90a4ae;
+    font-style: italic;
+    font-size: 12px;
+    line-height: 1.4;
+    user-select: none;
+    -moz-user-select: none;
+}

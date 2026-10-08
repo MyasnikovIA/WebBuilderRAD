@@ -1,0 +1,23 @@
+/* Превью cmpModuleVar.
+
+   ModuleVar в рантайме разворачивается в XML-тег <var …> внутри
+   родительского <cmpModule>. В IDE скрыт правилом ide-style (canvas.js). */
+
+.d3-preview-modulevar {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #4e342e;
+    background: #efebe9;
+    border: 1px dashed #bcaaa4;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-modulevar::before {
+    content: 'var ';
+    color: #8d6e63;
+    margin-right: 2px;
+}
