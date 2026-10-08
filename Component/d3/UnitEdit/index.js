@@ -146,6 +146,7 @@
     D3.register({
         id: 'd3.unitedit', tagName: 'cmpUnitEdit', caption: 'UnitEdit',
         icon: 'images/icon.png',
+        nameTemplate: 'unitEdit',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

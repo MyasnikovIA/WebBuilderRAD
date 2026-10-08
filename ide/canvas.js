@@ -6,7 +6,8 @@
      - перемещать выделенный элемент за центральный move-handle
        (или перетаскиванием за тело — для обычных HTML-тегов);
      - выделять и тащить как D3-компоненты, так и обычные HTML-теги;
-     - загружать готовый HTML (loadHtml) — с сохранением CDATA и data-wb-tag.
+     - загружать готовый HTML (loadHtml) — с сохранением CDATA и data-wb-tag;
+     - присваивать создаваемому компоненту имя по шаблону `nameTemplate`.
 
    Координаты left/top считаются ОТНОСИТЕЛЬНО offsetParent
    (ближайшего позиционированного контейнера), а не <body>.
@@ -37,16 +38,45 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* Развёртка self-closing cmp*-тегов.
-       HTML-парсер игнорирует '/>' у нестандартных элементов,
-       из-за чего соседние <cmpXxx/> вкладываются друг в друга.
-       Разворачиваем ВСЕ cmp*-теги; обратное «уплотнение» делает
-       _formatNode при сохранении. */
+    /* Развёртка self-closing cmp*-тегов. */
     var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
     function expandSelfClosingCmpTags(str) {
         return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
             return '<' + tag + (attrs || '') + '></' + tag + '>';
         });
+    }
+
+    /* ============================================================
+       Генерация имени компонента по шаблону.
+
+       Если у компонента задана опция nameTemplate — при создании
+       ему присваивается имя вида <nameTemplate><N>, где N — следующий
+       порядковый номер. Учитываются только элементы того же тега,
+       у которых name уже соответствует шаблону.
+
+       Пример:
+         nameTemplate: 'Button'
+         Существующие: Button1, Button3
+         Новый:        Button4   (max(1,3)+1)
+       ============================================================ */
+    function generateComponentName(doc, tagName, nameTemplate) {
+        if (!doc || !nameTemplate) return '';
+        var tagLower = String(tagName).toLowerCase();
+        var esc = String(nameTemplate).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('^' + esc + '(\\d+)$');
+
+        var maxN = 0;
+        var all = doc.getElementsByTagName(tagLower);
+        for (var i = 0; i < all.length; i++) {
+            var nm = all[i].getAttribute && all[i].getAttribute('name');
+            if (!nm) continue;
+            var m = nm.match(re);
+            if (m) {
+                var n = parseInt(m[1], 10);
+                if (!isNaN(n) && n > maxN) maxN = n;
+            }
+        }
+        return nameTemplate + (maxN + 1);
     }
 
     /* Страховка для компонентов, у которых в D3.register забыли parentOnly. */
@@ -132,8 +162,7 @@
         'cmpcheckbox':    'cmpCheckBox'
     };
 
-    /* Маппинг runtime-атрибута cmptype → XML-тег.
-       Сервер рендерит D3-компоненты как <div cmptype="Form"> и т.п. */
+    /* Маппинг runtime-атрибута cmptype → XML-тег. */
     var RUNTIME_CMPTYPE_TO_TAG = {
         'Form':         'cmpform',
         'SubForm':      'cmpsubform',
@@ -192,7 +221,6 @@
             '</html>';
     };
 
-    /* Стили и правила IDE внутри iframe. */
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         if (!doc) return;
@@ -207,8 +235,6 @@
 
             'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"] { position: relative; }' +
 
-            /* Невидимые компоненты. cmpComment здесь — комментарий
-               доступен только в дереве, не на сцене. */
             'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmppopupmenu, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
@@ -237,7 +263,6 @@
             '}' +
             '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }' +
 
-            /* Центральный move-handle — крупнее, круглый, курсор move. */
             '.wb-move-handle {' +
             '  width: 16px !important; height: 16px !important;' +
             '  background: #1e88e5 !important;' +
@@ -551,19 +576,6 @@
         }, 0);
     };
 
-    /* ============================================================
-       Загрузка готового HTML.
-
-       Порядок:
-         1. CDATA-блоки → плейсхолдеры.
-         2. <cmpXxx .../> → <cmpXxx ...></cmpXxx>.
-         3. Обёртка в шаблон, если это фрагмент.
-         4. document.write.
-         5. Плейсхолдеры → текстовые узлы с <![CDATA[...]]>.
-         5.5. HTML-комментарии → <cmpcomment data-wb-tag="cmpComment">.
-         6. Чистка service-узлов и классов, восстановление data-wb-tag.
-         7. Переинжект IDE-инфраструктуры, root type, превью.
-       ============================================================ */
     Canvas.prototype.loadHtml = function (html) {
         var self = this;
         var doc = this.getDoc();
@@ -572,7 +584,6 @@
         var str = String(html == null ? '' : html);
         if (!str.replace(/\s+/g, '')) return;
 
-        /* 1. Вырезаем CDATA в массив, оставляя плейсхолдеры. */
         var cdataStore = [];
         var prepared = str.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, function (m, body) {
             var idx = cdataStore.length;
@@ -580,10 +591,8 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
-        /* 2. Разворачиваем self-closing cmp*-теги. */
         prepared = expandSelfClosingCmpTags(prepared);
 
-        /* 3. Обёртка в шаблон, если это фрагмент. */
         var isFullDoc = /<!DOCTYPE/i.test(prepared)
             || /<html[\s>]/i.test(prepared)
             || /<body[\s>]/i.test(prepared);
@@ -593,12 +602,10 @@
 
         this._removeResizeHandles();
 
-        /* 4. Пишем в iframe. */
         doc.open();
         doc.write(prepared);
         doc.close();
 
-        /* 5. Плейсхолдеры CDATA → текстовые узлы с <![CDATA[...]]>. */
         if (cdataStore.length) {
             var re = new RegExp('\u0001WB_CDATA_PH_(\\d+)_\u0001', 'g');
             (function walk(n) {
@@ -636,7 +643,6 @@
             })(doc.documentElement);
         }
 
-        /* 5.5. HTML-комментарии → <cmpcomment> элементы. */
         var bodyEl = this.getBody();
         if (bodyEl) {
             var comments = [];
@@ -659,17 +665,14 @@
             }
         }
 
-        /* 6a. Служебные узлы (могли попасть из старого дампа). */
         var servs = doc.querySelectorAll('[data-wb-ide="1"], [data-wb-preview="1"]');
         for (var s = servs.length - 1; s >= 0; s--) {
             var sn = servs[s];
             if (sn.parentNode) sn.parentNode.removeChild(sn);
         }
 
-        /* 6b. Восстановление data-wb-tag (в т.ч. из runtime-атрибута cmptype). */
         this._restoreCmpTags(doc.documentElement);
 
-        /* 6c. Снятие служебных классов. */
         (function strip(node) {
             if (!node || node.nodeType !== 1) return;
             self._stripServiceClasses(node);
@@ -677,7 +680,6 @@
             for (var i = 0; i < kids.length; i++) strip(kids[i]);
         })(doc.documentElement);
 
-        /* 7. Переинжект IDE-инфраструктуры. */
         this._injectIdeStyle();
         this._injectComponentAssets();
 
@@ -688,7 +690,6 @@
         this._handlesPending = false;
         $(this.iframe).removeClass('wb-design-mode');
 
-        /* 8. Рисуем превью всех D3-компонентов. */
         var body = this.getBody();
         if (body) this._renderAllPreviews(body);
 
@@ -820,7 +821,6 @@
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
-            /* Клик по resize/move handle — обрабатывается самим handle'ом. */
             if (e.target && e.target.classList &&
                 e.target.classList.contains('wb-resize-handle')) {
                 return;
@@ -884,9 +884,6 @@
             e.preventDefault();
         });
 
-        /* В design-time глушим click-события, чтобы не срабатывали
-           onclick="…" атрибуты компонентов (например, у cmpButton).
-           Выделение и перемещение работают через mousedown/mousemove. */
         doc.addEventListener('click', function (e) {
             if (self.designMode) return;
             e.preventDefault();
@@ -965,6 +962,15 @@
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
         if (def.xmlTag)  el.setAttribute('data-wb-tag', def.xmlTag);
+
+        /* FIX (nameTemplate): если у компонента задана опция nameTemplate —
+           присваиваем создаваемому элементу имя вида <template><N>,
+           где N — следующий порядковый номер. Если опция не задана —
+           ничего не присваиваем. */
+        if (def.nameTemplate) {
+            var newName = generateComponentName(doc, def.tagName, def.nameTemplate);
+            if (newName) el.setAttribute('name', newName);
+        }
 
         var parentOnly = def.parentOnly;
         if (!parentOnly && def.tagName) {
@@ -1126,8 +1132,6 @@
         if (!el || el.nodeType !== 1) return;
         if (this.designMode) return;
 
-        /* Невидимые компоненты (display:none, напр. cmpComment) —
-           resize-handles вокруг них смысла не имеют. */
         try {
             var cs = this.getDoc().defaultView.getComputedStyle(el);
             if (cs.display === 'none' || cs.visibility === 'hidden') return;
@@ -1163,8 +1167,6 @@
             })(RESIZE_DIRS[i]);
         }
 
-        /* Центральный move-handle: за него можно тянуть элемент,
-           не задевая его собственные onclick-обработчики. */
         (function () {
             var m = doc.createElement('div');
             m.className = 'wb-resize-handle wb-move-handle';
@@ -1401,8 +1403,6 @@
         });
     };
 
-    /* Перемещение за центральный move-handle. Слушатель навешен на
-       самом handle, а не на элементе — клики по кнопке не задеваются. */
     Canvas.prototype._startMoveFromHandle = function (e) {
         var el = this.getSelected();
         if (!el || el.nodeType !== 1) return;
@@ -1733,5 +1733,7 @@
     };
 
     Canvas.CMP_TAGS = CMP_TAGS;
+    Canvas.expandSelfClosingCmpTags = expandSelfClosingCmpTags;
+    Canvas.generateComponentName = generateComponentName;
     global.Canvas = Canvas;
 })(window);

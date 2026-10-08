@@ -40,6 +40,7 @@
         id: 'd3.popupitem', tagName: 'cmpPopupItem', caption: 'PopupItem',
         parentOnly: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         icon: 'images/icon.png',
+        nameTemplate: 'popupItem',
         attrs: { name: '', caption: '' },
 
         create: function (doc) {

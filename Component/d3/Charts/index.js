@@ -118,6 +118,7 @@
     D3.register({
         id: 'd3.charts', tagName: 'cmpCharts', caption: 'Charts',
         icon: 'images/icon.png',
+        nameTemplate: 'charts',
         previewCss: ['css/preview.css'],
         attrs: { type: 'bar', name: '' },
 

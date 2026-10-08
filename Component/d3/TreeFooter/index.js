@@ -15,6 +15,7 @@
         id: 'd3.treefooter', tagName: 'cmpTreeFooter', caption: 'TreeFooter',
         parentOnly: 'cmptree',
         icon: 'images/icon.png',
+        nameTemplate: 'treeFooter',
         previewCss: ['css/preview.css'],
         attrs: { separate: 'false' },
 

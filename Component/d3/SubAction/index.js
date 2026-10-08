@@ -10,6 +10,7 @@
     D3.register({
         id: 'd3.subaction', tagName: 'cmpSubAction', caption: 'SubAction',
         icon: 'images/icon.png',
+        nameTemplate: 'subAction',
         parentOnly: ['cmpaction', 'cmpsubaction'],
         attrs: { name: '', repeatername: '', execon: 'each' },
         cdata: 'begin\n  null;\nend;\n',

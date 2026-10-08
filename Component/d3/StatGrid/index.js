@@ -64,6 +64,7 @@
     D3.register({
         id: 'd3.statgrid', tagName: 'cmpStatGrid', caption: 'StatGrid',
         icon: 'images/icon.png',
+        nameTemplate: 'statGrid',
         previewCss: ['css/preview.css'],
         attrs: { name: '', dataset: '', caption: 'StatGrid' },
 

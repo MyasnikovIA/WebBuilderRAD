@@ -6,6 +6,7 @@
     D3.register({
         id: 'd3.dataset', tagName: 'cmpDataSet', caption: 'DataSet',
         icon: 'images/icon.png',
+        nameTemplate: 'dataSet',
         attrs: { name: 'DataSetName', activateoncreate: 'true' },
         cdata: 'select 1 from dual\n',
         cdataSchema: { caption: 'SQL' },

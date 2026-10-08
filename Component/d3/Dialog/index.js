@@ -38,6 +38,7 @@
     D3.register({
         id: 'd3.dialog', tagName: 'cmpDialog', caption: 'Dialog',
         icon: 'images/icon.png',
+        nameTemplate: 'dialog',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

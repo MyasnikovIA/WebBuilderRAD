@@ -40,6 +40,7 @@
     D3.register({
         id: 'd3.storedvalues', tagName: 'cmpStoredValues', caption: 'StoredValues',
         icon: 'images/icon.png',
+        nameTemplate: 'storedValues',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

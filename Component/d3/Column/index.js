@@ -41,6 +41,7 @@
         id: 'd3.column', tagName: 'cmpColumn', caption: 'Column',
         parentOnly: 'cmpgrid',
         icon: 'images/icon.png',
+        nameTemplate: 'column',
         previewCss: ['css/preview.css'],
         attrs: { field: '', caption: '' },
 

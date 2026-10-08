@@ -17,6 +17,7 @@
         id: 'd3.popupgroupitem', tagName: 'cmpPopupGroupItem', caption: 'PopupGroupItem',
         parentOnly: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         icon: 'images/icon.png',
+        nameTemplate: 'popupGroupItem',
         attrs: { name: '' },
 
         create: function (doc) {

@@ -16,6 +16,7 @@
     D3.register({
         id: 'd3.broker', tagName: 'cmpBroker', caption: 'Broker',
         icon: 'images/icon.png',
+        nameTemplate: 'broker',
         attrs: { name: '' },
 
         /* Невидим на сцене: создаётся только через палитру, содержимое скрыто CSS */

@@ -59,6 +59,7 @@
     D3.register({
         id: 'd3.linksviewer', tagName: 'cmpLinksViewer', caption: 'LinksViewer',
         icon: 'images/icon.png',
+        nameTemplate: 'linksViewer',
         previewCss: ['css/preview.css'],
         attrs: { name: '' },
 

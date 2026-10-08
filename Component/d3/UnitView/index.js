@@ -40,6 +40,7 @@
     D3.register({
         id: 'd3.unitview', tagName: 'cmpUnitView', caption: 'UnitView',
         icon: 'images/icon.png',
+        nameTemplate: 'unitView',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

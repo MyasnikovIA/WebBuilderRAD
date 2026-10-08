@@ -50,6 +50,7 @@
     D3.register({
         id: 'd3.customfilter', tagName: 'cmpCustomFilter', caption: 'CustomFilter',
         icon: 'images/icon.png',
+        nameTemplate: 'customFilter',
         previewCss: ['css/preview.css'],
         attrs: { name: '', dataset: '' },
 

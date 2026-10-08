@@ -40,6 +40,7 @@
     D3.register({
         id: 'd3.grid', tagName: 'cmpGrid', caption: 'Grid',
         icon: 'images/icon.png',
+        nameTemplate: 'grid',
         previewCss: ['css/preview.css'],
         attrs: { name: '', dataset: '', caption: 'Grid' },
 

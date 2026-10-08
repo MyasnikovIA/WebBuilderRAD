@@ -47,6 +47,7 @@
         id: 'd3.infoaboutrecord', tagName: 'cmpInfoAboutRecord',
         caption: 'InfoAboutRecord',
         icon: 'images/icon.png',
+        nameTemplate: 'infoAboutRecord',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

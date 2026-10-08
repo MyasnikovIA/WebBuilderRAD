@@ -23,6 +23,7 @@
     D3.register({
         id: 'd3.layout', tagName: 'cmpLayout', caption: 'Layout',
         icon: 'images/icon.png',
+        nameTemplate: 'layout',
         previewCss: ['css/preview.css'],
         attrs: { name: '' },
 

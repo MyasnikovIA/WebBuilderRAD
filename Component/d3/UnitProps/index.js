@@ -49,6 +49,7 @@
     D3.register({
         id: 'd3.unitprops', tagName: 'cmpUnitProps', caption: 'UnitProps',
         icon: 'images/icon.png',
+        nameTemplate: 'unitProps',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

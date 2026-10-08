@@ -26,6 +26,7 @@
         id: 'd3.form', tagName: 'cmpForm', caption: 'Form',
         unique: true, hidden: true,
         icon: 'images/icon.png',
+        nameTemplate: 'Form',
         previewCss: ['css/preview.css'],
         attrs: { 'class': 'd3form formBackground' },
 

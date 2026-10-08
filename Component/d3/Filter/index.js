@@ -41,6 +41,7 @@
     D3.register({
         id: 'd3.filter', tagName: 'cmpFilter', caption: 'Filter',
         icon: 'images/icon.png',
+        nameTemplate: 'filter',
         previewCss: ['css/preview.css'],
         attrs: { name: '', dataset: '' },
 

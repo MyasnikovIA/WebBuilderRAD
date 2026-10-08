@@ -43,6 +43,7 @@
     D3.register({
         id: 'd3.range', tagName: 'cmpRange', caption: 'Range',
         icon: 'images/icon.png',
+        nameTemplate: 'range',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

@@ -48,6 +48,7 @@
     D3.register({
         id: 'd3.image', tagName: 'cmpImage', caption: 'Image',
         icon: 'images/icon.png',
+        nameTemplate: 'image',
         previewCss: ['css/preview.css'],
         attrs: { name: '', src: '' },
 

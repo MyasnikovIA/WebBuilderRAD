@@ -38,6 +38,7 @@
         id: 'd3.uniteditgenerate', tagName: 'cmpUnitEditGenerate',
         caption: 'UnitEditGenerate',
         icon: 'images/icon.png',
+        nameTemplate: 'unitEditGenerate',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

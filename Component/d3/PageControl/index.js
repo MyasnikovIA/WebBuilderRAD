@@ -64,6 +64,7 @@
     D3.register({
         id: 'd3.pagecontrol', tagName: 'cmpPageControl', caption: 'PageControl',
         icon: 'images/icon.png',
+        nameTemplate: 'pageControl',
         previewCss: ['css/preview.css'],
         attrs: { name: '', mode: 'horizontal' },
 

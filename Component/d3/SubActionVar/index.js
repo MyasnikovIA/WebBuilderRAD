@@ -9,6 +9,7 @@
     D3.register({
         id: 'd3.subactionvar', tagName: 'cmpSubActionVar', caption: 'SubActionVar',
         icon: 'images/icon.png',
+        nameTemplate: 'subActionVar',
         parentOnly: ['cmpsubaction'],
         attrs: { name: '', src: '', srctype: 'var' },
 

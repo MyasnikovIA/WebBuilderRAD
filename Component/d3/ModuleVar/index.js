@@ -40,6 +40,7 @@
         id: 'd3.modulevar', tagName: 'cmpModuleVar', caption: 'ModuleVar',
         parentOnly: 'cmpmodule',
         icon: 'images/icon.png',
+        nameTemplate: 'moduleVar',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

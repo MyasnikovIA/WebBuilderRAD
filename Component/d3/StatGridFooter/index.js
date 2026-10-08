@@ -15,6 +15,7 @@
         id: 'd3.statgridfooter', tagName: 'cmpStatGridFooter', caption: 'StatGridFooter',
         parentOnly: 'cmpstatgrid',
         icon: 'images/icon.png',
+        nameTemplate: 'statGridFooter',
         previewCss: ['css/preview.css'],
         attrs: { separate: 'false' },
 

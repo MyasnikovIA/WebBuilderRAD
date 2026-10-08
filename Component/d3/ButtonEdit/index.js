@@ -14,6 +14,7 @@
     D3.register({
         id: 'd3.buttonedit', tagName: 'cmpButtonEdit', caption: 'ButtonEdit',
         icon: 'images/icon.png',
+        nameTemplate: 'buttonEdit',
         previewCss: ['css/preview.css'],
         attrs: { name: '', kind: 'normal', width: '200px' },
 

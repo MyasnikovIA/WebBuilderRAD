@@ -16,6 +16,7 @@
         caption: 'StatGridColumnHeader',
         parentOnly: 'cmpstatgridcolumn',
         icon: 'images/icon.png',
+        nameTemplate: 'statGridColumnHeader',
         previewCss: ['css/preview.css'],
 
         create: function (doc) {

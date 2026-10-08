@@ -18,6 +18,7 @@
     D3.register({
         id: 'd3.popupmenu', tagName: 'cmpPopupMenu', caption: 'PopupMenu',
         icon: 'images/icon.png',
+        nameTemplate: 'popupMenu',
         attrs: { name: '' },
 
         create: function (doc) {

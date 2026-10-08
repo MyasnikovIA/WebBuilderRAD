@@ -28,6 +28,7 @@
     D3.register({
         id: 'd3.subform', tagName: 'cmpSubForm', caption: 'SubForm',
         icon: 'images/icon.png',
+        nameTemplate: 'subForm',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

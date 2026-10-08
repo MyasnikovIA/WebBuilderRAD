@@ -34,6 +34,7 @@
     D3.register({
         id: 'd3.label', tagName: 'cmpLabel', caption: 'Label',
         icon: 'images/icon.png',
+        nameTemplate: 'label',
         previewCss: ['css/preview.css'],
         attrs: { name: '', caption: 'Label' },
 

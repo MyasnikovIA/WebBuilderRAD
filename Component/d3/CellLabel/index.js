@@ -11,6 +11,7 @@
     D3.register({
         id: 'd3.celllabel', tagName: 'cmpCellLabel', caption: 'CellLabel',
         icon: 'images/icon.png',
+        nameTemplate: 'cellLabel',
         previewCss: ['css/preview.css'],
         attrs: { caption: '', cell_count: '' },
 

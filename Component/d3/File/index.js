@@ -66,6 +66,7 @@
     D3.register({
         id: 'd3.file', tagName: 'cmpFile', caption: 'File',
         icon: 'images/icon.png',
+        nameTemplate: 'file',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

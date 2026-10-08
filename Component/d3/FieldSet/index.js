@@ -33,6 +33,7 @@
     D3.register({
         id: 'd3.fieldset', tagName: 'cmpFieldSet', caption: 'FieldSet',
         icon: 'images/icon.png',
+        nameTemplate: 'fieldSet',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

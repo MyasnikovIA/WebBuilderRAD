@@ -28,6 +28,7 @@
         id: 'd3.statgridsumm', tagName: 'cmpStatSumm', caption: 'StatSumm',
         parentOnly: 'cmpstatgridcolumn',
         icon: 'images/icon.png',
+        nameTemplate: 'statSumm',
         previewCss: ['css/preview.css'],
 
         create: function (doc) {

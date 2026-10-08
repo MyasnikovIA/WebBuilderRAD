@@ -27,6 +27,7 @@
     D3.register({
         id: 'd3.fetch', tagName: 'cmpFetch', caption: 'Fetch',
         icon: 'images/icon.png',
+        nameTemplate: 'fetch',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

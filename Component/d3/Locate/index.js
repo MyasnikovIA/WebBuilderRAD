@@ -36,6 +36,7 @@
     D3.register({
         id: 'd3.locate', tagName: 'cmpLocate', caption: 'Locate',
         icon: 'images/icon.png',
+        nameTemplate: 'locate',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

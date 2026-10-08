@@ -39,6 +39,7 @@
         id: 'd3.fetchvar', tagName: 'cmpFetchVar', caption: 'FetchVar',
         parentOnly: 'cmpfetch',
         icon: 'images/icon.png',
+        nameTemplate: 'fetchVar',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

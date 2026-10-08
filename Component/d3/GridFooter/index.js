@@ -22,6 +22,7 @@
         id: 'd3.gridfooter', tagName: 'cmpGridFooter', caption: 'GridFooter',
         parentOnly: 'cmpgrid',
         icon: 'images/icon.png',
+        nameTemplate: 'gridFooter',
         previewCss: ['css/preview.css'],
         attrs: { separate: 'false' },
 

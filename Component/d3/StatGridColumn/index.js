@@ -36,6 +36,7 @@
         id: 'd3.statgridcolumn', tagName: 'cmpStatGridColumn', caption: 'StatGridColumn',
         parentOnly: 'cmpstatgrid',
         icon: 'images/icon.png',
+        nameTemplate: 'statGridColumn',
         previewCss: ['css/preview.css'],
         attrs: { field: '', caption: '' },
 

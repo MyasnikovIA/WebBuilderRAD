@@ -38,6 +38,7 @@
         id: 'd3.radioitem', tagName: 'cmpRadioItem', caption: 'RadioItem',
         parentOnly: 'cmpradiogroup',
         icon: 'images/icon.png',
+        nameTemplate: 'radioItem',
         previewCss: ['css/preview.css'],
         attrs: { name: '', value: '', caption: '' },
 

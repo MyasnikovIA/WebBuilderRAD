@@ -61,6 +61,7 @@
     D3.register({
         id: 'd3.infobox', tagName: 'cmpInfoBox', caption: 'InfoBox',
         icon: 'images/icon.png',
+        nameTemplate: 'infoBox',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

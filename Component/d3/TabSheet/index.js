@@ -36,6 +36,7 @@
         id: 'd3.tabsheet', tagName: 'cmpTabSheet', caption: 'TabSheet',
         parentOnly: 'cmppagecontrol',
         icon: 'images/icon.png',
+        nameTemplate: 'tabSheet',
         previewCss: ['css/preview.css'],
         attrs: { name: '', caption: 'Tab' },
 

@@ -37,6 +37,7 @@
     D3.register({
         id: 'd3.dateedit', tagName: 'cmpDateEdit', caption: 'DateEdit',
         icon: 'images/icon.png',
+        nameTemplate: 'dateEdit',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

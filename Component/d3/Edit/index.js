@@ -37,6 +37,7 @@
     D3.register({
         id: 'd3.edit', tagName: 'cmpEdit', caption: 'Edit',
         icon: 'images/icon.png',
+        nameTemplate: 'edit',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

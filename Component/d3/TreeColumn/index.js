@@ -34,6 +34,7 @@
         id: 'd3.treecolumn', tagName: 'cmpTreeColumn', caption: 'TreeColumn',
         parentOnly: 'cmptree',
         icon: 'images/icon.png',
+        nameTemplate: 'treeColumn',
         previewCss: ['css/preview.css'],
         attrs: { field: '', caption: '' },
 

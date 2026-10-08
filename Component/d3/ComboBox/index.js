@@ -13,6 +13,7 @@
     D3.register({
         id: 'd3.combobox', tagName: 'cmpComboBox', caption: 'ComboBox',
         icon: 'images/icon.png',
+        nameTemplate: 'comboBox',
         previewCss: ['css/preview.css'],
         attrs: { name: '', width: '200px' },
 

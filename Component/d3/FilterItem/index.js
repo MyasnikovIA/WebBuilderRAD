@@ -47,6 +47,7 @@
         id: 'd3.filteritem', tagName: 'cmpFilterItem', caption: 'FilterItem',
         parentOnly: 'cmpfilter',
         icon: 'images/icon.png',
+        nameTemplate: 'filterItem',
         previewCss: ['css/preview.css'],
         attrs: {
             name: '',

@@ -9,6 +9,7 @@
     D3.register({
         id: 'd3.tagitem', tagName: 'cmpTagItem', caption: 'TagItem',
         icon: 'images/icon.png',
+        nameTemplate: 'tagItem',
         parentOnly: ['cmpbuttonedit'],
         attrs: { value: '', caption: '' },
 
