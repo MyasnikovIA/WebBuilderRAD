@@ -7,12 +7,8 @@
        курсор редактора на начало исходника этого элемента;
      - при перемещении курсора в редакторе (keyup/mouseup/click) —
        находит ближайший тег, внутри которого стоит курсор, и выделяет
-       соответствующий элемент в дереве и на сцене.
-
-   Дополнительно:
-     - codeview:show / codeview:navigate-function — открыть вкладку Code
-       и позиционировать курсор на объявлении функции формы;
-     - getCurrentElement() — вернуть элемент, отслеженный последним. */
+       соответствующий элемент в дереве и на сцене. Работает и во время
+       набора текста (когда DOM ещё не перестроен под правки). */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -24,21 +20,10 @@
         this.canvas = null;
         this.active = false;
 
-        /* Индекс позиций элементов в тексте: [{element, start, end}].
-           Строится один раз на актуальный текст и переиспользуется. */
         this._elemIndex = null;
         this._elemIndexStale = true;
-
-        /* Флаг «правки не применены»: пока пользователь не нажал Apply,
-           не пытаемся синхронизировать дерево — текст не совпадает с DOM. */
         this._codeDirty = false;
-
-        /* Защита от рекурсии: когда выделение инициировано кодом,
-           selection:changed не должен откатывать курсор обратно. */
         this._suppressTreeSync = false;
-
-        /* Последний элемент, выделенный по курсору в коде — чтобы
-           не переспрашивать дерево на каждый keyup. */
         this._lastCodeElement = null;
 
         this._build();
@@ -49,10 +34,12 @@
             self._elemIndexStale = true;
         });
         bus.on('canvas:changed', function () {
+            if (self._codeDirty) return;
             if (self.active) self.refresh();
             self._elemIndexStale = true;
         });
         bus.on('canvas:refreshed', function () {
+            if (self._codeDirty) return;
             if (self.active) self.refresh();
             self._elemIndexStale = true;
         });
@@ -60,9 +47,7 @@
             self.navigateTo(e.element);
         });
 
-        bus.on('codeview:show', function () {
-            self.openTab();
-        });
+        bus.on('codeview:show', function () { self.openTab(); });
         bus.on('codeview:navigate-function', function (e) {
             self.navigateToFunctionSignature(e && e.signature, e && e.name);
         });
@@ -93,23 +78,23 @@
         toolbar.find('.wb-code-view-reload').click(function () { self.refresh(); });
         this.statusEl = toolbar.find('.wb-code-view-status');
 
-        /* Отслеживание перемещения курсора в редакторе. */
         var ta = this.editor.ta;
         ta.addEventListener('input', function () {
             self._codeDirty = true;
             self._elemIndexStale = true;
         });
-        ta.addEventListener('keyup', function () {
-            if (self._codeDirty) return;
-            self._onCursorMove();
-        });
-        ta.addEventListener('mouseup', function () {
-            if (self._codeDirty) return;
-            self._onCursorMove();
-        });
-        ta.addEventListener('click', function () {
-            if (self._codeDirty) return;
-            self._onCursorMove();
+        ta.addEventListener('keyup', function () { self._onCursorMove(); });
+        ta.addEventListener('mouseup', function () { self._onCursorMove(); });
+        ta.addEventListener('click', function () { self._onCursorMove(); });
+
+        /* При потере фокуса — автоматический Apply. setTimeout(0), чтобы
+           не конфликтовать с кнопками Apply / Reload и переключением вкладок. */
+        ta.addEventListener('blur', function () {
+            setTimeout(function () {
+                if (!self._codeDirty) return;
+                if (!self.canvas) return;
+                self.apply();
+            }, 0);
         });
     };
 
@@ -126,16 +111,12 @@
             }
         }
     };
-    /* Публичные предикаты: используются в app.js при переключении вкладок. */
     CodeView.prototype.isActive = function () { return !!this.active; };
     CodeView.prototype.hasUnsavedChanges = function () { return !!this._codeDirty; };
 
-    /* Открыть вкладку Code (кликнуть по соответствующему табу). */
     CodeView.prototype.openTab = function () {
         var tab = $('#wb-center-tabs .wb-center-tab[data-pane="code"]');
-        if (tab.length && !tab.hasClass('wb-active')) {
-            tab.click();
-        }
+        if (tab.length && !tab.hasClass('wb-active')) tab.click();
     };
 
     CodeView.prototype.refresh = function () {
@@ -147,44 +128,37 @@
             this.editor.ta.setSelectionRange(pos, pos);
         }
         this.statusEl.text('').css('color', '');
-        /* Текст синхронизирован с DOM — можно строить индекс и
-           реагировать на перемещение курсора. */
         this._elemIndex = null;
         this._elemIndexStale = true;
         this._codeDirty = false;
     };
 
-    /* Применить правки в canvas.
-       Возвращает true при успехе, false при ошибке.
-       Возврат нужен, чтобы app.js мог решить, переключать ли вкладку
-       при автоматическом применении перед уходом с Code. */
+    /* Применить правки в canvas. Возвращает true/false.
+       _codeDirty сбрасывается ДО loadHtml, чтобы слушатели canvas:*
+       смогли обновить textarea нормализованным содержимым. */
     CodeView.prototype.apply = function () {
         if (!this.canvas) return false;
         var html = this.editor.getValue();
+        var wasDirty = this._codeDirty;
+        this._codeDirty = false;
         try {
             this.canvas.loadHtml(html, { collapseTree: false });
             this.statusEl.text('Applied.').css('color', '#2e7d32');
             this._elemIndex = null;
             this._elemIndexStale = true;
-            this._codeDirty = false;
             return true;
         } catch (ex) {
+            this._codeDirty = wasDirty;
             this.statusEl.text('Error: ' + (ex.message || ex))
                 .css('color', '#c62828');
             return false;
         }
     };
 
-    /* Вернуть элемент, отслеженный последним (по курсору в коде или
-       по выделению в дереве). Используется при переключении обратно
-       на вкладку Scene — чтобы перевыделить тот же элемент. */
     CodeView.prototype.getCurrentElement = function () {
         return this._lastCodeElement || null;
     };
 
-    /* Вызывается из selection:changed. Если выделение инициировано
-       нами же (_suppressTreeSync), ничего не делаем — иначе получим
-       цикл «код → дерево → код». */
     CodeView.prototype.navigateTo = function (el) {
         this._pendingEl = el || null;
         this._lastCodeElement = el || null;
@@ -194,13 +168,10 @@
 
     /* -------------------- Навигация код → дерево -------------------- */
 
-    /* Обработчик перемещения курсора. Дебаунсится, чтобы не дёргать
-       синхронизацию на каждый символ. */
     CodeView.prototype._onCursorMove = function () {
         var self = this;
         if (this._suppressTreeSync) return;
         if (!this.active) return;
-        if (this._codeDirty) return;
 
         if (this._cursorTimer) clearTimeout(this._cursorTimer);
         this._cursorTimer = setTimeout(function () {
@@ -212,7 +183,6 @@
     CodeView.prototype._syncTreeWithCursor = function () {
         if (!this.canvas) return;
         if (this._suppressTreeSync) return;
-        if (this._codeDirty) return;
 
         if (!this._elemIndex || this._elemIndexStale) {
             this._buildElementIndex();
@@ -227,7 +197,6 @@
 
         this._lastCodeElement = el;
 
-        /* Исключаем обратный вызов navigateTo (иначе код «дёрнется»). */
         this._suppressTreeSync = true;
         try {
             this.canvas.select(el);
@@ -236,93 +205,153 @@
         }
     };
 
-    /* Построить индекс: для каждого элемента canvas — его позиция в
-       текущем тексте редактора.
+    /* Построить индекс: [ {element, start, end, light} ].
+       - light: false → точное совпадение (полная сериализация найдена);
+       - light: true  → fallback по открывающему тегу (элемент изменён
+                        пользователем, полная сериализация не совпадает).
 
-       Идём по DOM в document order и для каждого элемента ищем его
-       сериализацию (canvas._formatNode) в тексте, начиная с позиции
-       последнего успешного совпадения. Это даёт точные [start, end].
-
-       Сложность O(n * m), где n — число элементов, m — длина их
-       сериализации. Для типовых форм работает мгновенно. */
+       Устойчиво к несохранённым правкам: при idx < 0 не прерывает обход,
+       а ищет только открывающий тег в тексте. */
     CodeView.prototype._buildElementIndex = function () {
         this._elemIndex = [];
         if (!this.canvas) return;
-
         var code = this.editor.getValue();
         if (!code) return;
-
         var root = this.canvas.getRootContainer();
         if (!root) return;
 
         var self = this;
         var index = this._elemIndex;
 
+        function isSkippedEl(el) {
+            if (!el || el.nodeType !== 1) return true;
+            if (el.getAttribute) {
+                if (el.getAttribute('data-wb-ide') === '1') return true;
+                if (el.getAttribute('data-wb-preview') === '1') return true;
+                if (el.getAttribute('data-wb-comp-asset') === '1') return true;
+            }
+            var t = el.tagName.toLowerCase();
+            if (t === 'wb-cdata' || t === 'wb-images' || t === 'wb-image') return true;
+            return false;
+        }
+
+        /* Fallback: искать в тексте только открывающий тег. Использует
+           tagName (или data-wb-tag) и ключевые атрибуты. */
+        function findOpenTag(code, el, from) {
+            var xmlTag = (el.getAttribute && el.getAttribute('data-wb-tag')) || el.tagName;
+            var attrsToMatch = [];
+            if (el.getAttribute) {
+                var keys = ['cmptype', 'name', 'caption', 'id'];
+                for (var i = 0; i < keys.length; i++) {
+                    var v = el.getAttribute(keys[i]);
+                    if (v) attrsToMatch.push({ name: keys[i], value: v });
+                }
+            }
+
+            var re;
+            try {
+                re = new RegExp('<' + xmlTag + '(\\s[^<>]*?)?\\s*/?>', 'gi');
+            } catch (e) {
+                return -1;
+            }
+            re.lastIndex = from;
+
+            var m;
+            while ((m = re.exec(code)) !== null) {
+                var attrsStr = m[1] || '';
+                var ok = true;
+                for (var a = 0; a < attrsToMatch.length; a++) {
+                    var attrRe = new RegExp('\\s' + attrsToMatch[a].name +
+                        '\\s*=\\s*"([^"]*)"', 'i');
+                    var am = attrsStr.match(attrRe);
+                    if (!am || am[1] !== attrsToMatch[a].value) { ok = false; break; }
+                }
+                if (ok) return m.index;
+            }
+            return -1;
+        }
+
         function walk(el, level, searchFrom) {
             if (!el || el.nodeType !== 1) return searchFrom;
-
-            /* Пропускаем служебные узлы — их нет в cleanHtml(). */
-            if (el.getAttribute) {
-                if (el.getAttribute('data-wb-ide') === '1') return searchFrom;
-                if (el.getAttribute('data-wb-preview') === '1') return searchFrom;
-                if (el.getAttribute('data-wb-comp-asset') === '1') return searchFrom;
-            }
-            if (el.tagName) {
-                var t = el.tagName.toLowerCase();
-                if (t === 'wb-cdata' || t === 'wb-images' || t === 'wb-image') return searchFrom;
-            }
+            if (isSkippedEl(el)) return searchFrom;
 
             var snippet;
-            try {
-                snippet = self.canvas._formatNode(el, level);
-            } catch (e) {
-                return searchFrom;
+            try { snippet = self.canvas._formatNode(el, level); }
+            catch (e) { snippet = ''; }
+            var cleanSnip = snippet ? snippet.replace(/\n$/, '') : '';
+
+            var idx = -1;
+            if (cleanSnip) idx = code.indexOf(cleanSnip, searchFrom);
+
+            var elStart = -1, elEnd = -1, light = false;
+
+            if (idx >= 0) {
+                elStart = idx;
+                elEnd = idx + cleanSnip.length;
+            } else {
+                /* Fallback: узел изменён пользователем — ищем открывающий тег. */
+                var openIdx = findOpenTag(code, el, searchFrom);
+                if (openIdx >= 0) {
+                    elStart = openIdx;
+                    elEnd = openIdx + 1;
+                    light = true;
+                }
             }
-            if (!snippet) return searchFrom;
 
-            /* _formatNode добавляет \n в конце. Срезаем, чтобы индекс
-               совпадал с реальной длиной блока в тексте. */
-            var cleanSnip = snippet.replace(/\n$/, '');
-            if (!cleanSnip) return searchFrom;
+            if (elStart >= 0) {
+                index.push({
+                    element: el,
+                    start: elStart,
+                    end: elEnd,
+                    light: light
+                });
+            }
 
-            var idx = code.indexOf(cleanSnip, searchFrom);
-            if (idx < 0) return searchFrom;
-
-            index.push({
-                element: el,
-                start: idx,
-                end: idx + cleanSnip.length
-            });
-
-            var newSearch = idx;
+            /* ВАЖНО: обходим детей в любом случае, даже если сам узел
+               не найден в тексте (изменён пользователем). Иначе при
+               правке внутри cmpScript не будут найдены его соседи. */
+            var newSearch = (elStart >= 0) ? elStart : searchFrom;
             var kids = el.children;
             for (var i = 0; i < kids.length; i++) {
                 newSearch = walk(kids[i], level + 1, newSearch);
             }
 
-            return idx + cleanSnip.length;
+            return (idx >= 0) ? elEnd : newSearch;
         }
 
         walk(root, 0, 0);
     };
 
-    /* Найти элемент, внутри диапазона которого лежит offset.
-       Из всех подходящих выбираем самый маленький по длине — это
-       самый глубоко вложенный тег. */
+    /* Найти элемент под курсором.
+       1) Сначала пробуем точное совпадение (light: false) — по границам.
+       2) Иначе — fallback: ищем ближайший открывающий тег слева от
+          курсора (light: true). */
     CodeView.prototype._elementAtOffset = function (offset) {
         var idx = this._elemIndex;
         if (!idx || !idx.length) return null;
 
-        var best = null;
-        var bestSize = Infinity;
+        var precise = null;
+        var preciseSize = Infinity;
         for (var i = 0; i < idx.length; i++) {
             var rec = idx[i];
+            if (rec.light) continue;
             if (offset >= rec.start && offset <= rec.end) {
                 var size = rec.end - rec.start;
-                if (size < bestSize) {
-                    bestSize = size;
-                    best = rec.element;
+                if (size < preciseSize) {
+                    preciseSize = size;
+                    precise = rec.element;
                 }
+            }
+        }
+        if (precise) return precise;
+
+        /* Fallback: последний открывающий тег, начинающийся не позже курсора. */
+        var best = null;
+        var bestStart = -1;
+        for (var j = 0; j < idx.length; j++) {
+            if (idx[j].start <= offset && idx[j].start > bestStart) {
+                bestStart = idx[j].start;
+                best = idx[j].element;
             }
         }
         return best;
@@ -330,12 +359,6 @@
 
     /* -------------------- Навигация дерево → код -------------------- */
 
-    /* Навигация к объявлению JS-функции.
-
-       Параметры:
-         signature — строка вида 'Form.onClick(this);' или 'onClick(event);'.
-         hintName  — необязательное прямое имя функции. Если задано,
-                     используется как первый кандидат для поиска. */
     CodeView.prototype.navigateToFunctionSignature = function (signature, hintName) {
         if (!signature && !hintName) return;
         this.openTab();
@@ -383,7 +406,6 @@
         this.editor.revealOffset(idx);
     };
 
-    /* Прокрутка к началу исходника DOM-элемента. */
     CodeView.prototype._scrollToElement = function (el) {
         if (!el || !this.canvas) return;
         var code = this.editor.getValue();

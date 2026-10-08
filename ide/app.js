@@ -25,7 +25,7 @@
         $('#wb-center-tabs').delegate('.wb-center-tab', 'click', function () {
             var paneName = $(this).attr('data-pane');
 
-            /* FIX: автоматический Apply при клике на Scene,
+            /* Автоматический Apply при клике на Scene,
                если есть несохранённые изменения в редакторе Code. */
             if (codeView &&
                 paneName !== 'code' &&
@@ -85,8 +85,24 @@
             if (t) t.textContent = '—';
         });
 
+        /* ---------- Глобальные хоткеи ----------
+           Если фокус в текстовом поле / contentEditable — не перехватываем
+           клавиши: пользователь вводит текст, а не управляет IDE. */
+        function isTextInputFocused() {
+            var el = document.activeElement;
+            if (!el || el === document.body || el === document.documentElement) return false;
+            var tag = el.tagName ? el.tagName.toUpperCase() : '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+            if (el.isContentEditable) return true;
+            return false;
+        }
+
         $(document).keydown(function (e) {
             if (canvas.designMode && document.activeElement === canvas.iframe) return;
+
+            /* Не перехватываем клавиши, когда пользователь печатает
+               в текстовом поле (Code, Inspector, модальные окна). */
+            if (isTextInputFocused()) return;
 
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 89) { History.redo(); e.preventDefault(); }
@@ -239,6 +255,9 @@
             });
         }
 
+        /* M2: <component …/> → <component …></component>.
+           HTML-парсер игнорирует '/>' у нестандартного тега <component>,
+           из-за чего соседние компоненты вкладываются друг в друга. */
         var COMPONENT_SELF_CLOSE_RE = /<component((?:\s+[^<>]*?)?)\s*\/>/g;
         function expandSelfClosingComponentTags(str) {
             return String(str).replace(COMPONENT_SELF_CLOSE_RE, function (m, attrs) {
