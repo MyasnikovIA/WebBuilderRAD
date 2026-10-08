@@ -4,7 +4,8 @@
    Умеет:
      - ресайзить выделенный элемент за 8 маркеров по периметру;
      - перемещать выделенный элемент перетаскиванием за тело;
-     - выделять и тащить как D3-компоненты, так и обычные HTML-теги.
+     - выделять и тащить как D3-компоненты, так и обычные HTML-теги;
+     - загружать готовый HTML (loadHtml) — с сохранением CDATA и data-wb-tag.
 
    Координаты left/top считаются ОТНОСИТЕЛЬНО offsetParent
    (ближайшего позиционированного контейнера), а не <body>.
@@ -122,6 +123,12 @@
     var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
     var MOVE_THRESHOLD = 3;
 
+    /* Плейсхолдеры CDATA. Не содержат < >, поэтому HTML-парсер видит их
+       как обычный текст и не пытается интерпретировать содержимое
+       CDATA-блока как HTML. */
+    var CDATA_PH_OPEN  = '\u0001WB_CDATA_PH_';
+    var CDATA_PH_CLOSE = '_\u0001';
+
     function Canvas(iframeEl) {
         this.iframe = iframeEl;
         this.pending = null;
@@ -162,6 +169,7 @@
     /* Стили и правила IDE внутри iframe. */
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
+        if (!doc) return;
         var old = doc.querySelector('style[data-wb-ide="1"]');
         if (old) old.parentNode.removeChild(old);
         var style = doc.createElement('style');
@@ -169,12 +177,10 @@
         style.textContent =
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
-            /* body — позиционированная база по умолчанию для абс. детей. */
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
 
             /* Корневые контейнеры — тоже position: relative,
-               чтобы left/top детей отсчитывались от их края, а не от body.
-               Это критично, когда форма встраивается как субформа. */
+               чтобы left/top детей отсчитывались от их края, а не от body. */
             'cmpForm, cmpSubForm, [data-wb-root="1"] { position: relative; }' +
 
             'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
@@ -206,12 +212,15 @@
             '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }' +
 
             '.wb-moving { cursor: move !important; }';
-        if (doc.head) doc.head.appendChild(style);
+        var head = this.getOrCreateHead();
+        if (head) head.appendChild(style);
     };
 
     Canvas.prototype._injectComponentAssets = function () {
         var doc = this.getDoc();
-        if (!doc || !doc.head) return;
+        if (!doc) return;
+        var head = this.getOrCreateHead();
+        if (!head) return;
 
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
@@ -226,14 +235,14 @@
                 link.rel = 'stylesheet';
                 link.href = cssList[c];
                 link.setAttribute('data-wb-comp-asset', '1');
-                doc.head.appendChild(link);
+                head.appendChild(link);
             }
             var jsList = comp.previewJsUrls || [];
             for (var j = 0; j < jsList.length; j++) {
                 var script = doc.createElement('script');
                 script.src = jsList[j];
                 script.setAttribute('data-wb-comp-asset', '1');
-                doc.head.appendChild(script);
+                head.appendChild(script);
             }
         }
     };
@@ -309,6 +318,7 @@
     };
     Canvas.prototype.getOrCreateHead = function () {
         var doc = this.getDoc();
+        if (!doc) return null;
         if (doc.head) return doc.head;
         var head = doc.createElement('head');
         var html = doc.documentElement;
@@ -453,6 +463,170 @@
         }, 0);
     };
 
+    /* ============================================================
+       Загрузка готового HTML (из текста, «наоборот» к cleanHtml).
+
+       Порядок:
+         1. CDATA-блоки → плейсхолдеры (без < >, чтобы парсер не съел JS).
+         2. <cmpXxx .../> → <cmpXxx ...></cmpXxx> (иначе соседи вложатся).
+         3. Обёртка в шаблон, если это фрагмент.
+         4. document.write.
+         5. Плейсхолдеры → текстовые узлы, содержащие <![CDATA[...]]>.
+         6. Чистка service-узлов и классов, восстановление data-wb-tag.
+         7. Переинжект IDE-инфраструктуры, определение root type,
+            отрисовка превью, переподписка MutationObserver.
+       ============================================================ */
+    Canvas.prototype.loadHtml = function (html) {
+        var self = this;
+        var doc = this.getDoc();
+        if (!doc) return;
+
+        var str = String(html == null ? '' : html);
+        if (!str.replace(/\s+/g, '')) return;
+
+        /* 1. Вырезаем CDATA в массив, оставляя плейсхолдеры. */
+        var cdataStore = [];
+        var prepared = str.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, function (m, body) {
+            var idx = cdataStore.length;
+            cdataStore.push(body);
+            return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
+        });
+
+        /* 2. Самозакрывающиеся кастомные теги → явные open/close. */
+        prepared = prepared.replace(
+            /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g,
+            function (m, tag, attrs) {
+                var lower = String(tag).toLowerCase();
+                if (XML_SELF_CLOSE[lower]) {
+                    return '<' + tag + (attrs || '') + '></' + tag + '>';
+                }
+                return m;
+            }
+        );
+
+        /* 3. Обёртка в шаблон, если это фрагмент. */
+        var isFullDoc = /<!DOCTYPE/i.test(prepared)
+            || /<html[\s>]/i.test(prepared)
+            || /<body[\s>]/i.test(prepared);
+        if (!isFullDoc) {
+            prepared = this._templateHtml().replace('</body>', prepared + '</body>');
+        }
+
+        this._removeResizeHandles();
+
+        /* 4. Пишем в iframe. */
+        doc.open();
+        doc.write(prepared);
+        doc.close();
+
+        /* 5. Плейсхолдеры CDATA → текстовые узлы с <![CDATA[...]]>. */
+        if (cdataStore.length) {
+            var re = new RegExp('\u0001WB_CDATA_PH_(\\d+)_\u0001', 'g');
+            (function walk(n) {
+                var kids = [];
+                for (var i = 0; i < n.childNodes.length; i++) kids.push(n.childNodes[i]);
+                for (var i = 0; i < kids.length; i++) {
+                    var c = kids[i];
+                    if (c.nodeType === 3) {
+                        var v = c.nodeValue || '';
+                        if (v.indexOf('\u0001WB_CDATA_PH_') < 0) continue;
+                        var parts = [];
+                        var last = 0;
+                        var mm;
+                        re.lastIndex = 0;
+                        while ((mm = re.exec(v)) !== null) {
+                            if (mm.index > last) parts.push({ t: 'txt', s: v.slice(last, mm.index) });
+                            parts.push({ t: 'cdata', i: parseInt(mm[1], 10) });
+                            last = mm.index + mm[0].length;
+                        }
+                        if (last < v.length) parts.push({ t: 'txt', s: v.slice(last) });
+                        if (!parts.length) continue;
+                        var parent = c.parentNode;
+                        for (var p = 0; p < parts.length; p++) {
+                            var pt = parts[p];
+                            var newNode = (pt.t === 'cdata')
+                                ? doc.createTextNode('<![CDATA[' + cdataStore[pt.i] + ']]>')
+                                : doc.createTextNode(pt.s);
+                            parent.insertBefore(newNode, c);
+                        }
+                        parent.removeChild(c);
+                    } else if (c.nodeType === 1) {
+                        walk(c);
+                    }
+                }
+            })(doc.documentElement);
+        }
+
+        /* 6a. Служебные узлы (могли попасть из старого дампа). */
+        var servs = doc.querySelectorAll('[data-wb-ide="1"], [data-wb-preview="1"]');
+        for (var s = servs.length - 1; s >= 0; s--) {
+            var sn = servs[s];
+            if (sn.parentNode) sn.parentNode.removeChild(sn);
+        }
+
+        /* 6b. Восстановление data-wb-tag по camelCase-словарю. */
+        this._restoreCmpTags(doc.documentElement);
+
+        /* 6c. Снятие служебных классов. */
+        (function strip(node) {
+            if (!node || node.nodeType !== 1) return;
+            self._stripServiceClasses(node);
+            var kids = node.children;
+            for (var i = 0; i < kids.length; i++) strip(kids[i]);
+        })(doc.documentElement);
+
+        /* 7. Переинжект IDE-инфраструктуры. */
+        this._injectIdeStyle();
+        this._injectComponentAssets();
+
+        this.pending = null;
+        this.designMode = false;
+        this._rootType = this._detectRootType();
+        this._handles = null;
+        this._handlesPending = false;
+        $(this.iframe).removeClass('wb-design-mode');
+
+        /* 8. Рисуем превью всех D3-компонентов. */
+        var body = this.getBody();
+        if (body) this._renderAllPreviews(body);
+
+        this._cleanClass(this.getBody());
+        this._reobserve();
+
+        bus.emit('canvas:refreshed');
+        bus.emit('canvas:changed');
+        bus.emit('canvas:selection:reset');
+
+        setTimeout(function () {
+            self._cleanClass(self.getBody());
+            bus.emit('canvas:changed');
+        }, 0);
+    };
+
+    Canvas.prototype._renderAllPreviews = function (root) {
+        if (!root || root.nodeType !== 1) return;
+        if (root.getAttribute && root.getAttribute('data-wb-tag')) {
+            this._renderPreview(root);
+        }
+        var kids = root.children;
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i];
+            if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+            if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
+            this._renderAllPreviews(c);
+        }
+    };
+
+    Canvas.prototype._restoreCmpTags = function (root) {
+        if (!root || root.nodeType !== 1) return;
+        var lower = root.tagName.toLowerCase();
+        if (CMP_TAGS[lower]) {
+            root.setAttribute('data-wb-tag', CMP_TAGS[lower]);
+        }
+        var kids = root.children;
+        for (var i = 0; i < kids.length; i++) this._restoreCmpTags(kids[i]);
+    };
+
     Canvas.prototype.setDesignMode = function (on) {
         var doc = this.getDoc();
         this.designMode = !!on;
@@ -485,15 +659,11 @@
         this.setDesignMode(!this.designMode);
     };
 
-    /* Найти ближайшего позиционированного предка (offsetParent).
-       Возвращает body, если позиционированного предка нет. */
     Canvas.prototype._getOffsetParent = function (el) {
         var doc = this.getDoc();
         if (!el || el.nodeType !== 1) return doc.body;
-        // native offsetParent возвращает корректный результат в 99% случаев
         var op = el.offsetParent;
         if (op && op !== doc.documentElement) return op;
-        // Fallback: вручную поднимаемся, ищем position != static
         var p = el.parentNode;
         while (p && p.nodeType === 1) {
             var cs = doc.defaultView.getComputedStyle(p);
@@ -503,7 +673,6 @@
         return doc.body;
     };
 
-    /* Определить «логическую» цель выделения по кликнутому элементу. */
     Canvas.prototype._resolveSelection = function (eTarget) {
         if (!eTarget || eTarget.nodeType !== 1) return null;
         var doc = this.getDoc();
@@ -790,10 +959,6 @@
         bus.emit('selection:changed', { element: el });
     };
 
-    /* ============================================================
-       Хелпер: применить размер/позицию к элементу И к его preview-узлу.
-       ============================================================ */
-
     Canvas.prototype._applyBox = function (el, left, top, width, height, setAttrs) {
         el.style.left   = left   + 'px';
         el.style.top    = top    + 'px';
@@ -812,12 +977,6 @@
             preview.style.boxSizing = 'border-box';
         }
     };
-
-    /* ============================================================
-       Хелпер: перевод элемента в absolute-позиционирование.
-       left/top считаются относительно offsetParent (контейнера),
-       а не <body>. Это нужно для корректной работы субформ.
-       ============================================================ */
 
     Canvas.prototype._makeAbsolute = function (el) {
         var doc  = this.getDoc();
@@ -838,10 +997,6 @@
         }
         return false;
     };
-
-    /* ============================================================
-       Ресайз выделенного элемента мышью за 8 маркеров
-       ============================================================ */
 
     Canvas.prototype._addResizeHandles = function (el) {
         this._removeResizeHandles();
@@ -889,7 +1044,6 @@
         this._handles = null;
     };
 
-    /* Маркеры висят в <body> iframe — координаты считаются от body. */
     Canvas.prototype._positionResizeHandles = function (el) {
         if (!this._handles || !this._handles.length) return;
         if (!el) el = this.getSelected();
@@ -1038,10 +1192,6 @@
         });
     };
 
-    /* ============================================================
-       Перемещение выделенного элемента мышью за тело
-       ============================================================ */
-
     Canvas.prototype._startMove = function (e, el) {
         if (!el || el.nodeType !== 1) return;
         if (this.designMode) return;
@@ -1103,10 +1253,6 @@
             }
         });
     };
-
-    /* ============================================================
-       Форматирование при сохранении
-       ============================================================ */
 
     Canvas.prototype._formatTagName = function (el) {
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');

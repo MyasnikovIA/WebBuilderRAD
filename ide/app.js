@@ -105,32 +105,6 @@
             }
         }
 
-        function parseHtmlWithCdata(html) {
-            var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
-            var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
-
-            var prepared = String(html)
-                .replace(/<!\[CDATA\[/g, SENT_O)
-                .replace(/\]\]>/g, SENT_C);
-
-            var tmp = document.createElement('div');
-            tmp.innerHTML = prepared;
-
-            (function walk(n) {
-                if (n.nodeType === 3) {
-                    if (n.nodeValue && n.nodeValue.indexOf('\u0001WB_CDATA_') >= 0) {
-                        n.nodeValue = n.nodeValue
-                            .split(SENT_O).join('<![CDATA[')
-                            .split(SENT_C).join(']]>');
-                    }
-                } else if (n.nodeType === 1) {
-                    for (var i = 0; i < n.childNodes.length; i++) walk(n.childNodes[i]);
-                }
-            })(tmp);
-
-            return tmp.firstChild || null;
-        }
-
         var CMP_TAGS = {
             'cmpaction':      'cmpAction',
             'cmpactionvar':   'cmpActionVar',
@@ -223,6 +197,15 @@
             return allowed.indexOf(tag) >= 0;
         }
 
+        /* Теги, содержимое которых — CDATA (SQL или JS). */
+        var CDATA_TAGS = {
+            cmpaction:       'sql',
+            cmpdataset:      'sql',
+            cmpsubaction:    'sql',
+            cmpscript:       'javascript',
+            cmpserverscript: 'javascript'
+        };
+
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
@@ -230,6 +213,30 @@
                 if (!confirm('Очистить холст?')) return;
                 clipboard = null;
                 canvas.reset();
+            },
+
+            /* Load HTML — вставка готового HTML/XML страницы. */
+            load: function () {
+                var editor = new CodeEditor({ value: '', language: 'xml' });
+
+                Modal.open({
+                    title: 'Load HTML — вставьте текст и нажмите OK',
+                    content: editor.el,
+                    onOk: function () {
+                        var html = editor.getValue();
+                        if (!html || !html.replace(/\s+/g, '')) {
+                            alert('Пустой HTML.');
+                            return;
+                        }
+                        try {
+                            canvas.loadHtml(html);
+                        } catch (ex) {
+                            alert('Ошибка загрузки HTML: ' + ex.message);
+                        }
+                    }
+                });
+
+                setTimeout(function () { editor.focus(); }, 50);
             },
 
             save: function () {
@@ -375,7 +382,7 @@
                     content: editor.el,
                     onOk: function () {
                         try {
-                            var nw = parseHtmlWithCdata(editor.getValue());
+                            var nw = App._parseHtmlWithCdata(editor.getValue());
                             if (!nw) return;
                             cleanClone(nw);
                             restoreCmpTags(nw);
@@ -394,16 +401,20 @@
                 if (!el) return;
 
                 var tagLower = el.tagName.toLowerCase();
-                var language = 'xml';
-                var initial  = '';
-                var isCdata  = false;
+                var cdataLang = CDATA_TAGS[tagLower] || null;
+                var isCdata   = !!cdataLang;
+                var language  = 'xml';
+                var initial   = '';
 
-                if (tagLower === 'cmpaction' || tagLower === 'cmpdataset' || tagLower === 'cmpsubaction') {
-                    isCdata  = true;
-                    language = 'sql';
+                if (isCdata) {
+                    /* cmpAction/cmpDataSet/cmpSubAction (SQL) и
+                       cmpScript/cmpServerScript (JS) — содержимое в CDATA.
+                       Достаём тело CDATA, чтобы пользователь редактировал
+                       чистый SQL или JS. */
+                    language = cdataLang;
                     var raw = el.textContent || '';
                     var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-                    initial = m ? m[1] : '';
+                    initial = m ? m[1] : raw;
                 } else if (tagLower === 'script') {
                     language = 'javascript';
                     initial = el.textContent || '';
@@ -423,20 +434,11 @@
                         var v = editor.getValue();
 
                         if (isCdata) {
+                            /* Полностью пересобираем содержимое: чистим всё
+                               и вставляем один текстовый узел с CDATA. */
                             var doc = el.ownerDocument;
-                            var cdataText = '<![CDATA[' + v + ']]>';
-                            var firstText = null;
-                            for (var i = 0; i < el.childNodes.length; i++) {
-                                if (el.childNodes[i].nodeType === 3) {
-                                    firstText = el.childNodes[i];
-                                    break;
-                                }
-                            }
-                            if (firstText) {
-                                firstText.nodeValue = cdataText;
-                            } else {
-                                el.insertBefore(doc.createTextNode(cdataText), el.firstChild);
-                            }
+                            while (el.firstChild) el.removeChild(el.firstChild);
+                            el.appendChild(doc.createTextNode('<![CDATA[' + v + ']]>'));
                         } else if (tagLower === 'script' || tagLower === 'style') {
                             el.textContent = v;
                         } else {
@@ -465,6 +467,34 @@
                 var el = canvas.getSelected();
                 if (el && el.parentNode && el.parentNode.firstChild)
                     el.parentNode.insertBefore(el, el.parentNode.firstChild);
+            },
+
+            /* Вспомогательный парсер HTML с CDATA-сентинелами —
+               используется в editHtml. */
+            _parseHtmlWithCdata: function (html) {
+                var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
+                var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
+
+                var prepared = String(html)
+                    .replace(/<!\[CDATA\[/g, SENT_O)
+                    .replace(/\]\]>/g, SENT_C);
+
+                var tmp = document.createElement('div');
+                tmp.innerHTML = prepared;
+
+                (function walk(n) {
+                    if (n.nodeType === 3) {
+                        if (n.nodeValue && n.nodeValue.indexOf('\u0001WB_CDATA_') >= 0) {
+                            n.nodeValue = n.nodeValue
+                                .split(SENT_O).join('<![CDATA[')
+                                .split(SENT_C).join(']]>');
+                        }
+                    } else if (n.nodeType === 1) {
+                        for (var i = 0; i < n.childNodes.length; i++) walk(n.childNodes[i]);
+                    }
+                })(tmp);
+
+                return tmp.firstChild || null;
             }
         };
 
