@@ -9,30 +9,22 @@
         return b;
     }
 
-    /* ============================================================
-       Document: HEAD и BODY — уникальные корневые компоненты.
-       ============================================================ */
     R.register({
-        id: 'html.head', category: 'Document', caption: 'HEAD', tagName: 'head',
+        id: 'html.head', category: 'HTML', subCategory: 'Document', caption: 'HEAD', tagName: 'head',
         unique: true, rootLevel: true,
         create: function (doc) { return doc.createElement('head'); },
         schema: S.defaultSchema()
     });
 
     R.register({
-        id: 'html.body', category: 'Document', caption: 'BODY', tagName: 'body',
+        id: 'html.body', category: 'HTML', subCategory: 'Document', caption: 'BODY', tagName: 'body',
         unique: true, rootLevel: true,
         create: function (doc) { return doc.createElement('body'); },
         schema: S.defaultSchema()
     });
 
-    /* ============================================================
-       Head-элементы.
-       headOnly: true — только meta, title, base, noscript, template.
-       script/style/link могут находиться в любом блоке (body, div и т.п.).
-       ============================================================ */
     R.register({
-        id: 'html.meta', category: 'Head', caption: 'Meta', tagName: 'meta',
+        id: 'html.meta', category: 'HTML', subCategory: 'Head', caption: 'Meta', tagName: 'meta',
         headOnly: true,
         create: function (doc) {
             var el = doc.createElement('meta');
@@ -49,7 +41,7 @@
     });
 
     R.register({
-        id: 'html.title', category: 'Head', caption: 'Title', tagName: 'title',
+        id: 'html.title', category: 'HTML', subCategory: 'Head', caption: 'Title', tagName: 'title',
         headOnly: true,
         create: function (doc) {
             var el = doc.createElement('title');
@@ -59,9 +51,8 @@
         schema: sch()
     });
 
-    /* Link — может быть в head и в body (например, rel="preload", itemprop) */
     R.register({
-        id: 'html.link', category: 'Head', caption: 'Link', tagName: 'link',
+        id: 'html.link', category: 'HTML', subCategory: 'Head', caption: 'Link', tagName: 'link',
         create: function (doc) {
             var el = doc.createElement('link');
             el.rel = 'stylesheet';
@@ -77,9 +68,8 @@
         ])
     });
 
-    /* Style — может быть в head и в body (scoped/inline-стили) */
     R.register({
-        id: 'html.style', category: 'Head', caption: 'Style', tagName: 'style',
+        id: 'html.style', category: 'HTML', subCategory: 'Head', caption: 'Style', tagName: 'style',
         create: function (doc) {
             var el = doc.createElement('style');
             el.textContent = '/* CSS */';
@@ -88,9 +78,8 @@
         schema: sch([{ name: 'media', caption: 'Media', type: 'string', attr: true }])
     });
 
-    /* Script — может быть в head и в body */
     R.register({
-        id: 'html.script', category: 'Head', caption: 'Script', tagName: 'script',
+        id: 'html.script', category: 'HTML', subCategory: 'Head', caption: 'Script', tagName: 'script',
         create: function (doc) {
             var el = doc.createElement('script');
             el.textContent = '// JS';
@@ -105,7 +94,7 @@
     });
 
     R.register({
-        id: 'html.base', category: 'Head', caption: 'Base', tagName: 'base',
+        id: 'html.base', category: 'HTML', subCategory: 'Head', caption: 'Base', tagName: 'base',
         headOnly: true,
         create: function (doc) { return doc.createElement('base'); },
         schema: sch([
@@ -115,7 +104,7 @@
     });
 
     R.register({
-        id: 'html.noscript', category: 'Head', caption: 'NoScript', tagName: 'noscript',
+        id: 'html.noscript', category: 'HTML', subCategory: 'Head', caption: 'NoScript', tagName: 'noscript',
         headOnly: true,
         create: function (doc) {
             var el = doc.createElement('noscript');
@@ -126,7 +115,7 @@
     });
 
     R.register({
-        id: 'html.template', category: 'Head', caption: 'Template', tagName: 'template',
+        id: 'html.template', category: 'HTML', subCategory: 'Head', caption: 'Template', tagName: 'template',
         headOnly: true,
         create: function (doc) {
             var el = doc.createElement('template');

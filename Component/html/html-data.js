@@ -28,11 +28,9 @@
         return { properties: (extra || []).slice(), styles: [], events: [] };
     }
 
-    /* ============================================================
-       cmpAction — процедурный блок (begin ... end;)
-       ============================================================ */
     R.register({
-        id: 'cmp.action', category: 'Data', caption: 'Action', tagName: 'cmpAction',
+        id: 'cmp.action', category: 'HTML', subCategory: 'Data',
+        caption: 'Action', tagName: 'cmpAction',
         create: function (doc) {
             var el = doc.createElement('cmpAction');
             el.setAttribute('data-wb-tag', 'cmpAction');
@@ -45,9 +43,9 @@
         ])
     });
 
-    /* parentOnly: cmpActionVar можно добавлять только внутрь cmpAction */
     R.register({
-        id: 'cmp.actionvar', category: 'Data', caption: 'ActionVar', tagName: 'cmpActionVar',
+        id: 'cmp.actionvar', category: 'HTML', subCategory: 'Data',
+        caption: 'ActionVar', tagName: 'cmpActionVar',
         parentOnly: 'cmpaction',
         create: function (doc) {
             var el = doc.createElement('cmpActionVar');
@@ -69,11 +67,9 @@
         ])
     });
 
-    /* ============================================================
-       cmpDataSet — выборка данных (select ...)
-       ============================================================ */
     R.register({
-        id: 'cmp.dataset', category: 'Data', caption: 'DataSet', tagName: 'cmpDataSet',
+        id: 'cmp.dataset', category: 'HTML', subCategory: 'Data',
+        caption: 'DataSet', tagName: 'cmpDataSet',
         create: function (doc) {
             var el = doc.createElement('cmpDataSet');
             el.setAttribute('data-wb-tag', 'cmpDataSet');
@@ -88,9 +84,9 @@
         ])
     });
 
-    /* parentOnly: cmpDataSetVar можно добавлять только внутрь cmpDataSet */
     R.register({
-        id: 'cmp.datasetvar', category: 'Data', caption: 'DataSetVar', tagName: 'cmpDataSetVar',
+        id: 'cmp.datasetvar', category: 'HTML', subCategory: 'Data',
+        caption: 'DataSetVar', tagName: 'cmpDataSetVar',
         parentOnly: 'cmpdataset',
         create: function (doc) {
             var el = doc.createElement('cmpDataSetVar');

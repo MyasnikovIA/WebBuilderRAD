@@ -10,7 +10,7 @@
     }
 
     R.register({
-        id: 'ui.alert', category: 'UI', caption: 'Alert', tagName: 'div', cmptype: 'ui.alert',
+        id: 'ui.alert', category: 'HTML', subCategory: 'UI', caption: 'Alert', tagName: 'div', cmptype: 'ui.alert',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'flex';
@@ -30,7 +30,7 @@
     });
 
     R.register({
-        id: 'ui.panel', category: 'UI', caption: 'Panel', tagName: 'div', cmptype: 'ui.panel',
+        id: 'ui.panel', category: 'HTML', subCategory: 'UI', caption: 'Panel', tagName: 'div', cmptype: 'ui.panel',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.border = '1px solid #d0d0d0';
@@ -56,7 +56,7 @@
     });
 
     R.register({
-        id: 'ui.toolbar', category: 'UI', caption: 'Toolbar', tagName: 'div', cmptype: 'ui.toolbar',
+        id: 'ui.toolbar', category: 'HTML', subCategory: 'UI', caption: 'Toolbar', tagName: 'div', cmptype: 'ui.toolbar',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'flex';
@@ -83,7 +83,7 @@
     });
 
     R.register({
-        id: 'ui.breadcrumb', category: 'UI', caption: 'Breadcrumb', tagName: 'nav', cmptype: 'ui.breadcrumb',
+        id: 'ui.breadcrumb', category: 'HTML', subCategory: 'UI', caption: 'Breadcrumb', tagName: 'nav', cmptype: 'ui.breadcrumb',
         create: function (doc) {
             var el = doc.createElement('nav');
             el.style.fontFamily = 'Segoe UI, sans-serif';
@@ -101,7 +101,7 @@
     });
 
     R.register({
-        id: 'ui.pagination', category: 'UI', caption: 'Pagination', tagName: 'div', cmptype: 'ui.pagination',
+        id: 'ui.pagination', category: 'HTML', subCategory: 'UI', caption: 'Pagination', tagName: 'div', cmptype: 'ui.pagination',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'flex';
@@ -125,7 +125,7 @@
     });
 
     R.register({
-        id: 'ui.tabs', category: 'UI', caption: 'Tabs', tagName: 'div', cmptype: 'ui.tabs',
+        id: 'ui.tabs', category: 'HTML', subCategory: 'UI', caption: 'Tabs', tagName: 'div', cmptype: 'ui.tabs',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.fontFamily = 'Segoe UI, sans-serif';
@@ -158,7 +158,7 @@
     });
 
     R.register({
-        id: 'ui.accordion', category: 'UI', caption: 'Accordion', tagName: 'div', cmptype: 'ui.accordion',
+        id: 'ui.accordion', category: 'HTML', subCategory: 'UI', caption: 'Accordion', tagName: 'div', cmptype: 'ui.accordion',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.fontFamily = 'Segoe UI, sans-serif';
@@ -185,7 +185,7 @@
     });
 
     R.register({
-        id: 'ui.progressbar', category: 'UI', caption: 'ProgressBar', tagName: 'div', cmptype: 'ui.progressbar',
+        id: 'ui.progressbar', category: 'HTML', subCategory: 'UI', caption: 'ProgressBar', tagName: 'div', cmptype: 'ui.progressbar',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.width = '220px';
@@ -204,7 +204,7 @@
     });
 
     R.register({
-        id: 'ui.spinner', category: 'UI', caption: 'Spinner', tagName: 'div', cmptype: 'ui.spinner',
+        id: 'ui.spinner', category: 'HTML', subCategory: 'UI', caption: 'Spinner', tagName: 'div', cmptype: 'ui.spinner',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'inline-block';
@@ -219,7 +219,7 @@
     });
 
     R.register({
-        id: 'ui.avatar', category: 'UI', caption: 'Avatar', tagName: 'div', cmptype: 'ui.avatar',
+        id: 'ui.avatar', category: 'HTML', subCategory: 'UI', caption: 'Avatar', tagName: 'div', cmptype: 'ui.avatar',
         create: function (doc) {
             var el = doc.createElement('div');
             el.textContent = 'AB';
@@ -240,7 +240,7 @@
     });
 
     R.register({
-        id: 'ui.chip', category: 'UI', caption: 'Chip', tagName: 'span', cmptype: 'ui.chip',
+        id: 'ui.chip', category: 'HTML', subCategory: 'UI', caption: 'Chip', tagName: 'span', cmptype: 'ui.chip',
         create: function (doc) {
             var el = doc.createElement('span');
             el.textContent = 'Chip';
@@ -258,7 +258,7 @@
     });
 
     R.register({
-        id: 'ui.divider', category: 'UI', caption: 'Divider', tagName: 'div', cmptype: 'ui.divider',
+        id: 'ui.divider', category: 'HTML', subCategory: 'UI', caption: 'Divider', tagName: 'div', cmptype: 'ui.divider',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'flex';
@@ -276,7 +276,7 @@
     });
 
     R.register({
-        id: 'ui.hero', category: 'UI', caption: 'Hero', tagName: 'div', cmptype: 'ui.hero',
+        id: 'ui.hero', category: 'HTML', subCategory: 'UI', caption: 'Hero', tagName: 'div', cmptype: 'ui.hero',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.padding = '24px';
@@ -294,7 +294,7 @@
     });
 
     R.register({
-        id: 'ui.kbd', category: 'UI', caption: 'Kbd', tagName: 'span', cmptype: 'ui.kbd',
+        id: 'ui.kbd', category: 'HTML', subCategory: 'UI', caption: 'Kbd', tagName: 'span', cmptype: 'ui.kbd',
         create: function (doc) {
             var el = doc.createElement('span');
             el.textContent = 'Ctrl+K';

@@ -26,28 +26,90 @@
             if (_byId[def.id]) throw new Error('Duplicate component id: ' + def.id);
             def.tagName = (def.tagName || 'div').toLowerCase();
 
-            /* Если задан явный def.category — используем ТОЛЬКО его.
-               Это перекрывает любые def.categories, которые могли быть
-               выставлены обёртывающим D3.register. */
-            if (def.category) {
-                def.categories = [def.category];
-            } else if (!def.categories || !def.categories.length) {
-                def.categories = ['General'];
+            /* Поддержка двух форматов:
+               - category: 'HTML', subCategory: 'Basic' — новый (рекомендуется);
+               - category: 'HTML/Basic' — старый, разбирается автоматически. */
+            if (def.category && def.category.indexOf('/') >= 0 && !def.subCategory) {
+                var parts = def.category.split('/');
+                def.category = parts[0];
+                def.subCategory = parts.slice(1).join('/');
             }
+            if (!def.category) def.category = 'General';
+            if (!def.subCategory) def.subCategory = null;
 
+            def.categories = [def.category];   /* для обратной совместимости */
             _byId[def.id] = def;
-            for (var i = 0; i < def.categories.length; i++) {
-                var c = def.categories[i];
-                (_byCat[c] = _byCat[c] || []).push(def);
-            }
+            (_byCat[def.category] = _byCat[def.category] || []).push(def);
             return def;
         },
         get: function (id) { return _byId[id]; },
-        all: function () { var r = []; for (var k in _byId) if (_byId.hasOwnProperty(k)) r.push(_byId[k]); return r; },
+        all: function () {
+            var r = [];
+            for (var k in _byId) if (_byId.hasOwnProperty(k)) r.push(_byId[k]);
+            return r;
+        },
         categories: function () {
             var r = [];
-            for (var k in _byCat) if (_byCat.hasOwnProperty(k)) r.push({ name: k, components: _byCat[k] });
+            for (var k in _byCat) if (_byCat.hasOwnProperty(k)) {
+                r.push({ name: k, components: _byCat[k] });
+            }
             return r;
+        },
+        /* Иерархическое дерево категорий:
+           [ { name, components, subcategories: [ { name, components } ] } ] */
+        categoryTree: function () {
+            var ORDER = ['D3', 'M2', 'HTML', 'General'];
+            var SUB_ORDER = {
+                'HTML': ['Basic', 'Text', 'Layout', 'Lists', 'Forms', 'Tables',
+                    'Media', 'Head', 'Document', 'Data', 'UI']
+            };
+
+            var names = [];
+            for (var k in _byCat) if (_byCat.hasOwnProperty(k)) names.push(k);
+            names.sort(function (a, b) {
+                var ra = ORDER.indexOf(a); if (ra < 0) ra = ORDER.length;
+                var rb = ORDER.indexOf(b); if (rb < 0) rb = ORDER.length;
+                if (ra !== rb) return ra - rb;
+                return a < b ? -1 : (a > b ? 1 : 0);
+            });
+
+            var result = [];
+            for (var i = 0; i < names.length; i++) {
+                var name = names[i];
+                var list = _byCat[name] || [];
+                var direct = [];
+                var subMap = {};
+                for (var j = 0; j < list.length; j++) {
+                    var c = list[j];
+                    if (c.subCategory) {
+                        (subMap[c.subCategory] = subMap[c.subCategory] || []).push(c);
+                    } else {
+                        direct.push(c);
+                    }
+                }
+
+                var subNames = [];
+                for (var sk in subMap) if (subMap.hasOwnProperty(sk)) subNames.push(sk);
+                var order = SUB_ORDER[name] || [];
+                subNames.sort(function (a, b) {
+                    var ra = order.indexOf(a); if (ra < 0) ra = order.length;
+                    var rb = order.indexOf(b); if (rb < 0) rb = order.length;
+                    if (ra !== rb) return ra - rb;
+                    return a < b ? -1 : (a > b ? 1 : 0);
+                });
+
+                var subs = [];
+                for (var si = 0; si < subNames.length; si++) {
+                    subs.push({ name: subNames[si], components: subMap[subNames[si]] });
+                }
+
+                result.push({
+                    name: name,
+                    components: direct,
+                    subcategories: subs
+                });
+            }
+            return result;
         },
         match: function (el) {
             if (!el || el.nodeType !== 1) return null;

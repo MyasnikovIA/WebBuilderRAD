@@ -3,7 +3,7 @@
     var R = ComponentRegistry, S = CommonSchema;
     function sch() { return S.defaultSchema(); }
 
-    R.register({ id: 'table.table', category: 'Tables', caption: 'Table', tagName: 'table',
+    R.register({ id: 'table.table', category: 'HTML', subCategory: 'Tables', caption: 'Table', tagName: 'table',
         create: function (doc) {
             var el = doc.createElement('table');
             el.style.borderCollapse = 'collapse';
@@ -11,16 +11,16 @@
             return el;
         }, schema: sch() });
 
-    R.register({ id: 'table.thead', category: 'Tables', caption: 'THead', tagName: 'thead',
+    R.register({ id: 'table.thead', category: 'HTML', subCategory: 'Tables', caption: 'THead', tagName: 'thead',
         create: function (doc) { return doc.createElement('thead'); }, schema: sch() });
 
-    R.register({ id: 'table.tbody', category: 'Tables', caption: 'TBody', tagName: 'tbody',
+    R.register({ id: 'table.tbody', category: 'HTML', subCategory: 'Tables', caption: 'TBody', tagName: 'tbody',
         create: function (doc) { return doc.createElement('tbody'); }, schema: sch() });
 
-    R.register({ id: 'table.tfoot', category: 'Tables', caption: 'TFoot', tagName: 'tfoot',
+    R.register({ id: 'table.tfoot', category: 'HTML', subCategory: 'Tables', caption: 'TFoot', tagName: 'tfoot',
         create: function (doc) { return doc.createElement('tfoot'); }, schema: sch() });
 
-    R.register({ id: 'table.tr', category: 'Tables', caption: 'Row', tagName: 'tr',
+    R.register({ id: 'table.tr', category: 'HTML', subCategory: 'Tables', caption: 'Row', tagName: 'tr',
         create: function (doc) {
             var tr = doc.createElement('tr');
             for (var i = 0; i < 2; i++) {
@@ -33,7 +33,7 @@
             return tr;
         }, schema: sch() });
 
-    R.register({ id: 'table.td', category: 'Tables', caption: 'Cell', tagName: 'td',
+    R.register({ id: 'table.td', category: 'HTML', subCategory: 'Tables', caption: 'Cell', tagName: 'td',
         create: function (doc) {
             var td = doc.createElement('td');
             td.textContent = 'Cell';
@@ -42,7 +42,7 @@
             return td;
         }, schema: sch() });
 
-    R.register({ id: 'table.th', category: 'Tables', caption: 'Header Cell', tagName: 'th',
+    R.register({ id: 'table.th', category: 'HTML', subCategory: 'Tables', caption: 'Header Cell', tagName: 'th',
         create: function (doc) {
             var th = doc.createElement('th');
             th.textContent = 'Header';

@@ -84,7 +84,6 @@
         if (!doc) return out;
 
         var sources = [];
-        /* Ищем скрипты в обоих форматах: D3 <cmpScript> и M2 <component cmptype="Script">. */
         var scripts = doc.querySelectorAll('cmpscript, component[cmptype="Script"], script');
         for (var i = 0; i < scripts.length; i++) {
             var s = scripts[i];
@@ -714,12 +713,6 @@
     /* ============================================================
        Palette
        ============================================================ */
-    var CATEGORY_ORDER = ['D3', 'M2', 'HTML', 'General'];
-
-    function categoryRank(name) {
-        var i = CATEGORY_ORDER.indexOf(name);
-        return i < 0 ? CATEGORY_ORDER.length : i;
-    }
 
     function Palette(rootEl) {
         this.root = $(rootEl);
@@ -738,76 +731,126 @@
         this.root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
 
-        var cats = ComponentRegistry.categories();
-        cats.sort(function (a, b) {
-            var ra = categoryRank(a.name);
-            var rb = categoryRank(b.name);
-            if (ra !== rb) return ra - rb;
-            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
-        });
+        var tree = ComponentRegistry.categoryTree();
 
         if (this._collapseAllOnRender) {
             this._collapseAllOnRender = false;
             this._collapsed = {};
-            for (var ci = 0; ci < cats.length; ci++) {
-                var catId0 = 'cat_' + cats[ci].name;
-                var visible0 = cats[ci].components.filter(function (c) { return !c.hidden; });
-                if (visible0.length > 0) {
-                    this._collapsed[catId0] = true;
+            for (var i = 0; i < tree.length; i++) {
+                var node = tree[i];
+                this._collapsed['cat_' + node.name] = true;
+                for (var j = 0; j < node.subcategories.length; j++) {
+                    this._collapsed['cat_' + node.name + '/' + node.subcategories[j].name] = true;
                 }
             }
         }
 
-        cats.forEach(function (cat) {
-            var catId = 'cat_' + cat.name;
-            var visible = cat.components.filter(function (c) { return !c.hidden; });
-            if (visible.length === 0) return;
+        for (var k = 0; k < tree.length; k++) {
+            ul.append(self._renderTopCategory(tree[k]));
+        }
 
-            var collapsed = !!self._collapsed[catId];
-
-            var li = $('<li></li>');
-            var toggle = $('<span class="wb-toggle"></span>')
-                .text(collapsed ? '+' : '\u2212')
-                .toggleClass('wb-leaf', visible.length === 0);
-            li.append(toggle);
-            li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(cat.name));
-
-            var cul = $('<ul></ul>');
-            visible.forEach(function (c) {
-                var cli = $('<li></li>');
-                cli.append($('<span class="wb-toggle wb-leaf"></span>'));
-
-                var comp = $('<span></span>')
-                    .addClass('wb-tree-label wb-comp-label wb-palette-btn')
-                    .attr('data-comp-id', c.id);
-
-                if (c.iconUrl) {
-                    var $img = $('<img/>')
-                        .addClass('wb-palette-icon')
-                        .attr('alt', '')
-                        .attr('src', c.iconUrl)
-                        .bind('error', function () { $(this).remove(); });
-                    comp.append($img);
-                }
-                comp.append(document.createTextNode(c.caption));
-
-                comp.click(function () { self._select(c, comp); });
-                cli.append(comp);
-                cul.append(cli);
-            });
-            if (collapsed) cul.hide();
-            li.append(cul);
-            ul.append(li);
-
-            toggle.click(function (e) {
-                e.stopPropagation();
-                var nowCollapsed = !self._collapsed[catId];
-                self._collapsed[catId] = nowCollapsed;
-                toggle.text(nowCollapsed ? '+' : '\u2212');
-                if (nowCollapsed) cul.hide(); else cul.show();
-            });
-        });
         this.root.append(ul);
+    };
+
+    Palette.prototype._renderTopCategory = function (node) {
+        var self = this;
+
+        var visibleDirect = node.components.filter(function (c) { return !c.hidden; });
+        var visibleSubs = [];
+        for (var i = 0; i < node.subcategories.length; i++) {
+            var sub = node.subcategories[i];
+            var vis = sub.components.filter(function (c) { return !c.hidden; });
+            if (vis.length > 0) visibleSubs.push({ name: sub.name, components: vis });
+        }
+
+        var li = $('<li></li>');
+        if (visibleDirect.length === 0 && visibleSubs.length === 0) return li;
+
+        var catId = 'cat_' + node.name;
+        var collapsed = !!this._collapsed[catId];
+
+        var toggle = $('<span class="wb-toggle"></span>')
+            .text(collapsed ? '+' : '\u2212')
+            .toggleClass('wb-leaf', false);
+        li.append(toggle);
+        li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(node.name));
+
+        var cul = $('<ul></ul>');
+
+        for (var d = 0; d < visibleDirect.length; d++) {
+            cul.append(self._renderComponentLi(visibleDirect[d]));
+        }
+        for (var s = 0; s < visibleSubs.length; s++) {
+            cul.append(self._renderSubCategoryLi(node.name, visibleSubs[s]));
+        }
+
+        if (collapsed) cul.hide();
+        li.append(cul);
+
+        toggle.click(function (e) {
+            e.stopPropagation();
+            var now = !self._collapsed[catId];
+            self._collapsed[catId] = now;
+            toggle.text(now ? '+' : '\u2212');
+            if (now) cul.hide(); else cul.show();
+        });
+
+        return li;
+    };
+
+    Palette.prototype._renderSubCategoryLi = function (parentName, sub) {
+        var self = this;
+        var li = $('<li></li>');
+
+        var catId = 'cat_' + parentName + '/' + sub.name;
+        var collapsed = !!this._collapsed[catId];
+
+        var toggle = $('<span class="wb-toggle"></span>')
+            .text(collapsed ? '+' : '\u2212')
+            .toggleClass('wb-leaf', false);
+        li.append(toggle);
+        li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(sub.name));
+
+        var cul = $('<ul></ul>');
+        for (var i = 0; i < sub.components.length; i++) {
+            cul.append(self._renderComponentLi(sub.components[i]));
+        }
+        if (collapsed) cul.hide();
+        li.append(cul);
+
+        toggle.click(function (e) {
+            e.stopPropagation();
+            var now = !self._collapsed[catId];
+            self._collapsed[catId] = now;
+            toggle.text(now ? '+' : '\u2212');
+            if (now) cul.hide(); else cul.show();
+        });
+
+        return li;
+    };
+
+    Palette.prototype._renderComponentLi = function (c) {
+        var self = this;
+        var cli = $('<li></li>');
+        cli.append($('<span class="wb-toggle wb-leaf"></span>'));
+
+        var comp = $('<span></span>')
+            .addClass('wb-tree-label wb-comp-label wb-palette-btn')
+            .attr('data-comp-id', c.id);
+
+        if (c.iconUrl) {
+            var $img = $('<img/>')
+                .addClass('wb-palette-icon')
+                .attr('alt', '')
+                .attr('src', c.iconUrl)
+                .bind('error', function () { $(this).remove(); });
+            comp.append($img);
+        }
+        comp.append(document.createTextNode(c.caption));
+
+        comp.click(function () { self._select(c, comp); });
+        cli.append(comp);
+        return cli;
     };
 
     Palette.prototype._select = function (comp, btn) {
@@ -827,27 +870,40 @@
     Palette.prototype._filter = function (txt) {
         txt = (txt || '').toLowerCase();
         var $root = this.root;
-        $root.find('ul').show();
-        $root.find('li').show();
-        if (!txt) return;
-        $root.find('li').each(function () {
-            var li = $(this);
-            var $comp = li.children('.wb-comp-label');
-            if ($comp.length) {
-                var match = $comp.text().toLowerCase().indexOf(txt) >= 0;
-                li.toggle(match);
-            }
+
+        if (!txt) {
+            $root.find('ul, li').show();
+            $root.find('li').each(function () {
+                var $t = $(this).children('.wb-toggle').first();
+                if (!$t.length || $t.hasClass('wb-leaf')) return;
+                var $ul = $(this).children('ul').first();
+                if ($ul.length) $ul.show();
+                $t.text('\u2212');
+            });
+            return;
+        }
+
+        $root.find('li').hide();
+        $root.find('ul').hide();
+
+        $root.find('.wb-comp-label').each(function () {
+            var $lab = $(this);
+            if ($lab.text().toLowerCase().indexOf(txt) < 0) return;
+            $lab.show();
+            var $li = $lab.closest('li');
+            $li.show();
+            $li.parents('li').show();
+            $li.parents('ul').show();
         });
-        $root.children('ul').children('li').each(function () {
-            var li = $(this);
-            var anyVisible = li.find('.wb-comp-label:visible').length > 0;
-            var selfLabel = li.children('.wb-cat-label').text().toLowerCase();
-            var selfMatch = selfLabel.indexOf(txt) >= 0;
-            li.toggle(anyVisible || selfMatch);
-            if (anyVisible) {
-                li.children('ul').show();
-                li.children('.wb-toggle').text('\u2212');
-            }
+
+        $root.find('.wb-cat-label').each(function () {
+            var $lab = $(this);
+            if ($lab.text().toLowerCase().indexOf(txt) < 0) return;
+            var $li = $lab.closest('li');
+            $li.show();
+            $li.find('ul, li, .wb-comp-label').show();
+            $li.parents('li').show();
+            $li.parents('ul').show();
         });
     };
 
@@ -1259,7 +1315,7 @@
     function isM2Element(el) {
         if (!el || el.nodeType !== 1) return false;
         if (!el.getAttribute) return false;
-        if (el.getAttribute('data-wb-tag')) return false;   /* D3 */
+        if (el.getAttribute('data-wb-tag')) return false;
         return !!el.getAttribute('cmptype');
     }
 
@@ -1273,7 +1329,6 @@
             if (m2Script) {
                 return { node: m2Script, isFormFunc: true, created: false };
             }
-            /* Создать новый M2-скрипт-блок. */
             var el = doc.createElement('component');
             el.setAttribute('cmptype', 'Script');
             el.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
@@ -1284,7 +1339,6 @@
             }
             return { node: el, isFormFunc: true, created: true };
         }
-        /* D3 */
         var cmpScript = doc.querySelector('cmpscript');
         if (cmpScript) {
             return { node: cmpScript, isFormFunc: true, created: false };
@@ -1300,18 +1354,6 @@
         return { node: el2, isFormFunc: true, created: true };
     }
 
-    /* Создать новую функцию-обработчик.
-
-       Логика:
-         - определяется тип текущего элемента (D3 / M2);
-         - ищется подходящий контейнер (cmpScript для D3,
-           component[cmptype="Script"] для M2);
-         - если контейнера нет — создаётся новый соответствующего типа;
-         - применяются шаблоны f.template / f.callTemplate
-           (или дефолтные);
-         - имя функции подбирается из события + name/id контрола;
-         - при совпадении с уже существующей функцией — новая не
-           создаётся, возвращается существующая сигнатура. */
     Inspector.prototype._createEventFunction = function (f) {
         var el = this.element;
         if (!el) return null;
@@ -1322,7 +1364,6 @@
 
         var isM2 = isM2Element(el);
 
-        /* Имя функции: on + CamelEvent + Name/Id контрола. */
         var camelEvent = eventNameToCamel(f.name);
         var ctrlName = '';
         if (el.getAttribute) {
@@ -1330,16 +1371,12 @@
         }
         var funcName = 'on' + camelEvent + ctrlName;
 
-        /* Подобрать или создать скрипт-контейнер. */
         var container = findOrCreateScriptContainer(doc, canvas, isM2);
         if (!container || !container.node) return null;
 
         var scriptNode   = container.node;
         var createdScript = container.created;
 
-        /* Имя функции с префиксом Form. — если это форма (всегда, если
-           скрипт-контейнер формы). Для inline <script> не используется —
-           но здесь inline не рассматривается, он создаётся только как fallback. */
         var isFormFunc = container.isFormFunc;
         var funcPath = (isFormFunc ? 'Form.' : '') + funcName;
 
@@ -1351,7 +1388,6 @@
                 .replace(/\{ctrl\}/g, ctrlName);
         }
 
-        /* Тело новой функции. */
         var funcBody;
         if (f.template && typeof f.template === 'string') {
             funcBody = applyPlaceholders(f.template);
@@ -1359,7 +1395,6 @@
             funcBody = funcPath + ' = function(dom) {\n\n};';
         }
 
-        /* Сигнатура вызова. */
         var callSig;
         if (f.callTemplate && typeof f.callTemplate === 'string') {
             callSig = applyPlaceholders(f.callTemplate);
@@ -1373,14 +1408,12 @@
             if (nm) callName = nm[1];
         }
 
-        /* Проверка, что функция ещё не объявлена. */
         var existingCode = scriptNode.textContent || '';
 
         if (isFunctionDeclared(existingCode, callName)) {
             return { signature: callSig, name: callName };
         }
 
-        /* Вставка в CDATA-контейнер. */
         var textNode = null;
         for (var i = 0; i < scriptNode.childNodes.length; i++) {
             var cn = scriptNode.childNodes[i];

@@ -7,7 +7,7 @@
         return b;
     }
 
-    R.register({ id: 'media.img', category: 'Media', caption: 'Image', tagName: 'img',
+    R.register({ id: 'media.img', category: 'HTML', subCategory: 'Media', caption: 'Image', tagName: 'img',
         create: function (doc) {
             var el = doc.createElement('img');
             el.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="100%" height="100%" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23666" font-size="12">IMG</text></svg>';
@@ -20,7 +20,7 @@
             { name: 'height', caption: 'Height', type: 'number', attr: true }
         ]) });
 
-    R.register({ id: 'media.video', category: 'Media', caption: 'Video', tagName: 'video',
+    R.register({ id: 'media.video', category: 'HTML', subCategory: 'Media', caption: 'Video', tagName: 'video',
         create: function (doc) {
             var el = doc.createElement('video');
             el.controls = true;
@@ -35,7 +35,7 @@
             { name: 'muted',    caption: 'Muted',    type: 'boolean' }
         ]) });
 
-    R.register({ id: 'media.audio', category: 'Media', caption: 'Audio', tagName: 'audio',
+    R.register({ id: 'media.audio', category: 'HTML', subCategory: 'Media', caption: 'Audio', tagName: 'audio',
         create: function (doc) { var el = doc.createElement('audio'); el.controls = true; return el; },
         schema: schema([
             { name: 'src',      caption: 'Src',      type: 'string', attr: true },
@@ -44,7 +44,7 @@
             { name: 'muted',    caption: 'Muted',    type: 'boolean' }
         ]) });
 
-    R.register({ id: 'media.iframe', category: 'Media', caption: 'IFrame', tagName: 'iframe',
+    R.register({ id: 'media.iframe', category: 'HTML', subCategory: 'Media', caption: 'IFrame', tagName: 'iframe',
         create: function (doc) {
             var el = doc.createElement('iframe');
             el.style.width = '320px'; el.style.height = '180px';

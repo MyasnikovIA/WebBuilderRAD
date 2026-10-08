@@ -10,7 +10,7 @@
     }
 
     R.register({
-        id: 'html.ul', category: 'Lists', caption: 'UL', tagName: 'ul',
+        id: 'html.ul', category: 'HTML', subCategory: 'Lists', caption: 'UL', tagName: 'ul',
         create: function (doc) {
             var el = doc.createElement('ul');
             el.style.paddingLeft = '20px';
@@ -24,7 +24,7 @@
     });
 
     R.register({
-        id: 'html.ol', category: 'Lists', caption: 'OL', tagName: 'ol',
+        id: 'html.ol', category: 'HTML', subCategory: 'Lists', caption: 'OL', tagName: 'ol',
         create: function (doc) {
             var el = doc.createElement('ol');
             el.style.paddingLeft = '20px';
@@ -38,7 +38,7 @@
     });
 
     R.register({
-        id: 'html.li', category: 'Lists', caption: 'LI', tagName: 'li',
+        id: 'html.li', category: 'HTML', subCategory: 'Lists', caption: 'LI', tagName: 'li',
         create: function (doc) {
             var el = doc.createElement('li');
             el.textContent = 'List item';
@@ -48,7 +48,7 @@
     });
 
     R.register({
-        id: 'html.dl', category: 'Lists', caption: 'DL', tagName: 'dl',
+        id: 'html.dl', category: 'HTML', subCategory: 'Lists', caption: 'DL', tagName: 'dl',
         create: function (doc) {
             var el = doc.createElement('dl');
             var dt = doc.createElement('dt'); dt.textContent = 'Term';
@@ -62,7 +62,7 @@
     });
 
     R.register({
-        id: 'html.dt', category: 'Lists', caption: 'DT', tagName: 'dt',
+        id: 'html.dt', category: 'HTML', subCategory: 'Lists', caption: 'DT', tagName: 'dt',
         create: function (doc) {
             var el = doc.createElement('dt');
             el.textContent = 'Term';
@@ -73,7 +73,7 @@
     });
 
     R.register({
-        id: 'html.dd', category: 'Lists', caption: 'DD', tagName: 'dd',
+        id: 'html.dd', category: 'HTML', subCategory: 'Lists', caption: 'DD', tagName: 'dd',
         create: function (doc) {
             var el = doc.createElement('dd');
             el.textContent = 'Definition';

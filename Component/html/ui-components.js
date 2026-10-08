@@ -7,7 +7,7 @@
         return b;
     }
 
-    R.register({ id: 'ui.button', category: 'UI', caption: 'StyledButton', tagName: 'button', cmptype: 'ui.button',
+    R.register({ id: 'ui.button', category: 'HTML', subCategory: 'UI', caption: 'StyledButton', tagName: 'button', cmptype: 'ui.button',
         create: function (doc) {
             var el = doc.createElement('button');
             el.textContent = 'Click me';
@@ -20,7 +20,7 @@
             return el;
         }, schema: schema([{ name: 'disabled', caption: 'Disabled', type: 'boolean' }]) });
 
-    R.register({ id: 'ui.card', category: 'UI', caption: 'Card', tagName: 'div', cmptype: 'ui.card',
+    R.register({ id: 'ui.card', category: 'HTML', subCategory: 'UI', caption: 'Card', tagName: 'div', cmptype: 'ui.card',
         create: function (doc) {
             var el = doc.createElement('div');
             el.style.display = 'inline-block';
@@ -43,7 +43,7 @@
             return el;
         }, schema: S.defaultSchema() });
 
-    R.register({ id: 'ui.badge', category: 'UI', caption: 'Badge', tagName: 'span', cmptype: 'ui.badge',
+    R.register({ id: 'ui.badge', category: 'HTML', subCategory: 'UI', caption: 'Badge', tagName: 'span', cmptype: 'ui.badge',
         create: function (doc) {
             var el = doc.createElement('span');
             el.textContent = 'NEW';

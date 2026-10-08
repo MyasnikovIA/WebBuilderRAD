@@ -10,7 +10,7 @@
     }
 
     R.register({
-        id: 'media.picture', category: 'Media', caption: 'Picture', tagName: 'picture',
+        id: 'media.picture', category: 'HTML', subCategory: 'Media', caption: 'Picture', tagName: 'picture',
         create: function (doc) {
             var el = doc.createElement('picture');
             var img = doc.createElement('img');
@@ -23,7 +23,7 @@
     });
 
     R.register({
-        id: 'media.source', category: 'Media', caption: 'Source', tagName: 'source',
+        id: 'media.source', category: 'HTML', subCategory: 'Media', caption: 'Source', tagName: 'source',
         create: function (doc) {
             var el = doc.createElement('source');
             el.src = '';
@@ -39,7 +39,7 @@
     });
 
     R.register({
-        id: 'media.track', category: 'Media', caption: 'Track', tagName: 'track',
+        id: 'media.track', category: 'HTML', subCategory: 'Media', caption: 'Track', tagName: 'track',
         create: function (doc) {
             var el = doc.createElement('track');
             el.kind = 'captions';
@@ -57,7 +57,7 @@
     });
 
     R.register({
-        id: 'media.embed', category: 'Media', caption: 'Embed', tagName: 'embed',
+        id: 'media.embed', category: 'HTML', subCategory: 'Media', caption: 'Embed', tagName: 'embed',
         create: function (doc) {
             var el = doc.createElement('embed');
             el.type = 'text/html';
@@ -75,7 +75,7 @@
     });
 
     R.register({
-        id: 'media.object', category: 'Media', caption: 'Object', tagName: 'object',
+        id: 'media.object', category: 'HTML', subCategory: 'Media', caption: 'Object', tagName: 'object',
         create: function (doc) {
             var el = doc.createElement('object');
             el.type = 'text/html';
@@ -94,7 +94,7 @@
     });
 
     R.register({
-        id: 'media.param', category: 'Media', caption: 'Param', tagName: 'param',
+        id: 'media.param', category: 'HTML', subCategory: 'Media', caption: 'Param', tagName: 'param',
         create: function (doc) {
             var el = doc.createElement('param');
             el.name = 'name';
@@ -108,7 +108,7 @@
     });
 
     R.register({
-        id: 'media.canvas', category: 'Media', caption: 'Canvas', tagName: 'canvas',
+        id: 'media.canvas', category: 'HTML', subCategory: 'Media', caption: 'Canvas', tagName: 'canvas',
         create: function (doc) {
             var el = doc.createElement('canvas');
             el.width = 320; el.height = 180;
@@ -123,7 +123,7 @@
     });
 
     R.register({
-        id: 'media.svg', category: 'Media', caption: 'SVG', tagName: 'svg',
+        id: 'media.svg', category: 'HTML', subCategory: 'Media', caption: 'SVG', tagName: 'svg',
         create: function (doc) {
             var wrap = doc.createElement('div');
             wrap.innerHTML =
@@ -141,7 +141,7 @@
     });
 
     R.register({
-        id: 'media.map', category: 'Media', caption: 'Map', tagName: 'map',
+        id: 'media.map', category: 'HTML', subCategory: 'Media', caption: 'Map', tagName: 'map',
         create: function (doc) {
             var el = doc.createElement('map');
             el.name = 'imagemap';
@@ -151,7 +151,7 @@
     });
 
     R.register({
-        id: 'media.area', category: 'Media', caption: 'Area', tagName: 'area',
+        id: 'media.area', category: 'HTML', subCategory: 'Media', caption: 'Area', tagName: 'area',
         create: function (doc) {
             var el = doc.createElement('area');
             el.shape = 'rect';

@@ -11,7 +11,8 @@
     function reg(id, caption, tagName, opts) {
         opts = opts || {};
         R.register({
-            id: id, category: 'HTML', caption: caption, tagName: tagName,
+            id: id, category: 'HTML', subCategory: 'Layout',
+            caption: caption, tagName: tagName,
             create: opts.create || function (doc) {
                 var el = doc.createElement(tagName);
                 el.textContent = opts.text || caption;
