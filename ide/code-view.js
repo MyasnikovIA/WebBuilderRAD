@@ -6,7 +6,11 @@
    курсор редактора на начало исходника этого элемента.
 
    По событиям codeview:show и codeview:navigate-function — открывает
-   вкладку Code и позиционирует курсор на объявлении функции формы. */
+   вкладку Code и позиционирует курсор на объявлении функции формы.
+
+   В codeview:navigate-function поддерживается необязательный параметр
+   name — прямое имя функции. Если он задан, используется в первую
+   очередь; иначе имя извлекается из signature. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -28,12 +32,11 @@
             self.navigateTo(e.element);
         });
 
-        /* Внешние запросы на открытие вкладки Code и навигацию. */
         bus.on('codeview:show', function () {
             self.openTab();
         });
         bus.on('codeview:navigate-function', function (e) {
-            self.navigateToFunctionSignature(e && e.signature);
+            self.navigateToFunctionSignature(e && e.signature, e && e.name);
         });
     }
 
@@ -110,40 +113,63 @@
         if (this.active) this._scrollToElement(el);
     };
 
-    /* Навигация к объявлению JS-функции по сигнатуре вызова.
+    /* Навигация к объявлению JS-функции.
 
-       Вход: строка вида 'Form.onClick(this);' или 'onClickBtn(event);'.
-       Разбираем имя, ищем в тексте редактора объявление:
-         1) '<name> = function'  (Form.onClick = function)
-         2) 'function <name>'    (function onClick)
-         3) просто '<name>'      (на случай нестандартных объявлений). */
-    CodeView.prototype.navigateToFunctionSignature = function (signature) {
-        if (!signature) return;
+       Параметры:
+         signature — строка вида 'Form.onClick(this);' или 'onClick(event);'.
+                     Может быть null, если задан hintName.
+         hintName  — необязательное прямое имя функции (например,
+                     'Form.onClickMyButton'). Если задано, используется
+                     как первый кандидат для поиска.
+
+       Порядок поиска:
+         1) hintName (если задан);
+         2) name, извлечённое из signature (первое слово до скобки).
+
+       Для каждого кандидата пробуются формы объявления:
+         '<name> = function'
+         'function <lastSegment>'
+         вхождение подстроки '<name>' как fallback. */
+    CodeView.prototype.navigateToFunctionSignature = function (signature, hintName) {
+        if (!signature && !hintName) return;
         this.openTab();
-
-        var m = String(signature).match(/^\s*([^()\s]+)\s*\(/);
-        if (!m) return;
-        var name = m[1].trim();
-        if (!name) return;
 
         var code = this.editor.getValue();
         if (!code) return;
 
-        var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var candidates = [];
+        if (hintName) candidates.push(hintName);
+        if (signature) {
+            var m = String(signature).match(/^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/);
+            if (m) {
+                var n = m[1].trim();
+                if (n && candidates.indexOf(n) < 0) candidates.push(n);
+            }
+        }
+
         var idx = -1;
+        for (var i = 0; i < candidates.length && idx < 0; i++) {
+            var name = candidates[i];
+            if (!name) continue;
 
-        var re1 = new RegExp('\\b' + esc + '\\s*=\\s*function');
-        var m1 = code.match(re1);
-        if (m1) idx = m1.index;
+            var esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        if (idx < 0) {
-            var re2 = new RegExp('\\bfunction\\s+' + esc + '\\b');
-            var m2 = code.match(re2);
-            if (m2) idx = m2.index;
+            var re1 = new RegExp('\\b' + esc + '\\s*=\\s*function');
+            var m1 = code.match(re1);
+            if (m1) { idx = m1.index; break; }
+
+            var lastSeg = name.split('.').pop();
+            if (lastSeg) {
+                var escLast = lastSeg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                var re2 = new RegExp('\\bfunction\\s+' + escLast + '\\s*\\(');
+                var m2 = code.match(re2);
+                if (m2) { idx = m2.index; break; }
+            }
+
+            var pos = code.indexOf(name);
+            if (pos >= 0) { idx = pos; break; }
         }
-        if (idx < 0) {
-            idx = code.indexOf(name);
-        }
+
         if (idx < 0) return;
 
         this.editor.ta.focus();

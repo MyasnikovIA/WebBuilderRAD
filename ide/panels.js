@@ -152,6 +152,26 @@
         return rest.charAt(0).toUpperCase() + rest.slice(1);
     }
 
+    /* Проверка, объявлена ли функция с таким именем в исходнике.
+       Поддерживает три формы:
+         <name> = function        (Form.onClick = function)
+         function <lastSegment>   (function onClick)
+         <name>                   (просто вхождение как предохранитель) */
+    function isFunctionDeclared(code, name) {
+        if (!code || !name) return false;
+        var esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re1 = new RegExp('\\b' + esc + '\\s*=\\s*function');
+        if (re1.test(code)) return true;
+
+        var lastSeg = String(name).split('.').pop();
+        if (lastSeg && lastSeg !== name) {
+            var escLast = lastSeg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            var re2 = new RegExp('\\bfunction\\s+' + escLast + '\\s*\\(');
+            if (re2.test(code)) return true;
+        }
+        return false;
+    }
+
     /* ============================================================
        DomTree
        ============================================================ */
@@ -1089,8 +1109,8 @@
     };
 
     /* ============================================================
-   Events editor: input + dropdown со списком функций формы.
-   ============================================================ */
+       Events editor: input + dropdown со списком функций формы.
+       ============================================================ */
     Inspector.prototype._buildEventEditor = function (f, val, commit) {
         var self = this;
         var evRow = $('<div class="wb-event-row"></div>');
@@ -1144,8 +1164,9 @@
         /* select: dblclick →
              - если выбрано значение → открыть вкладку Code и позиционировать
                курсор на исходнике функции;
-             - если ничего не выбрано и input пуст → создать новую функцию,
-               затем открыть вкладку Code и позиционировать курсор на ней. */
+             - если ничего не выбрано и input пуст → создать новую функцию
+               (или использовать уже существующую с таким же именем),
+               затем открыть вкладку Code и позиционировать курсор. */
         evSel.dblclick(function () {
             var v = evSel.val();
             if (v) {
@@ -1154,24 +1175,20 @@
                 return;
             }
             if (!evInp.val()) {
-                var call = self._createEventFunction(f);
-                if (call) {
+                var result = self._createEventFunction(f);
+                if (result && result.signature) {
+                    var call = result.signature;
+                    var callName = result.name || call;
+
                     evInp.val(call);
-                    /* Обновить select: добавить опцию, если её нет. */
                     if (evSel.find('option[value="' + call.replace(/"/g, '\\"') + '"]').length === 0) {
                         evSel.append($('<option></option>').val(call).text(call));
                     }
                     evSel.val(call);
                     commit(call);
 
-                    /* FIX: после генерации новой функции — переключиться на
-                       вкладку Code и позиционировать курсор на её объявлении.
-                       Порядок вызовов важен: сначала codeview:show (открытие
-                       вкладки + refresh редактора актуальным cleanHtml()),
-                       потом codeview:navigate-function (поиск объявления и
-                       установка курсора). */
                     bus.emit('codeview:show');
-                    bus.emit('codeview:navigate-function', { signature: call });
+                    bus.emit('codeview:navigate-function', { signature: call, name: callName });
                 }
             }
         });
@@ -1179,13 +1196,30 @@
         evRow.append(evInp).append(evSel);
         return evRow;
     };
-    
+
     /* Создать новую функцию-обработчик в первом найденном блоке
        cmpScript / inline <script>. Если ни одного нет — создать cmpScript
        в начале корневого контейнера.
 
-       Возвращает сигнатуру вызова (например "Form.onClickBtn(this);")
-       либо null при неудаче. */
+       Возвращает объект { signature, name } либо null при неудаче.
+
+       Логика:
+         1. Формируем базовое имя функции:
+              on + CamelCase(событие) + (name || id контрола || '')
+         2. Определяем контейнер (cmpScript → inline <script> → создать
+            новый cmpScript) и путь функции (Form.<имя> или <имя>).
+         3. Формируем тело новой функции:
+              - если задан f.template — подставляем плейсхолдеры
+                {name}, {func}, {event}, {ctrl};
+              - иначе — по умолчанию '<funcPath> = function(dom) {\n\n};'.
+         4. Формируем сигнатуру вызова:
+              - если задан f.callTemplate — подставляем плейсхолдеры;
+              - иначе — '<funcPath>(this);'.
+         5. Проверяем, есть ли уже такая функция в коде (по полному
+            пути или по последнему сегменту после точки).
+            Если есть — не генерируем, а просто возвращаем сигнатуру.
+         6. Если нет — вставляем тело в CDATA cmpScript или в тело
+            inline <script>. */
     Inspector.prototype._createEventFunction = function (f) {
         var el = this.element;
         if (!el) return null;
@@ -1194,7 +1228,7 @@
         var doc = canvas.getDoc();
         if (!doc) return null;
 
-        /* Имя функции: on + CamelEvent + Name/Id контрола. */
+        /* 1. Базовое имя функции. */
         var camelEvent = eventNameToCamel(f.name);
         var ctrlName = '';
         if (el.getAttribute) {
@@ -1202,13 +1236,12 @@
         }
         var funcName = 'on' + camelEvent + ctrlName;
 
-        /* Ищем первый подходящий блок. */
+        /* 2. Контейнер. */
         var cmpScript = doc.querySelector('cmpscript');
         var scriptEl = cmpScript ? null : doc.querySelector('script:not([src])');
         var createdCmpScript = false;
 
         if (!cmpScript && !scriptEl) {
-            /* Создать новый cmpScript в начале корневого контейнера. */
             cmpScript = doc.createElement('cmpscript');
             cmpScript.setAttribute('data-wb-tag', 'cmpScript');
             cmpScript.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
@@ -1220,34 +1253,57 @@
             createdCmpScript = true;
         }
 
-        /* Шаблон функции. Если пользователь задал f.template —
-           используем его, подставляя плейсхолдеры. Иначе — по умолчанию. */
-        var funcBody;
-        var isFormFunc;
+        var isFormFunc = !!cmpScript;
+        var funcPath = (isFormFunc ? 'Form.' : '') + funcName;
 
-        if (cmpScript) {
-            if (f.template && typeof f.template === 'string') {
-                funcBody = String(f.template)
-                    .replace(/\{name\}/g, funcName)
-                    .replace(/\{event\}/g, camelEvent)
-                    .replace(/\{ctrl\}/g, ctrlName);
-            } else {
-                funcBody = 'Form.' + funcName + ' = function(dom) {\n\n};';
-            }
-            isFormFunc = /^\s*Form\s*\./.test(funcBody);
-        } else {
-            if (f.template && typeof f.template === 'string') {
-                funcBody = String(f.template)
-                    .replace(/\{name\}/g, funcName)
-                    .replace(/\{event\}/g, camelEvent)
-                    .replace(/\{ctrl\}/g, ctrlName);
-            } else {
-                funcBody = funcName + ' = function(dom) {\n\n};';
-            }
-            isFormFunc = false;
+        /* Подстановка плейсхолдеров. */
+        function applyPlaceholders(str) {
+            return String(str)
+                .replace(/\{name\}/g, funcName)
+                .replace(/\{func\}/g, funcPath)
+                .replace(/\{event\}/g, camelEvent)
+                .replace(/\{ctrl\}/g, ctrlName);
         }
 
-        /* Вставка в cmpScript (внутрь CDATA). */
+        /* 3. Тело новой функции. */
+        var funcBody;
+        if (f.template && typeof f.template === 'string') {
+            funcBody = applyPlaceholders(f.template);
+        } else {
+            funcBody = funcPath + ' = function(dom) {\n\n};';
+        }
+
+        /* 4. Сигнатура вызова. */
+        var callSig;
+        if (f.callTemplate && typeof f.callTemplate === 'string') {
+            callSig = applyPlaceholders(f.callTemplate);
+        } else {
+            callSig = funcPath + '(this);';
+        }
+
+        /* 5. Проверка: имя функции в коде.
+
+           Сначала пробуем полный путь — он чаще всего фигурирует в
+           сигнатуре вызова. Если в сигнатуре он не встречается (например,
+           callTemplate = 'setTimeout(...)'), — извлекаем первое имя перед
+           открывающей скобкой. */
+        var callName = funcPath;
+        if (callSig.indexOf(funcPath) < 0) {
+            var nm = callSig.match(/^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/);
+            if (nm) callName = nm[1];
+        }
+
+        var existingCode = '';
+        if (cmpScript) existingCode = cmpScript.textContent || '';
+        else if (scriptEl) existingCode = scriptEl.textContent || '';
+
+        if (isFunctionDeclared(existingCode, callName)) {
+            /* Уже объявлена — ничего не генерируем, только возвращаем
+               сигнатуру и имя для навигации. */
+            return { signature: callSig, name: callName };
+        }
+
+        /* 6. Генерация. */
         if (cmpScript) {
             var textNode = null;
             for (var i = 0; i < cmpScript.childNodes.length; i++) {
@@ -1269,14 +1325,11 @@
             scriptEl.textContent = rawS;
         }
 
-        /* Перерисовка превью / перезапуск наблюдателя. */
-        if (createdCmpScript) {
-            canvas._reobserve && canvas._reobserve();
+        if (createdCmpScript && canvas._reobserve) {
+            canvas._reobserve();
         }
 
-        /* Сигнатура вызова. */
-        var callSig = (isFormFunc ? ('Form.' + funcName) : funcName) + '(this);';
-        return callSig;
+        return { signature: callSig, name: callName };
     };
 
     global.DomTree   = DomTree;
