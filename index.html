@@ -33,8 +33,9 @@
         </div>
     </div>
 
-    <!-- Left: Structure + Palette -->
-    <div region="west" width="290" expanded="true" showSplitIcon="true" showHeader="false">
+    <!-- Left: Structure + Inspector -->
+    <div region="west" width="330" expanded="true" showSplitIcon="true" showHeader="false">
+
         <div class="wb-panel" style="height:50%;">
             <div class="wb-panel-head">
                 <span>Structure</span>
@@ -42,23 +43,8 @@
             </div>
             <div id="wb-domtree" class="wb-scroll"></div>
         </div>
-        <div class="wb-panel" style="height:50%;border-top:1px solid #c0c0c0;">
-            <div class="wb-panel-head">
-                <span>Tool Palette</span>
-                <input id="wb-palette-filter" type="text" placeholder="filter…">
-            </div>
-            <div id="wb-palette" class="wb-scroll"></div>
-        </div>
-    </div>
 
-    <!-- Center: canvas -->
-    <div region="center" style="padding:6px;background:#808080;">
-        <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
-    </div>
-
-    <!-- Right: Inspector -->
-    <div id="wb-right" region="east" width="330" expanded="true" showSplitIcon="true" showHeader="false">
-        <div class="wb-panel">
+        <div id="wb-right" class="wb-panel" style="height:50%;border-top:1px solid #c0c0c0;">
             <div class="wb-panel-head">
                 <span id="wb-inspector-target">—</span>
             </div>
@@ -72,6 +58,22 @@
                 <div class="wb-itab-pane" data-tab="styles" style="display:none;"></div>
                 <div class="wb-itab-pane" data-tab="events" style="display:none;"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Center: canvas -->
+    <div region="center" style="padding:6px;background:#808080;">
+        <iframe id="wb-canvas" frameborder="0" style="width:100%;height:100%;background:#fff;border:1px solid #404040;"></iframe>
+    </div>
+
+    <!-- Right: Tool Palette -->
+    <div region="east" width="290" expanded="true" showSplitIcon="true" showHeader="false">
+        <div class="wb-panel" style="height:100%;">
+            <div class="wb-panel-head">
+                <span>Tool Palette</span>
+                <input id="wb-palette-filter" type="text" placeholder="filter…">
+            </div>
+            <div id="wb-palette" class="wb-scroll"></div>
         </div>
     </div>
 </div>
@@ -195,6 +197,9 @@
      ========================================================= -->
 <script src="Component/d3/core.js"></script>
 
+<!-- HTML Comment -->
+<script src="Component/d3/Comment/index.js"></script>
+
 <!-- D3 form-контейнеры -->
 <script src="Component/d3/Form/index.js"></script>
 <script src="Component/d3/RootDiv/index.js"></script>
@@ -254,7 +259,6 @@
 <script src="Component/d3/InfoAboutRecord/index.js"></script>
 <script src="Component/d3/Label/index.js"></script>
 <script src="Component/d3/Layout/index.js"></script>
-<script src="Component/d3/Layout/index.js"></script>
 <script src="Component/d3/LayoutRow/index.js"></script>
 <script src="Component/d3/LayoutCell/index.js"></script>
 <script src="Component/d3/LinksViewer/index.js"></script>
@@ -268,14 +272,12 @@
 <script src="Component/d3/DataSet/index.js"></script>
 <script src="Component/d3/DataSetVar/index.js"></script>
 <script src="Component/d3/Locate/index.js"></script>
-<script src="Component/d3/Locate/index.js"></script>
 <script src="Component/d3/Module/index.js"></script>
 <script src="Component/d3/ModuleVar/index.js"></script>
 
 <!-- D3 fetch -->
 <script src="Component/d3/Fetch/index.js"></script>
 <script src="Component/d3/FetchVar/index.js"></script>
-
 
 <!-- D3 actions -->
 <script src="Component/d3/Action/index.js"></script>
@@ -294,6 +296,7 @@
 
 <!-- D3 brokers -->
 <script src="Component/d3/Broker/index.js"></script>
+
 <!-- =========================================================
      Bootstrap app
      ========================================================= -->
