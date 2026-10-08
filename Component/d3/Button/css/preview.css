@@ -1,8 +1,11 @@
 /* Превью cmpButton — стиль, соответствующий платформенной кнопке (Button.css).
    Подключается в iframe автоматически через D3.register({ previewCss: [...] }).
-   В финальный HTML не попадает. */
+   В финальный HTML не попадает.
 
-/* Сброс IDE-рамки, которая [data-wb-preview] навешивает по умолчанию. */
+   Раскладка — flex, чтобы .btn_caption растягивался на всю ширину и
+   высоту preview-обёртки при ресайзе (см. canvas._applyBox). */
+
+/* Сброс IDE-рамки + flex-контейнер. */
 .d3-preview-button[data-wb-preview] {
     outline: 1px dashed #90caf9 !important;
     outline-offset: 2px !important;
@@ -10,7 +13,10 @@
     margin: 0 !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    display: inline-block !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 /* ---------- Базовая кнопка ---------- */
@@ -19,7 +25,6 @@
     height: 28px;
     -moz-user-select: none;
     user-select: none;
-    display: inline-block;
     white-space: nowrap;
     outline: none;
     padding-right: 8px;
@@ -46,11 +51,13 @@
     font-size: 12px;
 }
 
-/* Иконка */
+/* Иконка — не растягивается, всегда 16×16. */
 .d3-preview-button .btn_icon {
-    display: table-cell;
-    vertical-align: middle;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
     padding-left: 8px;
+    height: 100%;
 }
 .d3-preview-button .btn_icon_img {
     width: 16px;
@@ -59,27 +66,28 @@
     border: 0;
 }
 
-/* Текст */
+/* Текст — растягивается на всё свободное место. */
 .d3-preview-button .btn_caption {
-    display: table-cell;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     height: 100%;
+    width: 100%;
     line-height: inherit;
     text-align: center;
     padding-left: 8px;
-    vertical-align: middle;
+    box-sizing: border-box;
+    overflow: hidden;
+    min-width: 0;
 }
-.d3-preview-button .btn_center {
-    text-align: center;
-}
-.d3-preview-button .minwidth {
-    min-width: 80px;
-}
+.d3-preview-button .btn_center { text-align: center; }
+.d3-preview-button .minwidth { min-width: 80px; }
 
-/* Стрелка popupmenu */
+/* Стрелка popupmenu — тоже flex-элемент, не растягивается. */
 .d3-preview-button .d3-preview-button-arrow {
+    flex: 0 0 auto;
     padding-left: 5px;
-    float: right;
-    padding-top: 4px;
     font-size: 11px;
     color: #555;
 }

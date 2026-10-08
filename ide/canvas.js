@@ -1,17 +1,9 @@
 /* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
-   Поддерживает три режима корневого контейнера: 'html', 'cmpForm', 'div'.
-   Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs).
-   Умеет:
-     - ресайзить выделенный элемент за 8 маркеров по периметру;
-     - перемещать выделенный элемент за центральный move-handle
-       (или перетаскиванием за тело — для обычных HTML-тегов);
-     - выделять и тащить как D3-компоненты, так и обычные HTML-теги;
-     - загружать готовый HTML (loadHtml) — с сохранением CDATA и data-wb-tag;
-     - присваивать создаваемому компоненту имя по шаблону `nameTemplate`.
-
-   Координаты left/top считаются ОТНОСИТЕЛЬНО offsetParent
-   (ближайшего позиционированного контейнера), а не <body>.
-   Это обеспечивает корректную работу формы в качестве субформы. */
+   Поддерживает:
+     - три режима корневого контейнера: 'html', 'cmpForm', 'div';
+     - D3-компоненты (<cmpButton>) и M2-компоненты (<component cmptype="Button">);
+     - CDATA-контейнеры в обоих форматах;
+     - nameTemplate для авто-присвоения имён. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -38,7 +30,6 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* Развёртка self-closing cmp*-тегов. */
     var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
     function expandSelfClosingCmpTags(str) {
         return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
@@ -46,25 +37,11 @@
         });
     }
 
-    /* ============================================================
-       Генерация имени компонента по шаблону.
-
-       Если у компонента задана опция nameTemplate — при создании
-       ему присваивается имя вида <nameTemplate><N>, где N — следующий
-       порядковый номер. Учитываются только элементы того же тега,
-       у которых name уже соответствует шаблону.
-
-       Пример:
-         nameTemplate: 'Button'
-         Существующие: Button1, Button3
-         Новый:        Button4   (max(1,3)+1)
-       ============================================================ */
     function generateComponentName(doc, tagName, nameTemplate) {
         if (!doc || !nameTemplate) return '';
         var tagLower = String(tagName).toLowerCase();
         var esc = String(nameTemplate).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         var re = new RegExp('^' + esc + '(\\d+)$');
-
         var maxN = 0;
         var all = doc.getElementsByTagName(tagLower);
         for (var i = 0; i < all.length; i++) {
@@ -79,7 +56,6 @@
         return nameTemplate + (maxN + 1);
     }
 
-    /* Страховка для компонентов, у которых в D3.register забыли parentOnly. */
     var PARENT_FALLBACK = {
         cmpselectlistitem: 'cmpselectlist'
     };
@@ -162,7 +138,6 @@
         'cmpcheckbox':    'cmpCheckBox'
     };
 
-    /* Маппинг runtime-атрибута cmptype → XML-тег. */
     var RUNTIME_CMPTYPE_TO_TAG = {
         'Form':         'cmpform',
         'SubForm':      'cmpsubform',
@@ -177,7 +152,6 @@
     };
 
     var INDENT = '    ';
-
     var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
     var MOVE_THRESHOLD = 3;
 
@@ -233,9 +207,21 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
 
-            'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"] { position: relative; }' +
+            'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"], component[cmptype="tmp"], component[cmptype="Form"] { position: relative; }' +
 
+            /* M2: компоненты — inline-block, чтобы уважали width/height при ресайзе. */
+            'component[cmptype] { display: inline-block; vertical-align: top; box-sizing: border-box; }' +
+            /* M2-контейнеры — block. */
+            'component[cmptype="Form"], component[cmptype="tmp"], component[cmptype="SubForm"], component[cmptype="PageControl"], component[cmptype="TabSheet"] { display: block; }' +
+
+            /* D3 невидимые */
             'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmppopupmenu, cmprepeaterstyler, cmpserverscript, cmpsort {' +
+            '  display: none !important; visibility: hidden !important;' +
+            '  pointer-events: none !important; user-select: none !important;' +
+            '}' +
+
+            /* M2 невидимые (по cmptype) */
+            'component[cmptype="Script"], component[cmptype="Action"], component[cmptype="ActionVar"], component[cmptype="DataSet"], component[cmptype="Variable"], component[cmptype="MaskInspector"], component[cmptype="DepControls"], component[cmptype="Broker"], component[cmptype="Comment"], component[cmptype="Completer"], component[cmptype="Dependences"], component[cmptype="Fetch"], component[cmptype="FetchVar"], component[cmptype="Locate"], component[cmptype="Module"], component[cmptype="ModuleVar"], component[cmptype="RepeaterStyler"], component[cmptype="ServerScript"], component[cmptype="Sort"], component[cmptype="SubAction"], component[cmptype="SubActionVar"] {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
@@ -711,6 +697,9 @@
         if (root.getAttribute && root.getAttribute('data-wb-tag')) {
             this._renderPreview(root);
         }
+        else if (root.getAttribute && root.getAttribute('cmptype')) {
+            this._renderPreview(root);
+        }
         var kids = root.children;
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i];
@@ -727,7 +716,7 @@
 
         if (CMP_TAGS[lower]) {
             wbTag = CMP_TAGS[lower];
-        } else {
+        } else if (lower !== 'component') {
             var cmptype = root.getAttribute && root.getAttribute('cmptype');
             if (cmptype && RUNTIME_CMPTYPE_TO_TAG[cmptype]) {
                 var mappedTag = RUNTIME_CMPTYPE_TO_TAG[cmptype];
@@ -797,6 +786,7 @@
                 var owner = cur.parentNode;
                 while (owner && owner !== doc.body) {
                     if (owner.getAttribute && owner.getAttribute('data-wb-tag')) return owner;
+                    if (owner.getAttribute && owner.getAttribute('cmptype')) return owner;
                     owner = owner.parentNode;
                 }
                 return eTarget;
@@ -805,6 +795,7 @@
                 var p = cur.parentNode;
                 while (p && p !== doc.body) {
                     if (p.getAttribute && p.getAttribute('data-wb-tag')) return p;
+                    if (p.getAttribute && p.getAttribute('cmptype')) return p;
                     p = p.parentNode;
                 }
                 return null;
@@ -960,13 +951,14 @@
         }
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
-        if (def.cmptype) el.setAttribute('data-cmptype', def.id);
-        if (def.xmlTag)  el.setAttribute('data-wb-tag', def.xmlTag);
+        if (def.cmptype && !el.getAttribute('cmptype')) {
+            el.setAttribute('cmptype', def.cmptype);
+        }
+        if (def.cmptypeId) el.setAttribute('data-cmptype', def.cmptypeId);
+        if (def.xmlTag && !el.getAttribute('data-wb-tag')) {
+            el.setAttribute('data-wb-tag', def.xmlTag);
+        }
 
-        /* FIX (nameTemplate): если у компонента задана опция nameTemplate —
-           присваиваем создаваемому элементу имя вида <template><N>,
-           где N — следующий порядковый номер. Если опция не задана —
-           ничего не присваиваем. */
         if (def.nameTemplate) {
             var newName = generateComponentName(doc, def.tagName, def.nameTemplate);
             if (newName) el.setAttribute('name', newName);
@@ -1052,7 +1044,7 @@
         var kids = el.children;
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i];
-            if (c.getAttribute && c.getAttribute('data-wb-tag')) {
+            if (c.getAttribute && (c.getAttribute('data-wb-tag') || c.getAttribute('cmptype'))) {
                 this.refreshPreview(c);
             }
         }
@@ -1062,7 +1054,8 @@
         if (!el || el.nodeType !== 1) return;
         this.refreshPreview(el);
         var p = el.parentNode;
-        if (p && p.nodeType === 1 && p.getAttribute && p.getAttribute('data-wb-tag')) {
+        if (p && p.nodeType === 1 && p.getAttribute &&
+            (p.getAttribute('data-wb-tag') || p.getAttribute('cmptype'))) {
             this._renderPreview(p);
         }
     };
@@ -1094,12 +1087,21 @@
         el.style.width  = width  + 'px';
         el.style.height = height + 'px';
 
-        if (setAttrs && el.getAttribute && el.getAttribute('data-wb-tag')) {
+        if (setAttrs && el.getAttribute &&
+            (el.getAttribute('data-wb-tag') || el.getAttribute('cmptype'))) {
             el.setAttribute('width',  Math.round(width)  + 'px');
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
-        var preview = el.querySelector(':scope > [data-wb-preview="1"]');
+        /* Ищем прямой дочерний preview-узел без :scope (совместимость). */
+        var preview = null;
+        for (var k = 0; k < el.children.length; k++) {
+            var ch = el.children[k];
+            if (ch.getAttribute && ch.getAttribute('data-wb-preview') === '1') {
+                preview = ch;
+                break;
+            }
+        }
         if (preview) {
             preview.style.width     = width  + 'px';
             preview.style.height    = height + 'px';
@@ -1461,20 +1463,38 @@
         return el.tagName.toLowerCase();
     };
 
+    function nodeHasMeaningfulChildren(node) {
+        for (var i = 0; i < node.childNodes.length; i++) {
+            var c = node.childNodes[i];
+            if (c.nodeType === 1) {
+                if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+                return true;
+            }
+            if (c.nodeType === 3 && c.nodeValue && c.nodeValue.trim() !== '') return true;
+        }
+        return false;
+    }
+
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
+        var hasWbTag = !!(el.getAttribute && el.getAttribute('data-wb-tag'));
+
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
             if (name === 'data-cmptype') continue;
-            if (name === 'cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
             if (name === 'data-wb-tag') continue;
             if (name === 'data-wb-preview') continue;
             if (name === 'data-wb-root') continue;
             if (name === 'data-wb-comp-asset') continue;
+
+            if (name === 'cmptype') {
+                if (hasWbTag) continue;
+            }
 
             var val = a.value == null ? '' : String(a.value);
 
@@ -1644,8 +1664,21 @@
             return pad + '<' + tagName + attrs + '/>\n';
         }
 
+        var cmptypeAttr = node.getAttribute && node.getAttribute('cmptype');
+        var isM2 = !!cmptypeAttr && !node.getAttribute('data-wb-tag');
+
         if (node.getAttribute && node.getAttribute('data-wb-tag')) {
             return this._formatCmpNode(node, level, tagName);
+        }
+
+        if (isM2) {
+            var m2cmp = 'cmp' + String(cmptypeAttr).toLowerCase();
+            if (CDATA_CONTAINERS[m2cmp]) {
+                return this._formatCmpNode(node, level, tagName);
+            }
+            if (!nodeHasMeaningfulChildren(node)) {
+                return pad + '<' + tagName + attrs + '/>\n';
+            }
         }
 
         if (CDATA_CONTAINERS[tagLower]) {

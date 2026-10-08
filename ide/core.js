@@ -24,8 +24,17 @@
         register: function (def) {
             if (!def || !def.id) throw new Error('Component requires "id"');
             if (_byId[def.id]) throw new Error('Duplicate component id: ' + def.id);
-            def.categories = def.categories || (def.category ? [def.category] : ['General']);
             def.tagName = (def.tagName || 'div').toLowerCase();
+
+            /* Если задан явный def.category — используем ТОЛЬКО его.
+               Это перекрывает любые def.categories, которые могли быть
+               выставлены обёртывающим D3.register. */
+            if (def.category) {
+                def.categories = [def.category];
+            } else if (!def.categories || !def.categories.length) {
+                def.categories = ['General'];
+            }
+
             _byId[def.id] = def;
             for (var i = 0; i < def.categories.length; i++) {
                 var c = def.categories[i];
@@ -42,11 +51,31 @@
         },
         match: function (el) {
             if (!el || el.nodeType !== 1) return null;
+
+            /* 1. D3: явный ID через data-cmptype. */
             var ct = el.getAttribute && el.getAttribute('data-cmptype');
             if (ct && _byId[ct]) return _byId[ct];
+
+            /* 2. M2: <component cmptype="Button">. */
+            var m2ct = el.getAttribute && el.getAttribute('cmptype');
+            if (m2ct) {
+                var m2id = 'm2.' + String(m2ct).toLowerCase();
+                if (_byId[m2id]) return _byId[m2id];
+                var all = ComponentRegistry.all();
+                for (var i = 0; i < all.length; i++) {
+                    if (all[i].cmptype &&
+                        String(all[i].cmptype).toLowerCase() === String(m2ct).toLowerCase()) {
+                        return all[i];
+                    }
+                }
+            }
+
+            /* 3. Обычный HTML / D3 по имени тега. */
             var tag = el.tagName.toLowerCase();
             var list = ComponentRegistry.all();
-            for (var i = 0; i < list.length; i++) if (!list[i].cmptype && list[i].tagName === tag) return list[i];
+            for (var j = 0; j < list.length; j++) {
+                if (!list[j].cmptype && list[j].tagName === tag) return list[j];
+            }
             return _byId['html.generic'] || null;
         }
     };
@@ -158,7 +187,6 @@
             win = mini.get('wb-window');
             bodyEl = document.getElementById('wb-window-body');
             if (!win) {
-                // fallback, если MiniUI ещё не распарсил окно
                 mini.parse();
                 win = mini.get('wb-window');
             }
@@ -176,11 +204,9 @@
                 onOk = opts.onOk || null;
                 win.show();
 
-                // убрать маску загрузки MiniUI
                 var mask = win.el.querySelector('.mini-mask');
                 if (mask) mask.remove();
 
-                // автофокус на первое текстовое поле/textarea
                 setTimeout(function () {
                     var f = bodyEl.querySelector('textarea, input[type="text"]');
                     if (f) f.focus();
@@ -201,6 +227,67 @@
         };
     })();
 
+    /* ---------- M2: регистрация M2-компонентов ----------
+
+       M2.register делает всё то, что делает D3.register, но
+       самостоятельно (чтобы не зависеть от внутренней реализации
+       D3.register и не попасть в категорию D3):
+
+         1. Категория — 'M2'.
+         2. tagName — 'component'.
+         3. previewCss / previewJs — превращаются в абсолютные URL
+            относительно папки Component/m2/<cmptype>/.
+         4. icon — превращается в iconUrl по тому же правилу.
+         5. schema — строится из properties / events / styles. */
+    function _m2ResolvePaths(list, folder) {
+        var out = [];
+        if (!list || !list.length) return out;
+        for (var i = 0; i < list.length; i++) {
+            var p = list[i];
+            if (/^(https?:|\/|Component\/)/i.test(p)) out.push(p);
+            else out.push(folder + p);
+        }
+        return out;
+    }
+
+    function _m2Folder(cmptype, id) {
+        var base = String(cmptype || '');
+        if (!base) base = String(id || '').replace(/^m2\./i, '');
+        base = base.replace(/[^A-Za-z0-9]/g, '');
+        return 'Component/m2/' + base + '/';
+    }
+
+    var M2 = {
+        register: function (def) {
+            if (!def) throw new Error('M2.register: definition required');
+            if (!def.tagName)  def.tagName  = 'component';
+            if (!def.category) def.category = 'M2';
+
+            /* Папка компонента по cmptype: Button → Component/m2/Button/. */
+            var folder = _m2Folder(def.cmptype, def.id);
+
+            /* previewCss / previewJs → абсолютные URL. */
+            def.previewCssUrls = _m2ResolvePaths(def.previewCss, folder);
+            def.previewJsUrls  = _m2ResolvePaths(def.previewJs,  folder);
+
+            /* icon → iconUrl. */
+            if (def.icon && !/^(https?:|\/|Component\/)/i.test(def.icon)) {
+                def.iconUrl = folder + def.icon;
+            } else {
+                def.iconUrl = def.icon || '';
+            }
+
+            /* schema — на основе properties / events / styles. */
+            def.schema = {
+                properties: def.properties || [],
+                events:     def.events     || [],
+                styles:     def.styles     || []
+            };
+
+            return ComponentRegistry.register(def);
+        }
+    };
+
     global.IDE = {
         bus: bus,
         Registry: ComponentRegistry,
@@ -213,5 +300,6 @@
     global.CommonSchema      = CommonSchema;
     global.History           = History;
     global.Modal             = Modal;
+    global.M2                = M2;
 
 })(window);

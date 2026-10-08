@@ -1,0 +1,30 @@
+.d3-preview-m2-edit[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}
+.d3-preview-m2-edit {
+    display: inline-block;
+    box-sizing: border-box;
+    height: 22px;
+    line-height: 20px;
+    padding: 0 4px;
+    border: 1px solid #b0b0b0;
+    border-radius: 2px;
+    background: #ffffff;
+    color: #222;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    min-width: 80px;
+}
+.d3-preview-m2-edit[readonly] {
+    background: #f0f0f0;
+    color: #666;
+}
+.d3-preview-m2-edit:disabled {
+    background: #ededed;
+    color: #aaa;
+}

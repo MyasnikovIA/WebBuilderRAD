@@ -8,8 +8,6 @@
 
     var STRICT_HEAD_TAGS = { meta:1, title:1, base:1 };
 
-    /* Служебные классы IDE: живут только внутри canvas, в XML не попадают,
-       и не должны быть видны в Object Inspector. */
     var SERVICE_CLASSES = { 'wb-selected': 1, 'wb-hover': 1, 'wb-moving': 1 };
 
     function isServiceClass(c) { return !!SERVICE_CLASSES[c]; }
@@ -28,8 +26,6 @@
         }).join(' ');
     }
 
-    /* Разрешённые родители для drag&drop (в нижнем регистре).
-       Может быть строкой или массивом строк. */
     var PARENT_ONLY = {
         cmpactionvar:    ['cmpaction', 'cmpsubaction'],
         cmpsubaction:    ['cmpaction', 'cmpsubaction'],
@@ -54,7 +50,8 @@
     };
 
     /* ============================================================
-       Извлечение JS-функций из cmpScript / inline <script> формы.
+       Извлечение JS-функций из D3 cmpScript / M2 component[cmptype="Script"]
+       / inline <script> формы.
        ============================================================ */
 
     function parseArgsList(raw) {
@@ -87,7 +84,8 @@
         if (!doc) return out;
 
         var sources = [];
-        var scripts = doc.querySelectorAll('cmpscript, script');
+        /* Ищем скрипты в обоих форматах: D3 <cmpScript> и M2 <component cmptype="Script">. */
+        var scripts = doc.querySelectorAll('cmpscript, component[cmptype="Script"], script');
         for (var i = 0; i < scripts.length; i++) {
             var s = scripts[i];
             var tag = s.tagName.toLowerCase();
@@ -133,7 +131,6 @@
         return out;
     }
 
-    /* Словарь известных суффиксов для генерации имени функции события. */
     var EVENT_CAMEL_MAP = {
         onclick: 'Click', ondblclick: 'DblClick',
         onmousedown: 'MouseDown', onmouseup: 'MouseUp',
@@ -152,11 +149,6 @@
         return rest.charAt(0).toUpperCase() + rest.slice(1);
     }
 
-    /* Проверка, объявлена ли функция с таким именем в исходнике.
-       Поддерживает три формы:
-         <name> = function        (Form.onClick = function)
-         function <lastSegment>   (function onClick)
-         <name>                   (просто вхождение как предохранитель) */
     function isFunctionDeclared(code, name) {
         if (!code || !name) return false;
         var esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -185,20 +177,26 @@
         this._rebuildScheduled = false;
         this._dragEl = null;
         this._collapsed = {};
+        this._collapseAll = true;
 
         bus.on('canvas:ready', function (c) {
             self.canvas = c;
             self._observe();
+            self._collapseAll = true;
             self.rebuild();
         });
         bus.on('canvas:changed',   function () { self.rebuild(); });
-        bus.on('canvas:refreshed', function () { self.rebuild(); });
+        bus.on('canvas:refreshed', function () {
+            self._collapseAll = true;
+            self.rebuild();
+        });
         bus.on('selection:changed',function (e) { self.highlight(e.element); });
 
         bus.on('canvas:changed', function () {
             if (!self.canvas && global.IDE && global.IDE._canvas) {
                 self.canvas = global.IDE._canvas;
                 self._observe();
+                self._collapseAll = true;
                 self.rebuild();
             }
         });
@@ -227,6 +225,33 @@
 
     DomTree.prototype._getRoot = function () { return $('#' + this.rootId); };
 
+    DomTree.prototype._collapseSubtree = function (root, keepRootOpen) {
+        var self = this;
+        function hasMeaningfulKids(el) {
+            for (var i = 0; i < el.children.length; i++) {
+                var c = el.children[i];
+                if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
+                if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
+                if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+                if (c.tagName && (c.tagName.toLowerCase() === 'wb-images'
+                    || c.tagName.toLowerCase() === 'wb-image')) continue;
+                return true;
+            }
+            return false;
+        }
+        function walk(el, isRoot) {
+            if (!el || el.nodeType !== 1) return;
+            if (hasMeaningfulKids(el) && !(isRoot && keepRootOpen)) {
+                self._collapsed[self._nid(el)] = true;
+            }
+            for (var i = 0; i < el.children.length; i++) {
+                walk(el.children[i], false);
+            }
+        }
+        walk(root, true);
+    };
+
     DomTree.prototype.rebuild = function () {
         if (!this.canvas) return;
         var $root = this._getRoot();
@@ -234,15 +259,21 @@
         var html = this.canvas.getHtml();
         if (!html) return;
 
-        $root.empty();
-        var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-
         var startEl = html;
         var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
         if (rootType !== 'html') {
             var rc = this.canvas.getRootContainer && this.canvas.getRootContainer();
             if (rc) startEl = rc;
         }
+
+        if (this._collapseAll) {
+            this._collapseAll = false;
+            this._collapsed = {};
+            this._collapseSubtree(startEl, true);
+        }
+
+        $root.empty();
+        var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
 
         this._build(startEl, ul);
         $root.append(ul);
@@ -362,6 +393,16 @@
         }
 
         var extra = '';
+
+        if (tag === 'component') {
+            var m2ct = el.getAttribute('cmptype') || '';
+            var m2name = el.getAttribute('name');
+            var m2cap = el.getAttribute('caption');
+            if (m2ct) extra += ' cmptype="' + m2ct + '"';
+            if (m2name) extra += ' name="' + m2name + '"';
+            if (m2cap)  extra += ' caption="' + m2cap + '"';
+            return tag + extra;
+        }
 
         if (tag === 'meta') {
             var ch = el.getAttribute('charset');
@@ -673,10 +714,18 @@
     /* ============================================================
        Palette
        ============================================================ */
+    var CATEGORY_ORDER = ['D3', 'M2', 'HTML', 'General'];
+
+    function categoryRank(name) {
+        var i = CATEGORY_ORDER.indexOf(name);
+        return i < 0 ? CATEGORY_ORDER.length : i;
+    }
+
     function Palette(rootEl) {
         this.root = $(rootEl);
         this.active = null;
         this._collapsed = {};
+        this._collapseAllOnRender = true;
         this._render();
         var self = this;
         $('#wb-palette-filter').bind('keyup input', function () { self._filter($(this).val()); });
@@ -689,7 +738,27 @@
         this.root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
 
-        ComponentRegistry.categories().forEach(function (cat) {
+        var cats = ComponentRegistry.categories();
+        cats.sort(function (a, b) {
+            var ra = categoryRank(a.name);
+            var rb = categoryRank(b.name);
+            if (ra !== rb) return ra - rb;
+            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+        });
+
+        if (this._collapseAllOnRender) {
+            this._collapseAllOnRender = false;
+            this._collapsed = {};
+            for (var ci = 0; ci < cats.length; ci++) {
+                var catId0 = 'cat_' + cats[ci].name;
+                var visible0 = cats[ci].components.filter(function (c) { return !c.hidden; });
+                if (visible0.length > 0) {
+                    this._collapsed[catId0] = true;
+                }
+            }
+        }
+
+        cats.forEach(function (cat) {
             var catId = 'cat_' + cat.name;
             var visible = cat.components.filter(function (c) { return !c.hidden; });
             if (visible.length === 0) return;
@@ -900,7 +969,7 @@
 
         var canvas = global.IDE && global.IDE._canvas;
         if (canvas && canvas.refreshPreviewAndParent) {
-            var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
+            var isCmp  = el.getAttribute && (el.getAttribute('data-wb-tag') || el.getAttribute('cmptype'));
             var isRoot = canvas.getRootContainer && canvas.getRootContainer() === el;
             if (isCmp || isRoot) {
                 canvas.refreshPreviewAndParent(el);
@@ -946,7 +1015,7 @@
 
         var canvas = global.IDE && global.IDE._canvas;
         if (canvas && canvas.refreshPreviewAndParent) {
-            var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
+            var isCmp  = el.getAttribute && (el.getAttribute('data-wb-tag') || el.getAttribute('cmptype'));
             var isRoot = canvas.getRootContainer && canvas.getRootContainer() === el;
             if (isCmp || isRoot) {
                 canvas.refreshPreviewAndParent(el);
@@ -1065,7 +1134,6 @@
             return mBtn;
         }
 
-        /* События: input + select с функциями формы. */
         if (t === 'code' && tab === 'events') {
             return self._buildEventEditor(f, val, commit);
         }
@@ -1127,8 +1195,6 @@
             evSel.append($('<option></option>').val(fn.call).text(fn.call));
         });
 
-        /* Текущее значение из input — показать выбранным в select,
-           даже если его нет среди найденных функций. */
         if (val) {
             if (evSel.find('option[value="' + val.replace(/"/g, '\\"') + '"]').length === 0) {
                 evSel.append($('<option></option>').val(val).text(val));
@@ -1136,7 +1202,6 @@
             evSel.val(val);
         }
 
-        /* input: change → commit; dblclick → модальный редактор JS. */
         evInp.change(function () { commit(evInp.val()); });
         evInp.dblclick(function () {
             var current = evInp.val();
@@ -1153,7 +1218,6 @@
             setTimeout(function () { editor.focus(); }, 50);
         });
 
-        /* select: change → скопировать значение в input (затирая старое). */
         evSel.change(function () {
             var v = evSel.val();
             if (!v) return;
@@ -1161,12 +1225,6 @@
             commit(v);
         });
 
-        /* select: dblclick →
-             - если выбрано значение → открыть вкладку Code и позиционировать
-               курсор на исходнике функции;
-             - если ничего не выбрано и input пуст → создать новую функцию
-               (или использовать уже существующую с таким же именем),
-               затем открыть вкладку Code и позиционировать курсор. */
         evSel.dblclick(function () {
             var v = evSel.val();
             if (v) {
@@ -1197,29 +1255,63 @@
         return evRow;
     };
 
-    /* Создать новую функцию-обработчик в первом найденном блоке
-       cmpScript / inline <script>. Если ни одного нет — создать cmpScript
-       в начале корневого контейнера.
+    /* Определить: элемент относится к M2-нотации? */
+    function isM2Element(el) {
+        if (!el || el.nodeType !== 1) return false;
+        if (!el.getAttribute) return false;
+        if (el.getAttribute('data-wb-tag')) return false;   /* D3 */
+        return !!el.getAttribute('cmptype');
+    }
 
-       Возвращает объект { signature, name } либо null при неудаче.
+    /* Найти подходящий контейнер для нового скрипта.
+       D3 → <cmpScript>. M2 → <component cmptype="Script">.
+       Если нужного нет — создать в начале корневого контейнера.
+       Возвращает { node, isFormFunc, created }. */
+    function findOrCreateScriptContainer(doc, canvas, isM2) {
+        if (isM2) {
+            var m2Script = doc.querySelector('component[cmptype="Script"]');
+            if (m2Script) {
+                return { node: m2Script, isFormFunc: true, created: false };
+            }
+            /* Создать новый M2-скрипт-блок. */
+            var el = doc.createElement('component');
+            el.setAttribute('cmptype', 'Script');
+            el.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
+            var root = canvas.getRootContainer() || canvas.getBody();
+            if (root) {
+                if (root.firstChild) root.insertBefore(el, root.firstChild);
+                else root.appendChild(el);
+            }
+            return { node: el, isFormFunc: true, created: true };
+        }
+        /* D3 */
+        var cmpScript = doc.querySelector('cmpscript');
+        if (cmpScript) {
+            return { node: cmpScript, isFormFunc: true, created: false };
+        }
+        var el2 = doc.createElement('cmpscript');
+        el2.setAttribute('data-wb-tag', 'cmpScript');
+        el2.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
+        var root2 = canvas.getRootContainer() || canvas.getBody();
+        if (root2) {
+            if (root2.firstChild) root2.insertBefore(el2, root2.firstChild);
+            else root2.appendChild(el2);
+        }
+        return { node: el2, isFormFunc: true, created: true };
+    }
+
+    /* Создать новую функцию-обработчик.
 
        Логика:
-         1. Формируем базовое имя функции:
-              on + CamelCase(событие) + (name || id контрола || '')
-         2. Определяем контейнер (cmpScript → inline <script> → создать
-            новый cmpScript) и путь функции (Form.<имя> или <имя>).
-         3. Формируем тело новой функции:
-              - если задан f.template — подставляем плейсхолдеры
-                {name}, {func}, {event}, {ctrl};
-              - иначе — по умолчанию '<funcPath> = function(dom) {\n\n};'.
-         4. Формируем сигнатуру вызова:
-              - если задан f.callTemplate — подставляем плейсхолдеры;
-              - иначе — '<funcPath>(this);'.
-         5. Проверяем, есть ли уже такая функция в коде (по полному
-            пути или по последнему сегменту после точки).
-            Если есть — не генерируем, а просто возвращаем сигнатуру.
-         6. Если нет — вставляем тело в CDATA cmpScript или в тело
-            inline <script>. */
+         - определяется тип текущего элемента (D3 / M2);
+         - ищется подходящий контейнер (cmpScript для D3,
+           component[cmptype="Script"] для M2);
+         - если контейнера нет — создаётся новый соответствующего типа;
+         - применяются шаблоны f.template / f.callTemplate
+           (или дефолтные);
+         - имя функции подбирается из события + name/id контрола;
+         - при совпадении с уже существующей функцией — новая не
+           создаётся, возвращается существующая сигнатура. */
     Inspector.prototype._createEventFunction = function (f) {
         var el = this.element;
         if (!el) return null;
@@ -1228,7 +1320,9 @@
         var doc = canvas.getDoc();
         if (!doc) return null;
 
-        /* 1. Базовое имя функции. */
+        var isM2 = isM2Element(el);
+
+        /* Имя функции: on + CamelEvent + Name/Id контрола. */
         var camelEvent = eventNameToCamel(f.name);
         var ctrlName = '';
         if (el.getAttribute) {
@@ -1236,27 +1330,19 @@
         }
         var funcName = 'on' + camelEvent + ctrlName;
 
-        /* 2. Контейнер. */
-        var cmpScript = doc.querySelector('cmpscript');
-        var scriptEl = cmpScript ? null : doc.querySelector('script:not([src])');
-        var createdCmpScript = false;
+        /* Подобрать или создать скрипт-контейнер. */
+        var container = findOrCreateScriptContainer(doc, canvas, isM2);
+        if (!container || !container.node) return null;
 
-        if (!cmpScript && !scriptEl) {
-            cmpScript = doc.createElement('cmpscript');
-            cmpScript.setAttribute('data-wb-tag', 'cmpScript');
-            cmpScript.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
-            var root = canvas.getRootContainer() || canvas.getBody();
-            if (root) {
-                if (root.firstChild) root.insertBefore(cmpScript, root.firstChild);
-                else root.appendChild(cmpScript);
-            }
-            createdCmpScript = true;
-        }
+        var scriptNode   = container.node;
+        var createdScript = container.created;
 
-        var isFormFunc = !!cmpScript;
+        /* Имя функции с префиксом Form. — если это форма (всегда, если
+           скрипт-контейнер формы). Для inline <script> не используется —
+           но здесь inline не рассматривается, он создаётся только как fallback. */
+        var isFormFunc = container.isFormFunc;
         var funcPath = (isFormFunc ? 'Form.' : '') + funcName;
 
-        /* Подстановка плейсхолдеров. */
         function applyPlaceholders(str) {
             return String(str)
                 .replace(/\{name\}/g, funcName)
@@ -1265,7 +1351,7 @@
                 .replace(/\{ctrl\}/g, ctrlName);
         }
 
-        /* 3. Тело новой функции. */
+        /* Тело новой функции. */
         var funcBody;
         if (f.template && typeof f.template === 'string') {
             funcBody = applyPlaceholders(f.template);
@@ -1273,7 +1359,7 @@
             funcBody = funcPath + ' = function(dom) {\n\n};';
         }
 
-        /* 4. Сигнатура вызова. */
+        /* Сигнатура вызова. */
         var callSig;
         if (f.callTemplate && typeof f.callTemplate === 'string') {
             callSig = applyPlaceholders(f.callTemplate);
@@ -1281,51 +1367,36 @@
             callSig = funcPath + '(this);';
         }
 
-        /* 5. Проверка: имя функции в коде.
-
-           Сначала пробуем полный путь — он чаще всего фигурирует в
-           сигнатуре вызова. Если в сигнатуре он не встречается (например,
-           callTemplate = 'setTimeout(...)'), — извлекаем первое имя перед
-           открывающей скобкой. */
         var callName = funcPath;
         if (callSig.indexOf(funcPath) < 0) {
             var nm = callSig.match(/^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/);
             if (nm) callName = nm[1];
         }
 
-        var existingCode = '';
-        if (cmpScript) existingCode = cmpScript.textContent || '';
-        else if (scriptEl) existingCode = scriptEl.textContent || '';
+        /* Проверка, что функция ещё не объявлена. */
+        var existingCode = scriptNode.textContent || '';
 
         if (isFunctionDeclared(existingCode, callName)) {
-            /* Уже объявлена — ничего не генерируем, только возвращаем
-               сигнатуру и имя для навигации. */
             return { signature: callSig, name: callName };
         }
 
-        /* 6. Генерация. */
-        if (cmpScript) {
-            var textNode = null;
-            for (var i = 0; i < cmpScript.childNodes.length; i++) {
-                var cn = cmpScript.childNodes[i];
-                if (cn.nodeType === 3) { textNode = cn; break; }
-            }
-            if (!textNode) {
-                textNode = doc.createTextNode('<![CDATA[\n]]>');
-                cmpScript.appendChild(textNode);
-            }
-            var raw = textNode.nodeValue || '';
-            var cdataMatch = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-            var innerBody = cdataMatch ? cdataMatch[1] : raw;
-            innerBody = innerBody.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
-            textNode.nodeValue = '<![CDATA[' + innerBody + ']]>';
-        } else if (scriptEl) {
-            var rawS = scriptEl.textContent || '';
-            rawS = rawS.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
-            scriptEl.textContent = rawS;
+        /* Вставка в CDATA-контейнер. */
+        var textNode = null;
+        for (var i = 0; i < scriptNode.childNodes.length; i++) {
+            var cn = scriptNode.childNodes[i];
+            if (cn.nodeType === 3) { textNode = cn; break; }
         }
+        if (!textNode) {
+            textNode = doc.createTextNode('<![CDATA[\n]]>');
+            scriptNode.appendChild(textNode);
+        }
+        var raw = textNode.nodeValue || '';
+        var cdataMatch = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+        var innerBody = cdataMatch ? cdataMatch[1] : raw;
+        innerBody = innerBody.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
+        textNode.nodeValue = '<![CDATA[' + innerBody + ']]>';
 
-        if (createdCmpScript && canvas._reobserve) {
+        if (createdScript && canvas._reobserve) {
             canvas._reobserve();
         }
 

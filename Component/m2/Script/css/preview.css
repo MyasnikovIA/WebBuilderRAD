@@ -1,0 +1,25 @@
+/* Превью M2 Script.
+
+   Компонент невидим — стиль `display: none` применяется общим правилом
+   в `_injectIdeStyle` (canvas.js):
+     component[cmptype="Script"] { display: none !important; ... }
+
+   Этот файл — задел на случай будущего превью. Сейчас ни на что не влияет. */
+
+.d3-preview-m2-script {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #6a1b9a;
+    background: #f3e5f5;
+    border: 1px dashed #ce93d8;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.d3-preview-m2-script::before {
+    content: '\2039/\203A'; /* ‹/› */
+    margin-right: 4px;
+    opacity: 0.8;
+}

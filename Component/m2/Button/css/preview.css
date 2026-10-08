@@ -1,0 +1,96 @@
+/* Превью M2 Button — совпадает с D3 Button.
+   Flex-раскладка нужна, чтобы .btn_caption растягивался при ресайзе. */
+
+.d3-preview-m2-button[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.d3-preview-m2-button {
+    cursor: pointer;
+    height: 28px;
+    -moz-user-select: none;
+    user-select: none;
+    white-space: nowrap;
+    outline: none;
+    padding-right: 8px;
+    position: relative;
+    line-height: 28px;
+    box-sizing: border-box;
+    background-image: linear-gradient(top, #F5F7F9, #E0E5E9);
+    background-repeat: repeat-x;
+    border-spacing: 0;
+    border-color: #DDDDDD #BBBBBB #999999;
+    border-radius: 4px;
+    border-style: solid;
+    border-width: 1px;
+    box-shadow: 0 1px 0 #FFFFFF inset;
+    color: #000000;
+    text-shadow: 0 1px 0 #FFFFFF;
+    text-align: center;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+}
+
+.d3-preview-m2-button .btn_icon {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    height: 100%;
+}
+.d3-preview-m2-button .btn_icon_img {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    border: 0;
+}
+
+.d3-preview-m2-button .btn_caption {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    line-height: inherit;
+    text-align: center;
+    padding-left: 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    min-width: 0;
+}
+.d3-preview-m2-button .minwidth { min-width: 80px; }
+
+.d3-preview-m2-button:hover {
+    background-image: none;
+    background-color: #E0E5E9;
+    border-color: #BBBBBB;
+}
+.d3-preview-m2-button.primary {
+    background-image: linear-gradient(top, #0088CC, #0077BB);
+    background-color: #006DCC;
+    border-color: #40A5D7 #0077BB #003889;
+    color: #FFFFFF;
+    text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.4);
+}
+.d3-preview-m2-button.ctrl_disable {
+    background-color: #EDEDED !important;
+    background-image: none;
+    cursor: not-allowed;
+    color: #AAAAAA;
+}
+.d3-preview-m2-button.micro {
+    height: 22px;
+    line-height: 22px;
+    padding-right: 4px;
+    font-size: 11px;
+}
