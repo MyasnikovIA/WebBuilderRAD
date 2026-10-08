@@ -10,7 +10,6 @@
         var palette   = new Palette(document.getElementById('wb-palette'));
         var inspector = new Inspector(document.getElementById('wb-right') || document.body);
 
-        /* CodeView создаём ДО Canvas — он подписывается на 'canvas:ready'. */
         var codePaneEl = document.querySelector('#wb-center-panes .wb-center-pane[data-pane="code"]');
         var codeView = codePaneEl ? new CodeView(codePaneEl) : null;
 
@@ -26,7 +25,22 @@
             $(this).addClass('wb-active');
             $('#wb-center-panes .wb-center-pane').hide();
             $('#wb-center-panes .wb-center-pane[data-pane="' + paneName + '"]').show();
-            if (codeView) codeView.setActive(paneName === 'code');
+
+            if (codeView) {
+                if (paneName === 'code') {
+                    codeView.setActive(true);
+                } else {
+                    codeView.setActive(false);
+                    /* Возвращаемся на Scene — перевыделяем элемент,
+                       который был отслежен в коде. Это нужно, чтобы
+                       resize-handles пересчитали свою позицию после
+                       того, как iframe снова стал видимым. */
+                    var el = codeView.getCurrentElement();
+                    if (el && canvas) {
+                        setTimeout(function () { canvas.select(el); }, 0);
+                    }
+                }
+            }
         });
 
         EventBus.on('palette:selected', function (e) { canvas.setPending(e.component); });
@@ -73,7 +87,6 @@
             else if (e.keyCode === 46) { App.cmd('delete'); }
         });
 
-        /* Клавиатурный сдвиг / ресайз. */
         function moveSel(dx, dy, resize) {
             var el = canvas.getSelected();
             var body = canvas.getBody();
@@ -210,7 +223,6 @@
             return allowed.indexOf(tag) >= 0;
         }
 
-        /* Развёртка self-closing cmp*-тегов. */
         var CMP_SELF_CLOSE_RE = /<(cmp[a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\s*\/>/g;
         function expandSelfClosingCmpTags(str) {
             return String(str).replace(CMP_SELF_CLOSE_RE, function (m, tag, attrs) {
@@ -218,7 +230,6 @@
             });
         }
 
-        /* Теги, содержимое которых — CDATA (SQL / JS / JSON). */
         var CDATA_TAGS = {
             cmpaction:              'sql',
             cmpdataset:             'sql',
@@ -237,7 +248,6 @@
                 canvas.reset();
             },
 
-            /* Load HTML — вставка готового HTML/XML страницы. */
             load: function () {
                 var editor = new CodeEditor({ value: '', language: 'xml' });
 
@@ -493,7 +503,6 @@
                     el.parentNode.insertBefore(el, el.parentNode.firstChild);
             },
 
-            /* Парсер HTML с CDATA-сентинелами. */
             _parseHtmlWithCdata: function (html) {
                 var SENT_O = '\u0001WB_CDATA_OPEN\u0001';
                 var SENT_C = '\u0001WB_CDATA_CLOSE\u0001';
