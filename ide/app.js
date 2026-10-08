@@ -59,17 +59,24 @@
             else if (e.keyCode === 46) { App.cmd('delete'); }
         });
 
+        /* Клавиатурный сдвиг / ресайз.
+           left/top считаем относительно offsetParent, а не body —
+           чтобы координаты корректно работали в субформе. */
         function moveSel(dx, dy, resize) {
             var el = canvas.getSelected();
             var body = canvas.getBody();
             if (!el || !body || el === body) return;
             var st = el.style;
+
             if (!st.position || st.position === 'static') {
-                var r = el.getBoundingClientRect();
-                var br = body.getBoundingClientRect();
+                var op = canvas._getOffsetParent
+                    ? (canvas._getOffsetParent(el) || body)
+                    : body;
+                var r  = el.getBoundingClientRect();
+                var or = op.getBoundingClientRect();
                 st.position = 'absolute';
-                st.left   = Math.round(r.left - br.left) + 'px';
-                st.top    = Math.round(r.top  - br.top)  + 'px';
+                st.left   = Math.round(r.left - or.left) + 'px';
+                st.top    = Math.round(r.top  - or.top)  + 'px';
                 st.width  = Math.round(r.width)  + 'px';
                 st.height = Math.round(r.height) + 'px';
             }
@@ -80,8 +87,6 @@
                 st.left = ((parseFloat(st.left) || 0) + dx) + 'px';
                 st.top  = ((parseFloat(st.top)  || 0) + dy) + 'px';
             }
-            /* Сразу перепозиционируем маркеры ресайза, чтобы они
-               не «отставали» от клавиатурного сдвига. */
             if (canvas._positionResizeHandles) canvas._positionResizeHandles(el);
             EventBus.emit('canvas:changed');
             EventBus.emit('selection:changed', { element: el });

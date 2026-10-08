@@ -8,6 +8,26 @@
 
     var STRICT_HEAD_TAGS = { meta:1, title:1, base:1 };
 
+    /* Служебные классы IDE: живут только внутри canvas, в XML не попадают,
+       и не должны быть видны в Object Inspector. */
+    var SERVICE_CLASSES = { 'wb-selected': 1, 'wb-hover': 1, 'wb-moving': 1 };
+
+    function isServiceClass(c) { return !!SERVICE_CLASSES[c]; }
+
+    function stripServiceClasses(cls) {
+        if (!cls) return '';
+        return String(cls).split(/\s+/).filter(function (c) {
+            return c && !isServiceClass(c);
+        }).join(' ');
+    }
+
+    function getServiceClasses(cls) {
+        if (!cls) return '';
+        return String(cls).split(/\s+/).filter(function (c) {
+            return c && isServiceClass(c);
+        }).join(' ');
+    }
+
     /* Разрешённые родители для drag&drop (в нижнем регистре).
        Может быть строкой или массивом строк. */
     var PARENT_ONLY = {
@@ -246,8 +266,9 @@
         var id  = el.id ? '#' + el.id : '';
         var cls = '';
         if (typeof el.className === 'string' && el.className && el.className.trim() !== '') {
-            var parts = el.className.split(/\s+/).filter(function (c) {
-                return c && c !== 'wb-selected' && c !== 'wb-hover';
+            /* Отфильтровываем служебные классы IDE. */
+            var parts = stripServiceClasses(el.className).split(/\s+/).filter(function (c) {
+                return c;
             });
             if (parts.length) cls = '.' + parts.join('.');
         }
@@ -496,8 +517,6 @@
         else if (zone === 'before') dst.parentNode.insertBefore(src, dst);
         else if (zone === 'after') dst.parentNode.insertBefore(src, dst.nextSibling);
 
-        /* Обновить превью родителя — ComboBox после перемещения ComboItem
-           должен перестроить <option>. */
         var newParent = src.parentNode;
         if (newParent && newParent.nodeType === 1 &&
             newParent.getAttribute && newParent.getAttribute('data-wb-tag')) {
@@ -697,6 +716,16 @@
         var el = this.element; if (!el) return '';
         if (tab === 'properties') {
             if (f.get) return f.get(el);
+
+            /* Class / className: не показываем служебные классы IDE
+               (wb-selected, wb-hover, wb-moving) — они удаляются при
+               сохранении и не должны быть видны пользователю. */
+            if (f.name === 'class' || f.name === 'className') {
+                var raw = f.attr ? (el.getAttribute('class') || '')
+                    : (el.className || '');
+                return stripServiceClasses(raw);
+            }
+
             if (f.attr) return el.getAttribute(f.name) || '';
             var v = el[f.name]; return (v == null) ? '' : v;
         }
@@ -724,6 +753,14 @@
                     if (bv) el.setAttribute(f.name, 'true');
                     else    el.removeAttribute(f.name);
                 }
+            } else if (f.name === 'class' || f.name === 'className') {
+                /* Служебные классы IDE остаются на элементе — заменяем
+                   только пользовательскую часть. */
+                var preserved = getServiceClasses(el.getAttribute('class') || '');
+                var userCls   = stripServiceClasses(v);
+                var merged    = (userCls + ' ' + preserved).replace(/\s+/g, ' ').trim();
+                if (merged) el.setAttribute('class', merged);
+                else el.removeAttribute('class');
             } else if (f.attr) {
                 el.setAttribute(f.name, v);
             } else {
@@ -864,7 +901,7 @@
         if (t === 'code-editor') {
             var btn2 = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn2.click(function () {
-                var current = self._getValue(tab, f);
+                var current = self._get(tab, f);
 
                 /* Определяем язык для подсветки: либо функция, которая
                    смотрит на элемент, либо строка из описания поля. */

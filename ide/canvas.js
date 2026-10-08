@@ -4,7 +4,11 @@
    Умеет:
      - ресайзить выделенный элемент за 8 маркеров по периметру;
      - перемещать выделенный элемент перетаскиванием за тело;
-     - выделять и тащить как D3-компоненты, так и обычные HTML-теги. */
+     - выделять и тащить как D3-компоненты, так и обычные HTML-теги.
+
+   Координаты left/top считаются ОТНОСИТЕЛЬНО offsetParent
+   (ближайшего позиционированного контейнера), а не <body>.
+   Это обеспечивает корректную работу формы в качестве субформы. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -31,8 +35,7 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* Страховка для компонентов, у которых в D3.register забыли parentOnly.
-       Используется Canvas.insertComponent. */
+    /* Страховка для компонентов, у которых в D3.register забыли parentOnly. */
     var PARENT_FALLBACK = {
         cmpselectlistitem: 'cmpselectlist'
     };
@@ -166,7 +169,13 @@
         style.textContent =
             'html, body { min-height: 100%; }' +
             'html { height: 100%; }' +
-            'body { min-height: 100vh; margin: 0; box-sizing: border-box; }' +
+            /* body — позиционированная база по умолчанию для абс. детей. */
+            'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
+
+            /* Корневые контейнеры — тоже position: relative,
+               чтобы left/top детей отсчитывались от их края, а не от body.
+               Это критично, когда форма встраивается как субформа. */
+            'cmpForm, cmpSubForm, [data-wb-root="1"] { position: relative; }' +
 
             'cmpaction, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcomment, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
@@ -181,7 +190,6 @@
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}' +
 
-            /* --- Маркеры ресайза выделенного элемента --- */
             '.wb-resize-handle {' +
             '  position: absolute;' +
             '  width: 7px; height: 7px;' +
@@ -197,12 +205,10 @@
             '}' +
             '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }' +
 
-            /* --- Элемент во время перетаскивания --- */
             '.wb-moving { cursor: move !important; }';
         if (doc.head) doc.head.appendChild(style);
     };
 
-    /* Подключение CSS/JS-ресурсов превью, объявленных D3-компонентами. */
     Canvas.prototype._injectComponentAssets = function () {
         var doc = this.getDoc();
         if (!doc || !doc.head) return;
@@ -479,10 +485,25 @@
         this.setDesignMode(!this.designMode);
     };
 
-    /* Определить «логическую» цель выделения по кликнутому элементу.
-       - Если попали внутрь [data-wb-preview] — возвращаем владельца-компонент.
-       - Если попали в chrome-узел [data-wb-ide="1"] — тоже владельца.
-       - Иначе — сам кликнутый элемент (в т.ч. обычный HTML-тег). */
+    /* Найти ближайшего позиционированного предка (offsetParent).
+       Возвращает body, если позиционированного предка нет. */
+    Canvas.prototype._getOffsetParent = function (el) {
+        var doc = this.getDoc();
+        if (!el || el.nodeType !== 1) return doc.body;
+        // native offsetParent возвращает корректный результат в 99% случаев
+        var op = el.offsetParent;
+        if (op && op !== doc.documentElement) return op;
+        // Fallback: вручную поднимаемся, ищем position != static
+        var p = el.parentNode;
+        while (p && p.nodeType === 1) {
+            var cs = doc.defaultView.getComputedStyle(p);
+            if (cs.position !== 'static') return p;
+            p = p.parentNode;
+        }
+        return doc.body;
+    };
+
+    /* Определить «логическую» цель выделения по кликнутому элементу. */
     Canvas.prototype._resolveSelection = function (eTarget) {
         if (!eTarget || eTarget.nodeType !== 1) return null;
         var doc = this.getDoc();
@@ -517,7 +538,6 @@
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
-            /* Клик по маркеру ресайза — не перехватываем. */
             if (e.target && e.target.classList &&
                 e.target.classList.contains('wb-resize-handle')) {
                 return;
@@ -609,7 +629,6 @@
         return body;
     };
 
-    /* Найти ближайшего родителя из массива parentOnly (или одного тега). */
     Canvas.prototype._findParentFor = function (parentOnly, target) {
         var doc = this.getDoc();
         var html = this.getHtml();
@@ -655,7 +674,6 @@
         if (def.cmptype) el.setAttribute('data-cmptype', def.id);
         if (def.xmlTag)  el.setAttribute('data-wb-tag', def.xmlTag);
 
-        /* parentOnly может быть задан в D3.register либо в страховочной карте. */
         var parentOnly = def.parentOnly;
         if (!parentOnly && def.tagName) {
             parentOnly = PARENT_FALLBACK[String(def.tagName).toLowerCase()];
@@ -773,7 +791,7 @@
     };
 
     /* ============================================================
-       Хелпер: применяем размер/позицию к элементу И к его preview-узлу.
+       Хелпер: применить размер/позицию к элементу И к его preview-узлу.
        ============================================================ */
 
     Canvas.prototype._applyBox = function (el, left, top, width, height, setAttrs) {
@@ -782,16 +800,11 @@
         el.style.width  = width  + 'px';
         el.style.height = height + 'px';
 
-        /* Для D3-компонентов продублируем размер в атрибуты width/height —
-           чтобы после регенерации превью (или при сохранении XML)
-           компонент остался нужного размера. */
         if (setAttrs && el.getAttribute && el.getAttribute('data-wb-tag')) {
             el.setAttribute('width',  Math.round(width)  + 'px');
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
-        /* Preview-узел — реальная визуальная часть D3-компонента —
-           иначе ресайз «корня» визуально не изменит ничего. */
         var preview = el.querySelector(':scope > [data-wb-preview="1"]');
         if (preview) {
             preview.style.width     = width  + 'px';
@@ -802,6 +815,8 @@
 
     /* ============================================================
        Хелпер: перевод элемента в absolute-позиционирование.
+       left/top считаются относительно offsetParent (контейнера),
+       а не <body>. Это нужно для корректной работы субформ.
        ============================================================ */
 
     Canvas.prototype._makeAbsolute = function (el) {
@@ -810,11 +825,13 @@
         if (!body) return false;
         var cs = doc.defaultView.getComputedStyle(el);
         if (cs.position !== 'absolute' && cs.position !== 'fixed') {
+            var op = this._getOffsetParent(el);
+            if (!op) op = body;
             var r  = el.getBoundingClientRect();
-            var br = body.getBoundingClientRect();
+            var or = op.getBoundingClientRect();
             el.style.position = 'absolute';
-            el.style.left     = Math.round(r.left - br.left) + 'px';
-            el.style.top      = Math.round(r.top  - br.top)  + 'px';
+            el.style.left     = Math.round(r.left - or.left) + 'px';
+            el.style.top      = Math.round(r.top  - or.top)  + 'px';
             el.style.width    = Math.round(r.width)  + 'px';
             el.style.height   = Math.round(r.height) + 'px';
             return true;
@@ -872,6 +889,7 @@
         this._handles = null;
     };
 
+    /* Маркеры висят в <body> iframe — координаты считаются от body. */
     Canvas.prototype._positionResizeHandles = function (el) {
         if (!this._handles || !this._handles.length) return;
         if (!el) el = this.getSelected();
@@ -908,7 +926,6 @@
         }
     };
 
-    /* Общий трекинг мыши (координаты в системе iframe). */
     Canvas.prototype._trackMouse = function (onMove, onUp) {
         var doc      = this.getDoc();
         var iframe   = this.iframe;
@@ -962,7 +979,6 @@
         if (!body) return;
 
         var r  = el.getBoundingClientRect();
-        var br = body.getBoundingClientRect();
 
         this._makeAbsolute(el);
 
@@ -970,10 +986,16 @@
         var startTop    = parseFloat(el.style.top);
         var startWidth  = parseFloat(el.style.width);
         var startHeight = parseFloat(el.style.height);
-        if (isNaN(startLeft))   startLeft   = r.left - br.left;
-        if (isNaN(startTop))    startTop    = r.top  - br.top;
-        if (isNaN(startWidth))  startWidth  = r.width;
-        if (isNaN(startHeight)) startHeight = r.height;
+
+        if (isNaN(startLeft) || isNaN(startTop) ||
+            isNaN(startWidth) || isNaN(startHeight)) {
+            var op = this._getOffsetParent(el) || body;
+            var or = op.getBoundingClientRect();
+            if (isNaN(startLeft))   startLeft   = r.left - or.left;
+            if (isNaN(startTop))    startTop    = r.top  - or.top;
+            if (isNaN(startWidth))  startWidth  = r.width;
+            if (isNaN(startHeight)) startHeight = r.height;
+        }
 
         var startX = e.clientX;
         var startY = e.clientY;
@@ -1041,7 +1063,7 @@
         var startX = e.clientX;
         var startY = e.clientY;
         var moved = false;
-        var startLeft = 0, startTop = 0, curW = 0, curH = 0;
+        var startLeft = 0, startTop = 0;
 
         function onMove(clientX, clientY) {
             var dx = clientX - startX;
@@ -1056,15 +1078,14 @@
                 var sl = parseFloat(el.style.left);
                 var st = parseFloat(el.style.top);
                 if (isNaN(sl) || isNaN(st)) {
+                    var op = self._getOffsetParent(el) || body;
                     var r  = el.getBoundingClientRect();
-                    var br = body.getBoundingClientRect();
-                    if (isNaN(sl)) { sl = r.left - br.left; el.style.left = sl + 'px'; }
-                    if (isNaN(st)) { st = r.top  - br.top;  el.style.top  = st + 'px'; }
+                    var or = op.getBoundingClientRect();
+                    if (isNaN(sl)) { sl = r.left - or.left; el.style.left = sl + 'px'; }
+                    if (isNaN(st)) { st = r.top  - or.top;  el.style.top  = st + 'px'; }
                 }
                 startLeft = sl;
                 startTop  = st;
-                curW = el.getBoundingClientRect().width;
-                curH = el.getBoundingClientRect().height;
 
                 el.classList.add('wb-moving');
             }
