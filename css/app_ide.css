@@ -328,3 +328,23 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
     width: auto;
     height: auto;
 }
+/* =========================================================
+   Events: input + выпадающий список функций формы
+   ========================================================= */
+.wb-event-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+}
+.wb-event-row .wb-event-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.wb-event-row .wb-event-select {
+    flex: 0 0 auto;
+    max-width: 45%;
+    margin-left: 2px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+}

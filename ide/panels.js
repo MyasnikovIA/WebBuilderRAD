@@ -54,6 +54,107 @@
     };
 
     /* ============================================================
+       Извлечение JS-функций из cmpScript / inline <script> формы.
+
+       Используется вкладкой Events в инспекторе: dropdown со списком
+       функций + сигнатуры вызова.
+       ============================================================ */
+
+    /* Парсим строку аргументов "a, b, c" в массив ["a","b","c"].
+       Пробелы и лишние запятые отбрасываем. */
+    function parseArgsList(raw) {
+        if (!raw) return [];
+        return String(raw).split(',')
+            .map(function (s) { return s.trim(); })
+            .filter(function (s) { return s.length > 0; });
+    }
+
+    /* Сформировать строку вызова:
+       - args = список параметров из объявления;
+       - если первый параметр называется dom или начинается с _this —
+         заменяем на "this" (inline-обработчики передают элемент как this). */
+    function buildCallSignature(name, args) {
+        var out = args.slice();
+        if (out.length > 0) {
+            var first = out[0];
+            if (first === 'dom' || /^_this/i.test(first)) {
+                out[0] = 'this';
+            }
+        }
+        return name + '(' + out.join(', ') + ');';
+    }
+
+    /* Приоритет для сортировки: 0 — имя начинается с on (регистр не важен),
+       1 — все остальные. */
+    function eventNamePriority(name) {
+        var last = String(name).split('.').pop();
+        return /^on/i.test(last) ? 0 : 1;
+    }
+
+    /* Собрать все функции формы. Возвращает массив объектов
+       { name, args, call } — уже отсортированный:
+       сначала "on*", потом остальные, в каждой группе по алфавиту. */
+    function collectFormFunctions(canvas) {
+        var out = [];
+        if (!canvas || !canvas.getDoc) return out;
+        var doc = canvas.getDoc();
+        if (!doc) return out;
+
+        /* Источники: cmpscript + inline <script> без src.
+           Из каждого берём содержимое CDATA (если есть) либо весь текст. */
+        var sources = [];
+        var scripts = doc.querySelectorAll('cmpscript, script');
+        for (var i = 0; i < scripts.length; i++) {
+            var s = scripts[i];
+            var tag = s.tagName.toLowerCase();
+            if (tag === 'script' && s.getAttribute('src')) continue;
+            var raw = s.textContent || '';
+            var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+            sources.push(m ? m[1] : raw);
+        }
+        if (!sources.length) return out;
+
+        var combined = sources.join('\n');
+        var seen = {};
+
+        function add(name, argsRaw) {
+            if (!name || seen[name]) return;
+            seen[name] = 1;
+            var args = parseArgsList(argsRaw);
+            out.push({
+                name: name,
+                args: args,
+                call: buildCallSignature(name, args)
+            });
+        }
+
+        /* 1. Form.xxx = function(args)  |  some.obj.method = function(args) */
+        var reAssign = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*=\s*function\s*\(([^)]*)\)/g;
+        var m;
+        while ((m = reAssign.exec(combined)) !== null) {
+            add(m[1], m[2]);
+        }
+
+        /* 2. function name(args) { ... } — обычные именованные функции.
+           \bfunction\s+(\w+) не поймает анонимные function(...),
+           поэтому пересечения с reAssign не будет. */
+        var reFunc = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g;
+        while ((m = reFunc.exec(combined)) !== null) {
+            add(m[1], m[2]);
+        }
+
+        /* Сортировка: сначала on*, потом остальные; внутри — по алфавиту. */
+        out.sort(function (a, b) {
+            var pa = eventNamePriority(a.name);
+            var pb = eventNamePriority(b.name);
+            if (pa !== pb) return pa - pb;
+            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+        });
+
+        return out;
+    }
+
+    /* ============================================================
        DomTree
        ============================================================ */
     var _idCounter = 0;
@@ -800,21 +901,7 @@
         bus.emit('canvas:changed');
     };
 
-    /* Полное удаление атрибута / стиля / события — в отличие от _set,
-       который пишет пустое значение как «атрибут = ""».
-
-       Семантика:
-         - Properties с attr:true         → el.removeAttribute(name)
-         - Properties с кастомным set     → f.set(el, '')
-         - Properties с кастомным unset   → f.unset(el)     (если задан)
-         - Properties без attr            → el[name] = ''
-         - Styles                         → el.style.removeProperty(name)
-         - Events                         → el.removeAttribute(name)
-
-       Особый случай — class / className: полностью атрибут снять нельзя,
-       потому что на элементе висят служебные классы IDE
-       (wb-selected / wb-hover / wb-moving). Чистим только пользовательскую
-       часть, служебные сохраняем. */
+    /* Полное удаление атрибута / стиля / события. */
     Inspector.prototype._unset = function (tab, f) {
         var el = this.element;
         if (!el) return;
@@ -833,7 +920,6 @@
                 try { el[f.name] = ''; } catch (e) {}
             }
 
-            /* class / className: чистим только пользовательскую часть. */
             if (f.name === 'class' || f.name === 'className') {
                 var preserved = getServiceClasses(el.getAttribute('class') || '');
                 if (preserved) el.setAttribute('class', preserved);
@@ -846,7 +932,6 @@
             el.removeAttribute(f.name);
         }
 
-        /* Обновить превью D3-компонента и его родителя — как в _set. */
         var canvas = global.IDE && global.IDE._canvas;
         if (canvas && canvas.refreshPreviewAndParent) {
             var isCmp  = el.getAttribute && el.getAttribute('data-wb-tag');
@@ -858,7 +943,6 @@
             }
         }
 
-        /* canvas:changed → Inspector.refresh() через подписку. */
         bus.emit('canvas:changed');
     };
 
@@ -880,8 +964,6 @@
         del.click(function (e) {
             e.preventDefault();
             e.stopPropagation();
-            /* setTimeout — чтобы jQuery успел завершить dispatch
-               до того, как refresh() пересоберёт DOM панели. */
             setTimeout(function () { self._unset(tab, f); }, 0);
         });
         row.append(del);
@@ -970,6 +1052,37 @@
             });
             return mBtn;
         }
+
+        /* Вкладка Events: input + выпадающий список функций формы.
+           Ручной ввод сохраняется в input, выбор в select подставляет
+           готовую сигнатуру вызова. */
+        if (t === 'code' && tab === 'events') {
+            var evRow = $('<div class="wb-event-row"></div>');
+
+            var evInp = $('<input type="text" class="wb-event-input">')
+                .val(val == null ? '' : val);
+            evInp.change(function () { commit(evInp.val()); });
+
+            var evSel = $('<select class="wb-event-select" title="Выбрать функцию формы"></select>');
+            evSel.append($('<option></option>').val('').text('⋯'));
+
+            var canvas = global.IDE && global.IDE._canvas;
+            var fns = collectFormFunctions(canvas);
+            fns.forEach(function (fn) {
+                evSel.append($('<option></option>').val(fn.call).text(fn.call));
+            });
+
+            evSel.change(function () {
+                var v = evSel.val();
+                if (!v) return;
+                evInp.val(v);
+                commit(v);
+            });
+
+            evRow.append(evInp).append(evSel);
+            return evRow;
+        }
+
         if (t === 'code') {
             var btn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn.click(function () {
@@ -988,8 +1101,6 @@
             btn2.click(function () {
                 var current = self._get(tab, f);
 
-                /* Определяем язык для подсветки: либо функция, которая
-                   смотрит на элемент, либо строка из описания поля. */
                 var lang = 'xml';
                 if (typeof f.language === 'function') {
                     lang = f.language(self.element) || 'xml';
@@ -997,8 +1108,6 @@
                     lang = f.language;
                 }
 
-                /* Используем CodeEditor вместо обычного textarea —
-                   получаем подсветку синтаксиса. */
                 var editor = new CodeEditor({ value: current, language: lang });
 
                 Modal.open({
