@@ -80,6 +80,9 @@
                 st.left = ((parseFloat(st.left) || 0) + dx) + 'px';
                 st.top  = ((parseFloat(st.top)  || 0) + dy) + 'px';
             }
+            /* Сразу перепозиционируем маркеры ресайза, чтобы они
+               не «отставали» от клавиатурного сдвига. */
+            if (canvas._positionResizeHandles) canvas._positionResizeHandles(el);
             EventBus.emit('canvas:changed');
             EventBus.emit('selection:changed', { element: el });
         }
@@ -255,6 +258,7 @@
                 var rc = canvas.getRootContainer();
                 if (canvas.getRootType() !== 'html' && el === rc) return;
                 clipboard = el.cloneNode(true);
+                if (canvas._removeResizeHandles) canvas._removeResizeHandles();
                 el.parentNode.removeChild(el);
                 EventBus.emit('canvas:changed');
             },
@@ -328,6 +332,8 @@
                 if (el === canvas.getHtml()) return;
                 var rc = canvas.getRootContainer();
                 if (canvas.getRootType() !== 'html' && el === rc) return;
+
+                if (canvas._removeResizeHandles) canvas._removeResizeHandles();
 
                 var parent = el.parentNode;
                 parent.removeChild(el);

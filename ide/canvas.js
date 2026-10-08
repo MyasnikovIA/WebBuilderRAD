@@ -1,6 +1,7 @@
 /* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
    Поддерживает три режима корневого контейнера: 'html', 'cmpForm', 'div'.
-   Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs). */
+   Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs).
+   Умеет ресайзить выделенный элемент за 8 маркеров по периметру. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -106,11 +107,15 @@
 
     var INDENT = '    ';
 
+    var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
+
     function Canvas(iframeEl) {
         this.iframe = iframeEl;
         this.pending = null;
         this.designMode = false;
         this._rootType = 'html';
+        this._handles = null;
+        this._handlesPending = false;
         this._init();
     }
 
@@ -164,7 +169,23 @@
             '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
             '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
-            '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}';
+            '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}' +
+
+            /* --- Маркеры ресайза выделенного элемента --- */
+            '.wb-resize-handle {' +
+            '  position: absolute;' +
+            '  width: 7px; height: 7px;' +
+            '  margin: 0; padding: 0;' +
+            '  background: #ffffff;' +
+            '  border: 1px solid #1e88e5;' +
+            '  border-radius: 1px;' +
+            '  box-sizing: border-box;' +
+            '  transform: translate(-50%, -50%);' +
+            '  z-index: 99999;' +
+            '  pointer-events: auto;' +
+            '  user-select: none; -webkit-user-select: none;' +
+            '}' +
+            '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }';
         if (doc.head) doc.head.appendChild(style);
     };
 
@@ -237,6 +258,20 @@
                 childList: true, subtree: true, characterData: true
             });
         }
+
+        /* Перепозиционируем (или снимаем) ручки ресайза после любых правок. */
+        bus.on('canvas:changed', function () {
+            if (self._handlesPending) return;
+            self._handlesPending = true;
+            setTimeout(function () {
+                self._handlesPending = false;
+                if (self.designMode) return;
+                if (!self._handles || !self._handles.length) return;
+                var sel = self.getSelected();
+                if (sel) self._positionResizeHandles(sel);
+                else     self._removeResizeHandles();
+            }, 0);
+        });
 
         bus.emit('canvas:ready', this);
 
@@ -376,6 +411,7 @@
 
     Canvas.prototype.reset = function () {
         var doc = this.getDoc();
+        this._removeResizeHandles();
         doc.open();
         doc.write(this._templateHtml());
         doc.close();
@@ -385,6 +421,8 @@
         this.pending = null;
         this.designMode = false;
         this._rootType = 'html';
+        this._handles = null;
+        this._handlesPending = false;
         $(this.iframe).removeClass('wb-design-mode');
 
         this._cleanClass(this.getBody());
@@ -408,6 +446,7 @@
 
         if (this.designMode) {
             this.pending = null;
+            this._removeResizeHandles();
             var sel = doc.querySelectorAll('.' + SEL);
             for (var i = 0; i < sel.length; i++) {
                 sel[i].classList.remove(SEL);
@@ -438,6 +477,14 @@
         doc.addEventListener('mousedown', function (e) {
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
+
+            /* Клик по маркеру ресайза — не перехватываем, обрабатывает
+               сам маркер (см. _startResize). */
+            if (e.target && e.target.classList &&
+                e.target.classList.contains('wb-resize-handle')) {
+                return;
+            }
+
             if (self.pending) {
                 var target = self._placementTarget(e.target);
                 self._place(self.pending, target);
@@ -611,6 +658,7 @@
             this._cleanClass(prev[i]);
         }
         el.classList.add(SEL);
+        this._addResizeHandles(el);
 
         bus.emit('canvas:changed');
         bus.emit('selection:changed', { element: el });
@@ -684,7 +732,188 @@
             this._cleanClass(prev[i]);
         }
         el.classList.add(SEL);
+        this._addResizeHandles(el);
         bus.emit('selection:changed', { element: el });
+    };
+
+    /* ============================================================
+       Ресайз выделенного элемента мышью за 8 маркеров по периметру
+       ============================================================ */
+
+    Canvas.prototype._addResizeHandles = function (el) {
+        this._removeResizeHandles();
+        if (!el || el.nodeType !== 1) return;
+        if (this.designMode) return;
+
+        var html = this.getHtml();
+        var head = this.getHead();
+        var body = this.getBody();
+        if (!html || !body) return;
+
+        if (el === html || el === head || el === body) return;
+        if (head && head.contains(el)) return;
+
+        var rc = this.getRootContainer();
+        if (this._rootType !== 'html' && rc && el === rc) return;
+
+        var doc = this.getDoc();
+        var self = this;
+        this._handles = [];
+
+        for (var i = 0; i < RESIZE_DIRS.length; i++) {
+            (function (dir) {
+                var h = doc.createElement('div');
+                h.className = 'wb-resize-handle wb-resize-' + dir;
+                h.setAttribute('data-wb-ide', '1');
+                h.setAttribute('data-dir', dir);
+                h.setAttribute('contenteditable', 'false');
+                h.addEventListener('mousedown', function (ev) {
+                    self._startResize(ev, dir);
+                }, false);
+                body.appendChild(h);
+                self._handles.push(h);
+            })(RESIZE_DIRS[i]);
+        }
+        this._positionResizeHandles(el);
+    };
+
+    Canvas.prototype._removeResizeHandles = function () {
+        if (!this._handles) return;
+        for (var i = 0; i < this._handles.length; i++) {
+            var h = this._handles[i];
+            if (h && h.parentNode) h.parentNode.removeChild(h);
+        }
+        this._handles = null;
+    };
+
+    Canvas.prototype._positionResizeHandles = function (el) {
+        if (!this._handles || !this._handles.length) return;
+        if (!el) el = this.getSelected();
+        if (!el || el.nodeType !== 1) return;
+        var body = this.getBody();
+        if (!body) return;
+
+        var r  = el.getBoundingClientRect();
+        var br = body.getBoundingClientRect();
+        var x = r.left - br.left;
+        var y = r.top  - br.top;
+        var w = r.width;
+        var h = r.height;
+
+        var positions = {
+            nw: [x,       y,       'nwse-resize'],
+            n:  [x + w/2, y,       'ns-resize'],
+            ne: [x + w,   y,       'nesw-resize'],
+            e:  [x + w,   y + h/2, 'ew-resize'],
+            se: [x + w,   y + h,   'nwse-resize'],
+            s:  [x + w/2, y + h,   'ns-resize'],
+            sw: [x,       y + h,   'nesw-resize'],
+            w:  [x,       y + h/2, 'ew-resize']
+        };
+
+        for (var i = 0; i < this._handles.length; i++) {
+            var hd = this._handles[i];
+            var dir = hd.getAttribute('data-dir');
+            var p = positions[dir];
+            if (!p) continue;
+            hd.style.left   = p[0] + 'px';
+            hd.style.top    = p[1] + 'px';
+            hd.style.cursor = p[2];
+        }
+    };
+
+    Canvas.prototype._startResize = function (e, dir) {
+        var self = this;
+        var el = this.getSelected();
+        if (!el) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        var doc  = this.getDoc();
+        var body = this.getBody();
+        if (!body) return;
+
+        var r  = el.getBoundingClientRect();
+        var br = body.getBoundingClientRect();
+        var cs = doc.defaultView.getComputedStyle(el);
+
+        /* Элемент должен быть абсолютно спозиционирован, чтобы
+           left/top/width/height задавали его однозначно. */
+        if (cs.position !== 'absolute' && cs.position !== 'fixed') {
+            el.style.position = 'absolute';
+            el.style.left   = (r.left - br.left) + 'px';
+            el.style.top    = (r.top  - br.top)  + 'px';
+            el.style.width  = r.width  + 'px';
+            el.style.height = r.height + 'px';
+        }
+
+        var startLeft   = parseFloat(el.style.left);
+        var startTop    = parseFloat(el.style.top);
+        var startWidth  = parseFloat(el.style.width);
+        var startHeight = parseFloat(el.style.height);
+        if (isNaN(startLeft))   startLeft   = r.left - br.left;
+        if (isNaN(startTop))    startTop    = r.top  - br.top;
+        if (isNaN(startWidth))  startWidth  = r.width;
+        if (isNaN(startHeight)) startHeight = r.height;
+
+        var startX = e.clientX;
+        var startY = e.clientY;
+        var MIN = 8;
+
+        for (var i = 0; i < (this._handles || []).length; i++) {
+            if (this._handles[i].getAttribute('data-dir') === dir) {
+                this._handles[i].classList.add('wb-resize-active');
+            }
+        }
+
+        function applyResize(clientX, clientY) {
+            var dx = clientX - startX;
+            var dy = clientY - startY;
+            var nl = startLeft, nt = startTop, nw = startWidth, nh = startHeight;
+
+            if (dir.indexOf('e') >= 0) nw = Math.max(MIN, startWidth + dx);
+            if (dir.indexOf('s') >= 0) nh = Math.max(MIN, startHeight + dy);
+            if (dir.indexOf('w') >= 0) {
+                var tw = Math.max(MIN, startWidth - dx);
+                nl = startLeft + (startWidth - tw);
+                nw = tw;
+            }
+            if (dir.indexOf('n') >= 0) {
+                var th = Math.max(MIN, startHeight - dy);
+                nt = startTop + (startHeight - th);
+                nh = th;
+            }
+
+            el.style.left   = nl + 'px';
+            el.style.top    = nt + 'px';
+            el.style.width  = nw + 'px';
+            el.style.height = nh + 'px';
+
+            self._positionResizeHandles(el);
+        }
+
+        function onMove(ev) {
+            /* Координаты внутри iframe. Слушатели — на doc iframe,
+               значит ev.clientX/Y уже в системе координат iframe. */
+            applyResize(ev.clientX, ev.clientY);
+        }
+
+        var outerDoc = global.document;
+        function onUp() {
+            doc.removeEventListener('mousemove', onMove, true);
+            doc.removeEventListener('mouseup', onUp, true);
+            if (outerDoc) outerDoc.removeEventListener('mouseup', onUp, true);
+            for (var k = 0; k < (self._handles || []).length; k++) {
+                self._handles[k].classList.remove('wb-resize-active');
+            }
+            bus.emit('canvas:changed');
+            bus.emit('selection:changed', { element: el });
+        }
+
+        doc.addEventListener('mousemove', onMove, true);
+        doc.addEventListener('mouseup', onUp, true);
+        if (outerDoc) outerDoc.addEventListener('mouseup', onUp, true);
     };
 
     /* ============================================================
