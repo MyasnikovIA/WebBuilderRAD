@@ -4,43 +4,42 @@
    Клиентский контрол: PopupMenu.js (D3Api.PopupItemCtrl).
 
    Два режима рендера:
-     1. Разделитель (caption="-"): <div class="item separator" item_split="true"></div>
-     2. Обычный пункт: <div class="item" caption="…">
-                         <table><tr>
-                           <td><img cont="itemIcon"/><span cont="itemCaption">…</span></td>
-                           <td class="caret"></td>
-                         </tr></table>
-                         [<div class="popupMenu subItems" cont="menu">…подменю…</div>]
-                       </div>
-
-   Если у PopupItem есть дочерние PopupItem — рендерится как подменю
-   (class «haveItems», появляется «caret» →).
-
-   Атрибуты:
-     name         — имя пункта (для getControl / addItem).
-     caption      — текст пункта. Если '-', то разделитель.
-     icon         — путь к иконке.
-     std_icon     — стандартная иконка (см. ~CmpPopupMenu/Icons/<std_icon>).
-     onclick      — обработчик клика. Сервер навешивает свой
-                    (D3Api.PopupItemCtrl.clickItem) после пользовательского.
-     onmouseover  — обработчик наведения. Сервер навешивает свой.
-     default      — 'true' — пункт по умолчанию (для defaultAction).
-     visible      — показывать ли пункт.
+     1. Разделитель (caption="-"): <div class="item separator"></div>.
+     2. Обычный пункт с иконкой, текстом и (опционально) подменю.
 
    parentOnly: cmppopupmenu | cmppopupgroupitem | cmppopupitem.
    Может вкладываться в себя (подменю).
 
-   В IDE: preview = null — визуализируется родителем. */
+   В IDE: невидим — родитель (PopupMenu) сам скрыт через _injectIdeStyle. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
     var CS = global.CommonSchema;
 
+    /* Список стандартных иконок PopupItem. Значения сервер подставляет
+       как ~CmpPopupMenu/Icons/<std_icon>. Используется для enum в
+       инспекторе, чтобы пользователь выбирал из известных имён. */
+    var STD_ICONS = [
+        '',
+        'refresh',
+        'insert',
+        'edit',
+        'delete',
+        'report',
+        'printer',
+        'upload',
+        'download',
+        'logs',
+        'userprocs',
+        'unitprops',
+        'jdocs',
+        'generation'
+    ];
+
     D3.register({
         id: 'd3.popupitem', tagName: 'cmpPopupItem', caption: 'PopupItem',
         parentOnly: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         icon: 'images/icon.png',
-        previewCss: ['css/preview.css'],
         attrs: { name: '', caption: '' },
 
         create: function (doc) {
@@ -70,10 +69,11 @@
 
             /* --- PopupItem --- */
             { type: 'separator', caption: 'PopupItem' },
-            { name: 'caption',  caption: 'Caption («-» = separator)', type: 'string', attr: true },
-            { name: 'icon',     caption: 'Icon URL',  type: 'string',  attr: true },
-            { name: 'std_icon', caption: 'Std Icon',  type: 'string',  attr: true },
-            { name: 'default',  caption: 'Default',   type: 'boolean', attr: true }
+            { name: 'caption',  caption: 'Caption («-» = separator)', type: 'string',  attr: true },
+            { name: 'icon',     caption: 'Icon URL',                  type: 'string',  attr: true },
+            { name: 'std_icon', caption: 'Std Icon',                  type: 'enum',    attr: true,
+                values: STD_ICONS },
+            { name: 'default',  caption: 'Default',                   type: 'boolean', attr: true }
         ],
 
         /* ---------------- Events ---------------- */

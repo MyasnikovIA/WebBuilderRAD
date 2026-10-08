@@ -3,7 +3,8 @@
    Подключает ресурсы превью, объявленные D3-компонентами (previewCss / previewJs).
    Умеет:
      - ресайзить выделенный элемент за 8 маркеров по периметру;
-     - перемещать выделенный элемент перетаскиванием за тело;
+     - перемещать выделенный элемент за центральный move-handle
+       (или перетаскиванием за тело — для обычных HTML-тегов);
      - выделять и тащить как D3-компоненты, так и обычные HTML-теги;
      - загружать готовый HTML (loadHtml) — с сохранением CDATA и data-wb-tag.
 
@@ -36,7 +37,7 @@
         'wb-image':1, cmptagitem:1
     };
 
-    /* FIX: развёртка self-closing cmp*-тегов.
+    /* Развёртка self-closing cmp*-тегов.
        HTML-парсер игнорирует '/>' у нестандартных элементов,
        из-за чего соседние <cmpXxx/> вкладываются друг в друга.
        Разворачиваем ВСЕ cmp*-теги; обратное «уплотнение» делает
@@ -132,10 +133,7 @@
     };
 
     /* Маппинг runtime-атрибута cmptype → XML-тег.
-       Сервер рендерит D3-компоненты как <div cmptype="Form"> и т.п.
-       При загрузке такого HTML IDE должна распознать эти элементы
-       и повесить на них data-wb-tag, чтобы дальнейшая логика
-       (root type, сохранение) работала корректно. */
+       Сервер рендерит D3-компоненты как <div cmptype="Form"> и т.п. */
     var RUNTIME_CMPTYPE_TO_TAG = {
         'Form':         'cmpform',
         'SubForm':      'cmpsubform',
@@ -154,9 +152,6 @@
     var RESIZE_DIRS = ['nw','n','ne','e','se','s','sw','w'];
     var MOVE_THRESHOLD = 3;
 
-    /* Плейсхолдеры CDATA. Не содержат < >, поэтому HTML-парсер видит их
-       как обычный текст и не пытается интерпретировать содержимое
-       CDATA-блока как HTML. */
     var CDATA_PH_OPEN  = '\u0001WB_CDATA_PH_';
     var CDATA_PH_CLOSE = '_\u0001';
 
@@ -210,13 +205,11 @@
             'html { height: 100%; }' +
             'body { min-height: 100vh; margin: 0; box-sizing: border-box; position: relative; }' +
 
-            /* Корневые контейнеры — тоже position: relative,
-               чтобы left/top детей отсчитывались от их края, а не от body. */
             'cmpForm, cmpSubForm, [data-wb-tag="cmpForm"], [data-wb-root="1"] { position: relative; }' +
 
-            /* cmpcomment намеренно НЕ в этом списке — комментарии
-               должны быть видны в canvas (через превью-узел). */
-            'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmprepeaterstyler, cmpserverscript, cmpsort {' +
+            /* Невидимые компоненты. cmpComment здесь — комментарий
+               доступен только в дереве, не на сцене. */
+            'cmpaction, cmpcomment, cmpdataset, cmpscript, cmpmask, cmpbroker, cmpcompleter, cmpdependences, cmpfetch, cmpfetchvar, cmplocate, cmpmodule, cmpmodulevar, cmppopupmenu, cmprepeaterstyler, cmpserverscript, cmpsort {' +
             '  display: none !important; visibility: hidden !important;' +
             '  pointer-events: none !important; user-select: none !important;' +
             '}' +
@@ -243,6 +236,19 @@
             '  user-select: none; -webkit-user-select: none;' +
             '}' +
             '.wb-resize-handle:hover, .wb-resize-handle.wb-resize-active { background: #1e88e5; }' +
+
+            /* Центральный move-handle — крупнее, круглый, курсор move. */
+            '.wb-move-handle {' +
+            '  width: 16px !important; height: 16px !important;' +
+            '  background: #1e88e5 !important;' +
+            '  border: 2px solid #ffffff !important;' +
+            '  border-radius: 50% !important;' +
+            '  box-shadow: 0 0 0 1px #1e88e5;' +
+            '  cursor: move !important;' +
+            '}' +
+            '.wb-move-handle:hover {' +
+            '  background: #1565c0 !important;' +
+            '}' +
 
             '.wb-moving { cursor: move !important; }';
         var head = this.getOrCreateHead();
@@ -373,8 +379,6 @@
 
     Canvas.prototype.getRootType = function () { return this._rootType; };
 
-    /* Распознаём корень-форму не только по тегу <cmpform>,
-       но и по data-wb-tag="cmpForm". */
     Canvas.prototype.getRootContainer = function () {
         if (this._rootType === 'html') return this.getHtml();
         var body = this.getBody();
@@ -392,7 +396,6 @@
         return null;
     };
 
-    /* Определяем корень и по тегу, и по data-wb-tag. */
     Canvas.prototype._detectRootType = function () {
         var body = this.getBody();
         if (!body) return 'html';
@@ -407,9 +410,6 @@
         return 'html';
     };
 
-    /* Если корень нужного типа уже есть на верхнем уровне body —
-       переиспользуем его, доновешиваем недостающие атрибуты.
-       Иначе создаём новый wrapper как раньше. */
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'div'].indexOf(type) < 0) return;
         if (type === this._rootType) return;
@@ -418,7 +418,6 @@
         var body = this.getBody();
         if (!body) return;
 
-        /* Ищем существующий корень прямо в body. */
         var existingRoot = null;
         var bKids0 = body.children;
         for (var e = 0; e < bKids0.length; e++) {
@@ -441,8 +440,6 @@
         }
 
         if (existingRoot) {
-            /* Переиспользуем: донашиваем недостающие атрибуты, чтобы
-               дальнейшая логика (сохранение, превью, CSS) работала. */
             if (type === 'cmpForm') {
                 existingRoot.setAttribute('data-wb-tag', 'cmpForm');
                 if (!existingRoot.getAttribute('data-cmptype')) {
@@ -466,8 +463,6 @@
             return;
         }
 
-        /* Иначе — старая логика: создать новый корень и перенести
-           в него всё содержимое. */
         var oldRoot = (this._rootType === 'html') ? null : this.getRootContainer();
         var source = oldRoot || body;
         var moved = [];
@@ -557,18 +552,17 @@
     };
 
     /* ============================================================
-       Загрузка готового HTML (из текста, «наоборот» к cleanHtml).
+       Загрузка готового HTML.
 
        Порядок:
-         1. CDATA-блоки → плейсхолдеры (без < >, чтобы парсер не съел JS).
-         2. <cmpXxx .../> → <cmpXxx ...></cmpXxx> (иначе соседи вложатся).
+         1. CDATA-блоки → плейсхолдеры.
+         2. <cmpXxx .../> → <cmpXxx ...></cmpXxx>.
          3. Обёртка в шаблон, если это фрагмент.
          4. document.write.
-         5. Плейсхолдеры → текстовые узлы, содержащие <![CDATA[...]]>.
+         5. Плейсхолдеры → текстовые узлы с <![CDATA[...]]>.
          5.5. HTML-комментарии → <cmpcomment data-wb-tag="cmpComment">.
          6. Чистка service-узлов и классов, восстановление data-wb-tag.
-         7. Переинжект IDE-инфраструктуры, определение root type,
-            отрисовка превью, переподписка MutationObserver.
+         7. Переинжект IDE-инфраструктуры, root type, превью.
        ============================================================ */
     Canvas.prototype.loadHtml = function (html) {
         var self = this;
@@ -642,10 +636,7 @@
             })(doc.documentElement);
         }
 
-        /* 5.5. HTML-комментарии → <cmpcomment> элементы.
-           Нужно, чтобы комментарии отображались в дереве и могли
-           редактироваться через инспектор. Идём только по body —
-           комментарии в head оставляем как есть. */
+        /* 5.5. HTML-комментарии → <cmpcomment> элементы. */
         var bodyEl = this.getBody();
         if (bodyEl) {
             var comments = [];
@@ -728,8 +719,6 @@
         }
     };
 
-    /* Восстановление data-wb-tag: сначала по тегу, потом по runtime-
-       атрибуту cmptype (для <div cmptype="Form"> и т.п.). */
     Canvas.prototype._restoreCmpTags = function (root) {
         if (!root || root.nodeType !== 1) return;
         var lower = root.tagName.toLowerCase();
@@ -831,6 +820,7 @@
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
+            /* Клик по resize/move handle — обрабатывается самим handle'ом. */
             if (e.target && e.target.classList &&
                 e.target.classList.contains('wb-resize-handle')) {
                 return;
@@ -893,6 +883,15 @@
             bus.emit('contextmenu:element', { x: pt.x, y: pt.y });
             e.preventDefault();
         });
+
+        /* В design-time глушим click-события, чтобы не срабатывали
+           onclick="…" атрибуты компонентов (например, у cmpButton).
+           Выделение и перемещение работают через mousedown/mousemove. */
+        doc.addEventListener('click', function (e) {
+            if (self.designMode) return;
+            e.preventDefault();
+            e.stopPropagation();
+        }, true);
     };
 
     Canvas.prototype._placementTarget = function (el) {
@@ -1163,6 +1162,22 @@
                 self._handles.push(h);
             })(RESIZE_DIRS[i]);
         }
+
+        /* Центральный move-handle: за него можно тянуть элемент,
+           не задевая его собственные onclick-обработчики. */
+        (function () {
+            var m = doc.createElement('div');
+            m.className = 'wb-resize-handle wb-move-handle';
+            m.setAttribute('data-wb-ide', '1');
+            m.setAttribute('data-dir', 'move');
+            m.setAttribute('contenteditable', 'false');
+            m.addEventListener('mousedown', function (ev) {
+                self._startMoveFromHandle(ev);
+            }, false);
+            body.appendChild(m);
+            self._handles.push(m);
+        })();
+
         this._positionResizeHandles(el);
     };
 
@@ -1197,7 +1212,8 @@
             se: [x + w,   y + h,   'nwse-resize'],
             s:  [x + w/2, y + h,   'ns-resize'],
             sw: [x,       y + h,   'nesw-resize'],
-            w:  [x,       y + h/2, 'ew-resize']
+            w:  [x,       y + h/2, 'ew-resize'],
+            move: [x + w/2, y + h/2, 'move']
         };
 
         for (var i = 0; i < this._handles.length; i++) {
@@ -1385,14 +1401,66 @@
         });
     };
 
+    /* Перемещение за центральный move-handle. Слушатель навешен на
+       самом handle, а не на элементе — клики по кнопке не задеваются. */
+    Canvas.prototype._startMoveFromHandle = function (e) {
+        var el = this.getSelected();
+        if (!el || el.nodeType !== 1) return;
+        if (this.designMode) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        var html = this.getHtml();
+        var body = this.getBody();
+        if (!html || !body) return;
+        if (el === html || el === body) return;
+
+        var rc = this.getRootContainer();
+        if (this._rootType !== 'html' && rc && el === rc) return;
+
+        var self = this;
+        var startX = e.clientX;
+        var startY = e.clientY;
+
+        this._makeAbsolute(el);
+
+        var startLeft = parseFloat(el.style.left);
+        var startTop  = parseFloat(el.style.top);
+
+        if (isNaN(startLeft) || isNaN(startTop)) {
+            var op = this._getOffsetParent(el) || body;
+            var r  = el.getBoundingClientRect();
+            var or = op.getBoundingClientRect();
+            if (isNaN(startLeft)) startLeft = r.left - or.left;
+            if (isNaN(startTop))  startTop  = r.top  - or.top;
+            el.style.left = startLeft + 'px';
+            el.style.top  = startTop  + 'px';
+        }
+
+        el.classList.add('wb-moving');
+
+        function onMove(clientX, clientY) {
+            var dx = clientX - startX;
+            var dy = clientY - startY;
+            el.style.left = (startLeft + dx) + 'px';
+            el.style.top  = (startTop  + dy) + 'px';
+            self._positionResizeHandles(el);
+        }
+
+        this._trackMouse(onMove, function () {
+            el.classList.remove('wb-moving');
+            bus.emit('canvas:changed');
+            bus.emit('selection:changed', { element: el });
+        });
+    };
+
     Canvas.prototype._formatTagName = function (el) {
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');
         if (custom) return custom;
         return el.tagName.toLowerCase();
     };
 
-    /* Фильтруем runtime-атрибут cmptype (без data-), чтобы он не попадал
-       в XML при сохранении. */
     Canvas.prototype._formatAttrs = function (el) {
         var out = '';
         var attrs = el.attributes;
@@ -1463,8 +1531,6 @@
         }
     };
 
-    /* Собираем в childCmp ещё и комментарии (nodeType === 8),
-       чтобы _formatNode их распечатал. */
     Canvas.prototype._formatCmpNode = function (node, level, xmlTag) {
         var pad = '';
         for (var k = 0; k < level; k++) pad += INDENT;
@@ -1495,8 +1561,6 @@
                     childCmp.push(c);
                 }
             } else if (c.nodeType === 8) {
-                /* Комментарий. _formatNode для nodeType === 8
-                   умеет печатать <!--...-->. */
                 childCmp.push(c);
             }
         }
@@ -1552,7 +1616,6 @@
             return pad + norm + '\n';
         }
         if (node.nodeType === 8) {
-            /* HTML-комментарий. */
             return pad + '<!--' + node.nodeValue + '-->\n';
         }
         if (node.nodeType !== 1) return '';
@@ -1616,7 +1679,6 @@
                 if (/<!\[CDATA\[/.test(c.nodeValue)) continue;
                 children.push(c);
             } else if (c.nodeType === 8) {
-                /* Комментарии внутри обычных HTML-элементов. */
                 children.push(c);
             }
         }
@@ -1638,9 +1700,6 @@
         return out;
     };
 
-    /* Корень-форму ищем не только по тегу <cmpform>, но и по
-       data-wb-tag="cmpForm" — случай, когда загрузили
-       <div cmptype="Form"> и он был помечен как форма. */
     Canvas.prototype._findRootInClone = function (clone) {
         if (this._rootType === 'html') return null;
         var body = clone.querySelector('body');
