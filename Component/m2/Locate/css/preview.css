@@ -1,0 +1,28 @@
+/* Превью cmpLocate.
+
+   Locate — служебный контрол, в рантайме невидим
+   (style="display:none"), в IDE тоже скрыт правилом ide-style
+   в canvas.js. Этот файл — задел на будущее, если понадобится
+   показывать Locate плашкой (например, в дереве или в отдельной
+   панели отладки).
+
+   Сейчас ни на что не влияет. */
+
+.d3-preview-locate {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+    color: #00695c;
+    background: #e0f2f1;
+    border: 1px dashed #80cbc4;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-locate::before {
+    content: '\2316'; /* ⌖ */
+    margin-right: 4px;
+    opacity: 0.8;
+}

@@ -11,6 +11,7 @@
         tagName: 'component',
         cmptype: 'Button',
         caption: 'Button (M2)',
+        subCategory: 'Controls',
         category: 'M2',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

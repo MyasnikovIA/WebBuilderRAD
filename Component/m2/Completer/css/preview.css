@@ -1,0 +1,24 @@
+/* Превью cmpCompleter.
+
+   Сам Completer в рантайме невидим (style="display:none").
+   В IDE он тоже скрыт в canvas — правило в ide-style (canvas.js).
+   Этот файл существует как задел: если в будущем захочется
+   показывать Completer плашкой в палитре/дереве, стили уже есть. */
+
+.d3-preview-completer {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #555;
+    background: #f5f5f5;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+
+.d3-preview-completer::before {
+    content: '\1F50D'; /* 🔍 */
+    margin-right: 4px;
+    opacity: 0.7;
+}

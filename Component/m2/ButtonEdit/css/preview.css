@@ -1,0 +1,249 @@
+/* Превью cmpButtonEdit — соответствует .ctrl_ButtonEdit из ButtonEdit.css.
+   Подключается автоматически через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+/* Сброс IDE-рамки [data-wb-preview] для корректной табличной раскладки. */
+.d3-preview-buttonedit[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-table !important;
+    vertical-align: middle;
+}
+
+.d3-preview-buttonedit {
+    display: inline-table;
+    padding: 0;
+    border-spacing: 0;
+    table-layout: fixed;
+    position: relative;
+    min-width: 120px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+/* Ячейки-обёртки */
+.d3-preview-buttonedit .ctrl_ButtonEdit_Cell {
+    display: table-cell;
+    border: 1px solid #BFBFBF;
+    padding: 0;
+    vertical-align: top;
+    box-sizing: border-box;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_Bg {
+    background-color: #ffffff;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_Content {
+    border-right: none;
+    border-radius: 3px 0 0 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_Guide {
+    width: 23px;
+    border-left: none;
+    border-radius: 0 3px 3px 0;
+}
+
+.d3-preview-buttonedit.clearButton .ctrl_ButtonEdit_Guide {
+    border-radius: 0;
+}
+
+/* Внутренний input / textarea */
+.d3-preview-buttonedit input,
+.d3-preview-buttonedit textarea {
+    display: block;
+    width: 100%;
+    height: 22px;
+    padding: 2px 6px;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 16px;
+    box-sizing: border-box;
+    outline: none;
+    resize: none;
+}
+
+.d3-preview-buttonedit textarea {
+    height: 60px;
+    min-height: 22px;
+}
+
+.d3-preview-buttonedit input[readonly],
+.d3-preview-buttonedit textarea[readonly] {
+    color: #333;
+    background: #fafafa;
+}
+
+.d3-preview-buttonedit input::placeholder,
+.d3-preview-buttonedit textarea::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+/* Кнопка выбора (binoculars) */
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButGuide {
+    display: block;
+    height: 22px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    background: linear-gradient(180deg, #F5F7F9 0%, #E0E5E9 100%);
+    border: 0;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButGuide::before {
+    content: "";
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 4px auto 0;
+    background:
+            radial-gradient(circle at 30% 30%, #555 3px, transparent 3px),
+            radial-gradient(circle at 70% 30%, #555 3px, transparent 3px),
+            linear-gradient(to bottom, #777 0 60%, transparent 60%);
+    background-repeat: no-repeat;
+    border-radius: 2px;
+    opacity: 0.7;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButGuide:hover::before,
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButGuide:active::before {
+    opacity: 1;
+}
+
+/* Кнопка очистки (eraser) */
+.d3-preview-buttonedit .ctrl_ButtonEdit_Clear {
+    width: 23px;
+    border: none;
+    vertical-align: top;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButClear {
+    display: block;
+    height: 22px;
+    border: 1px solid #BFBFBF;
+    border-left: none;
+    border-radius: 0 3px 3px 0;
+    background: linear-gradient(180deg, #F5F7F9 0%, #E0E5E9 100%);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButClear:hover {
+    background: #E0E5E9;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButClearIcon {
+    display: block;
+    height: 20px;
+    position: relative;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButClearIcon::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 10px; height: 10px;
+    margin: -5px 0 0 -5px;
+    background:
+            linear-gradient(45deg, transparent 45%, #666 45%, #666 55%, transparent 55%),
+            linear-gradient(-45deg, transparent 45%, #666 45%, #666 55%, transparent 55%);
+    opacity: 0.7;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_ButClear:hover .ctrl_ButtonEdit_ButClearIcon::before {
+    opacity: 1;
+}
+
+/* Контейнер тегов (tagged) */
+.d3-preview-buttonedit .ctrl_ButtonEdit_TagsContainer {
+    box-sizing: border-box;
+    padding: 2px 2px 0 2px;
+    min-height: 24px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    cursor: default;
+    background: #ffffff;
+}
+
+.d3-preview-buttonedit .ctrl_ButtonEdit_EmptyHint {
+    display: inline-block;
+    padding: 3px 6px;
+    color: #b0bec5;
+    font-style: italic;
+    font-size: 11px;
+}
+
+/* Тег */
+.d3-preview-buttonedit .ctrl_TagItem,
+.d3-preview-tagitem .ctrl_TagItem {
+    display: inline-block;
+    position: relative;
+    vertical-align: middle;
+    min-width: 12px;
+    max-width: 80%;
+    min-height: 19px;
+    padding: 3px 24px 3px 6px;
+    margin: 0 0 2px 2px;
+    overflow: hidden;
+    background-color: #e5eaee;
+    border-radius: 2px;
+    text-overflow: ellipsis;
+    cursor: default;
+    font-size: 11px;
+    color: #333;
+}
+
+.d3-preview-buttonedit .ctrl_TagItem_ButClear,
+.d3-preview-tagitem .ctrl_TagItem_ButClear {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    border-radius: 0 2px 2px 0;
+    border-left: 1px solid #edf3f7;
+    cursor: pointer;
+    background: #dce4ea;
+}
+
+.d3-preview-buttonedit .ctrl_TagItem_ButClear::before,
+.d3-preview-tagitem .ctrl_TagItem_ButClear::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 8px; height: 8px;
+    margin: -4px 0 0 -4px;
+    background:
+            linear-gradient(45deg, transparent 45%, #666 45%, #666 55%, transparent 55%),
+            linear-gradient(-45deg, transparent 45%, #666 45%, #666 55%, transparent 55%);
+}
+
+.d3-preview-buttonedit .ctrl_TagItem_ButClear:hover,
+.d3-preview-tagitem .ctrl_TagItem_ButClear:hover {
+    background: #cfd8dc;
+}
+
+/* Disabled */
+.d3-preview-buttonedit.ctrl_disable {
+    opacity: 0.75;
+}
+.d3-preview-buttonedit.ctrl_disable .ctrl_ButtonEdit_Bg {
+    background-color: #EDEDED;
+}
+.d3-preview-buttonedit.ctrl_disable .ctrl_ButtonEdit_ButGuide,
+.d3-preview-buttonedit.ctrl_disable .ctrl_ButtonEdit_ButClear {
+    background: #ededed;
+    cursor: default;
+}

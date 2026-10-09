@@ -1,0 +1,181 @@
+/* Превью cmpUnitEdit.
+
+   В рантайме рендерится по-разному в зависимости от type.
+   В IDE показываем соответствующую визуализацию. */
+
+cmpUnitEdit {
+    display: inline-block;
+    line-height: 0;
+    font-size: 0;
+    vertical-align: middle;
+}
+
+cmpUnitEdit[visible="false"] { display: none; }
+cmpUnitEdit[enabled="false"] { opacity: 0.75; }
+
+/* Сброс IDE-рамки на preview-узле. */
+cmpUnitEdit > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    vertical-align: middle;
+}
+
+/* ---------- Общая обёртка ---------- */
+.d3-preview-unitedit {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+/* ---------- Input ---------- */
+.d3-preview-unitedit-input {
+    flex: 1 1 auto;
+    min-width: 100px;
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    background: #fff;
+    font: inherit;
+    color: inherit;
+    box-sizing: border-box;
+    cursor: text;
+}
+
+.d3-preview-unitedit-input.placeholder {
+    color: #999;
+}
+
+.d3-preview-unitedit.ctrl_disable .d3-preview-unitedit-input {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+/* ---------- Кнопка вызова (ButtonEdit) ---------- */
+.d3-preview-unitedit-btn {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    line-height: 22px;
+    margin-left: 2px;
+    text-align: center;
+    background: #f5f7f9;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #444;
+    box-sizing: border-box;
+    user-select: none;
+    -moz-user-select: none;
+}
+.d3-preview-unitedit-btn:hover {
+    background: #e8eef5;
+}
+.d3-preview-unitedit.ctrl_disable .d3-preview-unitedit-btn {
+    background: #ececec;
+    color: #999;
+    cursor: not-allowed;
+}
+
+/* ---------- Select (ComboBox) ---------- */
+.d3-preview-unitedit-select {
+    min-width: 120px;
+    height: 22px;
+    padding: 0 4px;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    background: #fff;
+    font: inherit;
+    color: inherit;
+    box-sizing: border-box;
+}
+.d3-preview-unitedit.ctrl_disable .d3-preview-unitedit-select {
+    background: #f5f5f5;
+    color: #999;
+}
+
+/* ---------- RadioGroup ---------- */
+.d3-preview-unitedit-radio {
+    display: inline-flex;
+    gap: 12px;
+    align-items: center;
+}
+.d3-preview-unitedit-radio label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.d3-preview-unitedit-radio input[type="radio"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #1e88e5;
+    cursor: pointer;
+}
+
+/* ---------- FillingTextArea ---------- */
+.d3-preview-unitedit-textarea {
+    min-width: 160px;
+    min-height: 50px;
+    padding: 3px 6px;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    background: #fff;
+    font: inherit;
+    color: inherit;
+    resize: none;
+    box-sizing: border-box;
+}
+.d3-preview-unitedit-textarea.placeholder {
+    color: #999;
+}
+.d3-preview-unitedit.ctrl_disable .d3-preview-unitedit-textarea {
+    background: #f5f5f5;
+    color: #999;
+}
+
+/* ---------- ReadOnly ---------- */
+.d3-preview-unitedit.readonly .d3-preview-unitedit-input,
+.d3-preview-unitedit.readonly .d3-preview-unitedit-textarea {
+    background: #f7f7f7;
+    color: #555;
+    cursor: default;
+}
+.d3-preview-unitedit.readonly .d3-preview-unitedit-btn {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ---------- Бейдж с типом ---------- */
+.d3-preview-unitedit-badge {
+    position: absolute;
+    top: -8px;
+    right: 0;
+    padding: 0 4px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 9px;
+    line-height: 12px;
+    color: #90a4ae;
+    background: #fafbfc;
+    border: 1px dashed #cfd8dc;
+    border-radius: 2px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+    white-space: nowrap;
+}

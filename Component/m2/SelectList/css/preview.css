@@ -1,0 +1,107 @@
+/* Превью cmpSelectList — соответствует .selectlist / SelectList.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   Три состояния:
+     state0 — пустая иконка;
+     state1 — серая галочка (частично выбрано);
+     state2 — зелёная галочка (всё выбрано). */
+
+cmpSelectList {
+    display: inline-block;
+    line-height: 0;
+    font-size: 0;
+    vertical-align: middle;
+}
+
+cmpSelectList[visible="false"] { display: none; }
+cmpSelectList[enabled="false"] { opacity: 0.5; }
+
+/* Сброс IDE-рамки. */
+.d3-preview-selectlist[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-selectlist {
+    display: inline-block;
+    width: 17px;
+    height: 17px;
+    position: relative;
+    vertical-align: middle;
+    cursor: pointer;
+    background: #fff;
+    border: 1px solid #C0C0C0;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+
+/* ---------- Иконка галочки ---------- */
+.d3-preview-selectlist-icon {
+    display: block;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    box-sizing: border-box;
+}
+
+/* state0 — пустая */
+.d3-preview-selectlist-state0 .d3-preview-selectlist-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    /* пусто, без галочки */
+}
+
+/* state1 — серая галочка */
+.d3-preview-selectlist-state1 {
+    background: #f0f0f0;
+}
+.d3-preview-selectlist-state1 .d3-preview-selectlist-icon::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 1px;
+    width: 10px;
+    height: 5px;
+    border-left: 2px solid #999;
+    border-bottom: 2px solid #999;
+    transform: rotate(-45deg);
+    transform-origin: center;
+    box-sizing: border-box;
+}
+
+/* state2 — зелёная галочка */
+.d3-preview-selectlist-state2 {
+    background: #a5d66c;
+    border-color: #7fb84a;
+}
+.d3-preview-selectlist-state2 .d3-preview-selectlist-icon::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 1px;
+    width: 10px;
+    height: 5px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg);
+    transform-origin: center;
+    box-sizing: border-box;
+}
+
+/* Disabled */
+.d3-preview-selectlist.ctrl_disable {
+    opacity: 0.6;
+    cursor: default;
+}

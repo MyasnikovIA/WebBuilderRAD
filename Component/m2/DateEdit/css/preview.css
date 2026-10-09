@@ -1,0 +1,153 @@
+/* Превью cmpDateEdit — соответствует .ctrl_dateEdit / DateEdit.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
+
+   В оригинале .img-calendar и .ctrl_dateEditBtnClearIcon используют
+   серверные спрайты (~CmpDateEdit/calendar, ~CmpDateEdit/button_clear).
+   В превью IDE они заменены на CSS-иконки, чтобы не тащить картинки. */
+
+/* Сброс IDE-рамки [data-wb-preview]. */
+.d3-preview-dateedit[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 100px !important;
+    min-height: 22px !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+/* Обёртка — аналог div.ctrl_dateEdit */
+.d3-preview-dateedit {
+    position: relative;
+    display: inline-block;
+    white-space: nowrap;
+    min-width: 100px;
+    min-height: 22px;
+    line-height: 20px;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    background: #fff;
+    border: 1px solid #BFBFBF;
+    border-radius: 3px;
+    padding-right: 30px;
+    vertical-align: middle;
+}
+
+/* Режим с кнопкой очистки — как .ctrl_dateEdit.withClearButton */
+.d3-preview-dateedit.withClearButton {
+    padding-right: 54px;
+}
+
+/* Input — аналог div.editControlInner input */
+.d3-preview-dateedit .editControlInner {
+    display: block;
+    overflow: hidden;
+}
+
+.d3-preview-dateedit input[type="text"] {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 2px 6px;
+    font: inherit;
+    color: inherit;
+    outline: none;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+/* Placeholder-подсветка пустого значения */
+.d3-preview-dateedit input.placeholder {
+    color: #999;
+}
+
+/* Кнопка календаря — аналог div.img-calendar */
+.d3-preview-dateedit .img-calendar {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 30px;
+    height: 100%;
+    min-height: 20px;
+    background: #F5F7F9;
+    border-left: 1px solid #BFBFBF;
+    cursor: pointer;
+    box-sizing: border-box;
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+}
+
+.d3-preview-dateedit .img-calendar::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    background:
+            linear-gradient(#444, #444) 0 0 / 12px 2px no-repeat,
+            linear-gradient(#444, #444) 0 2px / 2px 10px no-repeat,
+            linear-gradient(#444, #444) 10px 2px / 2px 10px no-repeat,
+            linear-gradient(#444, #444) 0 10px / 12px 2px no-repeat;
+}
+
+/* Кнопка очистки — как .ctrl_dateEditBtnClear */
+.d3-preview-dateedit .ctrl_dateEditBtnClear {
+    position: absolute;
+    right: 30px;
+    top: 0;
+    width: 24px;
+    height: 100%;
+    min-height: 20px;
+    background: #E0E5E9;
+    border-left: 1px solid #BFBFBF;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.d3-preview-dateedit .ctrl_dateEditBtnClearIcon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+}
+
+.d3-preview-dateedit .ctrl_dateEditBtnClearIcon::before,
+.d3-preview-dateedit .ctrl_dateEditBtnClearIcon::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 10px;
+    height: 2px;
+    background: #666;
+}
+.d3-preview-dateedit .ctrl_dateEditBtnClearIcon::before { transform: rotate(45deg); }
+.d3-preview-dateedit .ctrl_dateEditBtnClearIcon::after  { transform: rotate(-45deg); }
+
+/* ReadOnly */
+.d3-preview-dateedit.readonly input[type="text"] {
+    cursor: default;
+}
+
+/* Disabled — как .ctrl_dateEdit.ctrl_disable */
+.d3-preview-dateedit.ctrl_disable {
+    opacity: 0.75;
+    background: #f7f7f7;
+}
+.d3-preview-dateedit.ctrl_disable input[type="text"] {
+    color: #999;
+    cursor: not-allowed;
+}
+.d3-preview-dateedit.ctrl_disable .img-calendar,
+.d3-preview-dateedit.ctrl_disable .ctrl_dateEditBtnClear {
+    cursor: not-allowed;
+    background: #EDEDED;
+}

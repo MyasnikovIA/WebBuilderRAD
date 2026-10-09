@@ -1,0 +1,212 @@
+/* Превью cmpStoredValues.
+
+   В рантайме компонент разворачивается в Expander с ComboBox,
+   чекбоксом и кнопками. В IDE рисуем статичный «скелет» того же
+   вида. */
+
+cmpStoredValues {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpStoredValues[visible="false"] { display: none; }
+cmpStoredValues[enabled="false"] { opacity: 0.7; }
+
+/* Сброс IDE-рамки на preview-узле. */
+cmpStoredValues > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: block !important;
+    box-sizing: border-box;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-storedvalues {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 260px;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-radius: 3px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    overflow: hidden;
+}
+
+/* ---------- Шапка Expander-а ---------- */
+.d3-preview-storedvalues-header {
+    height: 24px;
+    line-height: 24px;
+    padding: 0 22px 0 8px;
+    font-size: 13px;
+    color: #0088CC;
+    background: #f5f7f9;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.d3-preview-storedvalues-header::before {
+    content: '\25B8'; /* ▸ */
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: #666;
+}
+
+/* ---------- Тело ---------- */
+.d3-preview-storedvalues-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    min-height: 40px;
+}
+
+/* ---------- ComboBox ---------- */
+.d3-preview-storedvalues-combo {
+    display: inline-flex;
+    align-items: stretch;
+    height: 22px;
+    flex: 1 1 140px;
+    min-width: 120px;
+    max-width: 260px;
+    border: 1px solid #bfbfbf;
+    border-radius: 3px;
+    background: #fff;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.d3-preview-storedvalues-combo-input {
+    flex: 1 1 auto;
+    padding: 0 6px;
+    line-height: 20px;
+    color: #999;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+.d3-preview-storedvalues-combo-btn {
+    flex: 0 0 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0f0f0;
+    border-left: 1px solid #bfbfbf;
+    font-size: 10px;
+    color: #444;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+/* ---------- CheckBox «По-умолчанию» ---------- */
+.d3-preview-storedvalues-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    line-height: 22px;
+    font-size: 12px;
+    color: #222;
+    cursor: pointer;
+    user-select: none;
+    -moz-user-select: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.d3-preview-storedvalues-check input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #1e88e5;
+    cursor: pointer;
+}
+
+/* ---------- Кнопки ---------- */
+.d3-preview-storedvalues-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+}
+
+.d3-preview-storedvalues-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 22px;
+    padding: 0 12px;
+    font-family: inherit;
+    font-size: 12px;
+    color: #222;
+    background: #f5f7f9;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    -moz-user-select: none;
+    box-sizing: border-box;
+}
+
+.d3-preview-storedvalues-btn:hover {
+    background: #e8eef5;
+}
+
+.d3-preview-storedvalues-btn-primary {
+    background: #1e88e5;
+    color: #fff;
+    border-color: #1565c0;
+}
+.d3-preview-storedvalues-btn-primary:hover {
+    background: #1976d2;
+}
+
+.d3-preview-storedvalues-btn-icon {
+    width: 22px;
+    padding: 0;
+    color: #c62828;
+    font-size: 11px;
+    font-weight: bold;
+}
+.d3-preview-storedvalues-btn-icon:hover {
+    background: #ffebee;
+}
+
+/* ---------- Бейдж ---------- */
+.d3-preview-storedvalues-badge {
+    position: absolute;
+    top: -8px;
+    right: 4px;
+    padding: 0 4px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 9px;
+    line-height: 12px;
+    color: #90a4ae;
+    background: #fafbfc;
+    border: 1px dashed #cfd8dc;
+    border-radius: 2px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+}

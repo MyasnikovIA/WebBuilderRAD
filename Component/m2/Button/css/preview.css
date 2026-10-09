@@ -1,7 +1,12 @@
-/* Превью M2 Button — совпадает с D3 Button.
-   Flex-раскладка нужна, чтобы .btn_caption растягивался при ресайзе. */
+/* Превью cmpButton — стиль, соответствующий платформенной кнопке (Button.css).
+   Подключается в iframe автоматически через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает.
 
-.d3-preview-m2-button[data-wb-preview] {
+   Раскладка — flex, чтобы .btn_caption растягивался на всю ширину и
+   высоту preview-обёртки при ресайзе (см. canvas._applyBox). */
+
+/* Сброс IDE-рамки + flex-контейнер. */
+.d3-preview-button[data-wb-preview] {
     outline: 1px dashed #90caf9 !important;
     outline-offset: 2px !important;
     padding: 0 !important;
@@ -14,7 +19,8 @@
     box-sizing: border-box;
 }
 
-.d3-preview-m2-button {
+/* ---------- Базовая кнопка ---------- */
+.d3-preview-button {
     cursor: pointer;
     height: 28px;
     -moz-user-select: none;
@@ -25,36 +31,43 @@
     position: relative;
     line-height: 28px;
     box-sizing: border-box;
+
+    background-image: -webkit-linear-gradient(top, #F5F7F9, #E0E5E9);
     background-image: linear-gradient(top, #F5F7F9, #E0E5E9);
+    background-image: -moz-linear-gradient(center top, #F5F7F9, #E0E5E9);
     background-repeat: repeat-x;
     border-spacing: 0;
     border-color: #DDDDDD #BBBBBB #999999;
-    border-radius: 4px;
+    border-radius: 4px 4px 4px 4px;
     border-style: solid;
     border-width: 1px;
     box-shadow: 0 1px 0 #FFFFFF inset;
     color: #000000;
     text-shadow: 0 1px 0 #FFFFFF;
+    text-indent: 0;
+    border-collapse: separate;
     text-align: center;
     font-family: 'Segoe UI', Tahoma, sans-serif;
     font-size: 12px;
 }
 
-.d3-preview-m2-button .btn_icon {
+/* Иконка — не растягивается, всегда 16×16. */
+.d3-preview-button .btn_icon {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     padding-left: 8px;
     height: 100%;
 }
-.d3-preview-m2-button .btn_icon_img {
+.d3-preview-button .btn_icon_img {
     width: 16px;
     height: 16px;
     vertical-align: middle;
     border: 0;
 }
 
-.d3-preview-m2-button .btn_caption {
+/* Текст — растягивается на всё свободное место. */
+.d3-preview-button .btn_caption {
     flex: 1 1 auto;
     display: flex;
     align-items: center;
@@ -68,29 +81,86 @@
     overflow: hidden;
     min-width: 0;
 }
-.d3-preview-m2-button .minwidth { min-width: 80px; }
+.d3-preview-button .btn_center { text-align: center; }
+.d3-preview-button .minwidth { min-width: 80px; }
 
-.d3-preview-m2-button:hover {
-    background-image: none;
-    background-color: #E0E5E9;
-    border-color: #BBBBBB;
+/* Стрелка popupmenu — тоже flex-элемент, не растягивается. */
+.d3-preview-button .d3-preview-button-arrow {
+    flex: 0 0 auto;
+    padding-left: 5px;
+    font-size: 11px;
+    color: #555;
 }
-.d3-preview-m2-button.primary {
+
+/* ---------- Primary ---------- */
+.d3-preview-button.primary {
+    background-image: -webkit-linear-gradient(top, #0088CC, #0077BB);
     background-image: linear-gradient(top, #0088CC, #0077BB);
+    background-image: -moz-linear-gradient(top, #0088CC, #0077BB);
     background-color: #006DCC;
+    background-repeat: repeat-x;
     border-color: #40A5D7 #0077BB #003889;
+    box-shadow: 0 1px 0 #7FC2E4 inset;
     color: #FFFFFF;
     text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.4);
 }
-.d3-preview-m2-button.ctrl_disable {
-    background-color: #EDEDED !important;
+.d3-preview-button.primary:hover,
+.d3-preview-button.primary:active {
     background-image: none;
+    background-color: #0077BB;
+    border-color: #0077BB #0077BB #003889;
+}
+.d3-preview-button.primary .btn_caption {
+    color: #FFFFFF;
+}
+
+/* ---------- Hover / Active ---------- */
+.d3-preview-button:hover,
+.d3-preview-button:active {
+    background-image: none;
+    background-color: #E0E5E9;
+    background-position: 0 -28px;
+    border-color: #BBBBBB;
+    transition: background-position 0.1s linear 0s;
+}
+.d3-preview-button:hover .btn_caption,
+.d3-preview-button:active .btn_caption {
+    color: #333333;
+}
+.d3-preview-button:active {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) inset,
+    0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* ---------- Disabled ---------- */
+.d3-preview-button.ctrl_disable {
+    border-color: #DDDDDD #BBBBBB #999999;
+    background-image: none;
+    background-color: #EDEDED !important;
+    box-shadow: none;
     cursor: not-allowed;
+}
+.d3-preview-button.ctrl_disable .btn_caption {
     color: #AAAAAA;
 }
-.d3-preview-m2-button.micro {
+
+/* ---------- OnlyIcon ---------- */
+.d3-preview-button.onlyicon {
+    padding-right: 4px;
+}
+.d3-preview-button.onlyicon .btn_caption {
+    min-width: 0;
+    width: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* ---------- Micro ---------- */
+.d3-preview-button.micro {
     height: 22px;
     line-height: 22px;
     padding-right: 4px;
     font-size: 11px;
 }
+.d3-preview-button.micro .btn_icon { padding-left: 4px; }
+.d3-preview-button.micro .btn_caption { padding-left: 4px; min-width: 0; }

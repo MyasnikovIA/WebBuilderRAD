@@ -7,24 +7,18 @@
 
    В рантайме сервер рендерит скрытый <textarea> или иной контейнер.
    В IDE компонент невидим (правило в _injectIdeStyle canvas.js), но
-   доступен в дереве и инспекторе.
-
-   Свойства:
-     name  — идентификатор контрола (опционально).
-     cdata — JavaScript-код в CDATA. */
+   доступен в дереве и инспекторе. */
 (function (global) {
     'use strict';
     var M2 = global.M2;
     var CS = global.CommonSchema;
 
-    /* Читаем содержимое между <![CDATA[…]]> (или просто текст). */
     function getCdata(el) {
         var raw = el.textContent || '';
         var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
         return m ? m[1] : raw;
     }
 
-    /* Записываем в первый текстовый узел, оборачивая в CDATA. */
     function setCdata(el, text) {
         var doc = el.ownerDocument;
         var cdata = '<![CDATA[' + (text == null ? '' : text) + ']]>';
@@ -48,6 +42,7 @@
         tagName: 'component',
         cmptype: 'Script',
         caption: 'Script (M2)',
+        subCategory: 'Data',
         category: 'M2',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],
@@ -58,28 +53,22 @@
             el.setAttribute('cmptype', 'Script');
             el.setAttribute('name', '');
 
-            /* Стартовое содержимое — комментарий-заготовка. */
             var initial = '\n// JS\n';
             el.appendChild(doc.createTextNode('<![CDATA[' + initial + ']]>'));
             return el;
         },
 
-        /* Невидим в canvas — стиль уже задан в _injectIdeStyle. */
         preview: null,
 
-        /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
             { type: 'separator', caption: 'HTML attributes' },
             { name: 'id',    caption: 'Id',    type: 'string', attr: true },
             { name: 'class', caption: 'Class', type: 'string', attr: true },
             { name: 'style', caption: 'Style', type: 'string', attr: true },
 
-            /* --- D3 Base --- */
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name', caption: 'Name', type: 'string', attr: true },
 
-            /* --- Script --- */
             { type: 'separator', caption: 'Script' },
             {
                 name: 'cdata',
@@ -90,10 +79,7 @@
             }
         ],
 
-        /* ---------------- Events ---------------- */
         events: [],
-
-        /* ---------------- Styles ---------------- */
         styles: []
     });
 

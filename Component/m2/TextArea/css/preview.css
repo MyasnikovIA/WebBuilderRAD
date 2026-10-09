@@ -1,0 +1,83 @@
+/* Превью cmpTextArea — соответствует .textArea / TextArea.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+cmpTextArea {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpTextArea[visible="false"] { display: none; }
+cmpTextArea[enabled="false"] { opacity: 0.75; }
+
+/* Сброс IDE-рамки на preview-узле. */
+cmpTextArea > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: block !important;
+    box-sizing: border-box;
+}
+
+/* ---------- Обёртка (аналог div.textArea) ---------- */
+.d3-preview-textarea {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 120px;
+    min-height: 60px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #BFBFBF;
+    border-radius: 3px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    overflow: hidden;
+}
+
+.d3-preview-textarea.readonly {
+    background: #f7f7f7;
+}
+
+/* ---------- textarea ---------- */
+.d3-preview-textarea-inner {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 60px;
+    padding: 3px 6px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    resize: none;
+    box-sizing: border-box;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.d3-preview-textarea-inner.placeholder {
+    color: #999;
+}
+
+/* ReadOnly */
+.d3-preview-textarea.readonly .d3-preview-textarea-inner {
+    cursor: default;
+    color: #555;
+}
+
+/* Disabled */
+.d3-preview-textarea.ctrl_disable {
+    background: #f7f7f7;
+}
+.d3-preview-textarea.ctrl_disable .d3-preview-textarea-inner {
+    color: #999;
+    cursor: not-allowed;
+}

@@ -1,0 +1,119 @@
+/* Превью cmpGrid — упрощённая копия .grid / Grid.css.
+   Подключается в iframe через D3.register({ previewCss: [...] }).
+   В финальный HTML не попадает. */
+
+cmpGrid {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-height: 80px;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-radius: 3px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    overflow: hidden;
+}
+
+cmpGrid[visible="false"] { display: none; }
+cmpGrid[enabled="false"] { opacity: 0.75; }
+
+/* Скрываем детей — Column / GridFooter видны только в дереве. */
+cmpGrid > cmpColumn,
+cmpGrid > cmpGridFooter {
+    display: none !important;
+}
+
+/* Сброс IDE-рамки на [data-wb-preview]. */
+cmpGrid > [data-wb-preview="1"] {
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    position: static !important;
+    display: block !important;
+}
+
+/* ---------- Тело превью ---------- */
+.d3-preview-grid {
+    display: block;
+    box-sizing: border-box;
+}
+
+.d3-preview-grid-header {
+    height: 34px;
+    line-height: 34px;
+    padding: 0 8px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #222;
+    background: #f5f7f9;
+    border-bottom: 1px solid #e0e0e0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.d3-preview-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: #fff;
+}
+
+.d3-preview-grid-table thead th {
+    height: 28px;
+    padding: 5px 5px;
+    text-align: left;
+    font-weight: bold;
+    font-size: 12px;
+    color: #333;
+    background: #F0F0EB;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #d0d0d0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.d3-preview-grid-table thead th:last-child {
+    border-right: 0;
+}
+
+.d3-preview-grid-table tbody tr {
+    height: 22px;
+}
+
+.d3-preview-grid-table tbody tr:nth-child(odd) {
+    background: #fafafa;
+}
+
+.d3-preview-grid-table tbody td {
+    padding: 3px 5px;
+    border-top: 1px solid #eee;
+    border-right: 1px solid #f0f0f0;
+}
+
+.d3-preview-grid-table tbody td:last-child {
+    border-right: 0;
+}
+
+.d3-preview-grid-table .d3-preview-grid-empty {
+    color: #999;
+    font-style: italic;
+    font-weight: normal;
+}
+
+.d3-preview-grid-footer {
+    height: 26px;
+    line-height: 26px;
+    padding: 0 8px;
+    color: #777;
+    font-size: 11px;
+    font-style: italic;
+    background: #F0F0EB;
+    border-top: 1px solid #d0d0d0;
+}

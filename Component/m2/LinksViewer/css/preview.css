@@ -1,0 +1,101 @@
+/* Превью cmpLinksViewer — соответствует .linkviewver-div / .linkviewver-svg
+   и links_shapes.css.
+
+   В рантайме корень — <div class="linkviewver-div">, внутри — <svg>.
+   В IDE корень — <cmpLinksViewer>, а внутри preview-узла — тоже SVG. */
+
+cmpLinksViewer {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 200px;
+    min-height: 120px;
+    padding: 0;
+    background: transparent;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+}
+cmpLinksViewer[visible="false"] { display: none; }
+cmpLinksViewer[enabled="false"] { opacity: 0.7; }
+
+/* Обёртка preview-узла — аналог .linkviewver-div */
+.d3-preview-linksviewer[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: block !important;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.d3-preview-linksviewer {
+    display: block;
+    margin: 5px;                 /* как .linkviewver-div { margin: 5px } */
+    box-sizing: border-box;
+    width: calc(100% - 10px);
+    height: calc(100% - 10px);
+    min-height: 120px;
+    background: #fff;
+    border: 1px solid #D2C7C7;   /* как svg.linkviewver-svg */
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ---------- SVG ---------- */
+.d3-preview-linksviewer svg.linkviewver-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;            /* рамка уже на обёртке */
+    background: #fff;
+}
+
+/* ---------- links_shapes.css ---------- */
+.d3-preview-linksviewer .link {
+    fill: none;
+    stroke: #666;
+    stroke-width: 1.5px;
+}
+
+.d3-preview-linksviewer circle {
+    fill: #ccc;
+    stroke: #333;
+    stroke-width: 1.5px;
+}
+
+.d3-preview-linksviewer text {
+    font: 10px sans-serif;
+    pointer-events: none;
+    text-shadow: 0 1px 0 #fff, 1px 0 0 #fff,
+    0 -1px 0 #fff, -1px 0 0 #fff;
+    fill: #222;
+}
+
+/* ---------- Маркер-стрелка ---------- */
+.d3-preview-linksviewer marker path {
+    fill: #666;
+    stroke: #666;
+}
+
+/* ---------- Плашка «demo» ---------- */
+.d3-preview-linksviewer-badge {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    padding: 1px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 10px;
+    color: #90a4ae;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px dashed #cfd8dc;
+    border-radius: 3px;
+    pointer-events: none;
+    user-select: none;
+    -moz-user-select: none;
+}

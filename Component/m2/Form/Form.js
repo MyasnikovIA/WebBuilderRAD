@@ -20,6 +20,7 @@
         tagName: 'div',
         cmptype: 'Form',
         caption: 'Form (M2)',
+        subCategory: 'Containers',
         category: 'M2',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

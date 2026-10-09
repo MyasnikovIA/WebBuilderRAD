@@ -1,0 +1,23 @@
+/* Превью cmpTagItem — на случай, если его показывают отдельно
+   (например, в дереве, при отладке).
+   Основное отображение — внутри cmpButtonEdit[data-kind="tagged"]. */
+
+.d3-preview-tagitem[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    display: inline-block !important;
+}
+
+.d3-preview-tagitem {
+    display: inline-block;
+    padding: 3px 6px;
+    margin: 2px;
+    min-width: 12px;
+    min-height: 19px;
+    background-color: #e5eaee;
+    border-radius: 2px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #333;
+    vertical-align: middle;
+}

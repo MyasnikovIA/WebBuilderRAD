@@ -1,0 +1,26 @@
+/* Превью cmpPopupGroupItem.
+
+   Группа не имеет собственного визуального представления — только
+   контейнер для пунктов. Визуализируется родителем (PopupMenu или
+   вложенный PopupGroupItem / PopupItem).
+
+   Этот файл — задел на случай будущего preview. */
+
+.d3-preview-popupgroupitem-standalone {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #455a64;
+    background: #eceff1;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.d3-preview-popupgroupitem-standalone::before {
+    content: '\2630'; /* ☰ */
+    margin-right: 4px;
+    opacity: 0.7;
+}

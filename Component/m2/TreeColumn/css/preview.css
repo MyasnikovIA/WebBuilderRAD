@@ -1,0 +1,17 @@
+.d3-preview-treecolumn {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+    color: #37474f;
+    background: #eceff1;
+    border: 1px dashed #b0bec5;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.d3-preview-treecolumn::before {
+    content: '\25A5';
+    margin-right: 4px;
+    opacity: 0.7;
+}

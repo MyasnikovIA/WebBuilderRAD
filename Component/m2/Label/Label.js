@@ -11,6 +11,7 @@
         tagName: 'component',
         cmptype: 'Label',
         caption: 'Label (M2)',
+        subCategory: 'Display',
         category: 'M2',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

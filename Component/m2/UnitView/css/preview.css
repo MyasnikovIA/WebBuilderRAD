@@ -1,0 +1,163 @@
+/* Превью cmpUnitView.
+
+   В рантайме сервер разворачивает тег в Grid / Tree / StatGrid плюс
+   DataSet, Action, PopupMenu, Script, Filter, SubForm.
+
+   В IDE показываем «скелет» — шапку с параметрами, таблицу-
+   заполнитель и футер с бейджами сгенерированных сущностей. */
+
+cmpUnitView {
+    display: block;
+    line-height: 0;
+    font-size: 0;
+}
+
+cmpUnitView[visible="false"] { display: none; }
+cmpUnitView[enabled="false"] { opacity: 0.75; }
+
+/* Сброс IDE-рамки. */
+cmpUnitView > [data-wb-preview="1"] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    display: block !important;
+    box-sizing: border-box;
+}
+
+/* ---------- Обёртка ---------- */
+.d3-preview-unitview {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-width: 320px;
+    min-height: 180px;
+    background: #fff;
+    border: 1px solid #cfd8dc;
+    border-radius: 3px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    overflow: hidden;
+}
+
+/* ---------- Шапка ---------- */
+.d3-preview-unitview-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #f5f7f9;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #37474f;
+    line-height: 1.4;
+}
+
+.d3-preview-unitview-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    font-size: 11px;
+    color: #fff;
+    background: #607d8b;
+    border-radius: 3px;
+    flex: 0 0 auto;
+}
+
+.d3-preview-unitview-hint {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: normal;
+    color: #78909c;
+}
+
+.d3-preview-unitview-type {
+    margin-left: auto;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: normal;
+    color: #fff;
+    background: #546e7a;
+    border-radius: 8px;
+    line-height: 14px;
+    flex: 0 0 auto;
+}
+
+/* ---------- Сетка-скелет ---------- */
+.d3-preview-unitview-grid {
+    padding: 0;
+    overflow: hidden;
+}
+
+.d3-preview-unitview-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    background: #fff;
+}
+
+.d3-preview-unitview-table thead th {
+    padding: 5px 8px;
+    text-align: left;
+    background: #eceff1;
+    border-bottom: 1px solid #cfd8dc;
+    border-right: 1px solid #e0e0e0;
+    color: #455a64;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+
+.d3-preview-unitview-table thead th:last-child {
+    border-right: 0;
+}
+
+.d3-preview-unitview-table tbody td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #f0f0f0;
+    border-right: 1px solid #f5f5f5;
+    height: 18px;
+    background: #fbfbfb;
+    line-height: 1.4;
+}
+
+.d3-preview-unitview-table tbody td:last-child {
+    border-right: 0;
+}
+
+.d3-preview-unitview-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* ---------- Футер с бейджами ---------- */
+.d3-preview-unitview-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 10px;
+    background: #fafbfc;
+    border-top: 1px solid #e0e0e0;
+    line-height: 1;
+}
+
+.d3-preview-unitview-badge {
+    display: inline-block;
+    padding: 2px 5px;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 9px;
+    color: #546e7a;
+    background: #eceff1;
+    border: 1px solid #cfd8dc;
+    border-radius: 2px;
+    white-space: nowrap;
+    line-height: 12px;
+}

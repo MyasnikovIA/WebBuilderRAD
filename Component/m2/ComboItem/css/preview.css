@@ -1,0 +1,35 @@
+/* Превью cmpComboItem.
+
+   В рантайме ComboItem — это <tr> внутри <table> в .cmbb-droplist.
+   В превью IDE он не показывается рядом с ComboBox (скрыт правилом
+   в preview.css ComboBox), но его собственный превью-узел существует
+   на случай, если пользователь захочет посмотреть элемент отдельно
+   (например, через дерево). */
+
+.d3-preview-comboitem[data-wb-preview] {
+    outline: 1px dashed #90caf9 !important;
+    outline-offset: 2px !important;
+    padding: 0 4px !important;
+    margin: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle;
+}
+
+.d3-preview-comboitem {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+    color: #222;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Скрыть собственный превью-узел, если ComboItem вставлен внутрь ComboBox —
+   ComboBox сам решает, что показывать. */
+cmpcombobox > cmpcomboitem > [data-wb-preview] {
+    display: none !important;
+}
