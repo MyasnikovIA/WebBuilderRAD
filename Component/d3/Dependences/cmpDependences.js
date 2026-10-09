@@ -29,6 +29,7 @@
 
     D3.register({
         id: 'd3.dependences', tagName: 'cmpDependences', caption: 'Dependences',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'dependences',
         previewCss: ['css/preview.css'],

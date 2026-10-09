@@ -40,6 +40,7 @@
 
     D3.register({
         id: 'd3.textarea', tagName: 'cmpTextArea', caption: 'TextArea',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'textArea',
         previewCss: ['css/preview.css'],

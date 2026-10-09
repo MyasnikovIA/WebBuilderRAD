@@ -38,6 +38,7 @@
 
     D3.register({
         id: 'd3.modulevar', tagName: 'cmpModuleVar', caption: 'ModuleVar',
+        subCategory: 'Data',
         parentOnly: 'cmpmodule',
         icon: 'images/icon.png',
         nameTemplate: 'moduleVar',

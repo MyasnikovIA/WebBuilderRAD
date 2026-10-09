@@ -5,7 +5,8 @@
     var S = global.CommonSchema;
 
     R.register({
-        id: 'd3.rootdiv', category: 'D3', caption: 'RootDiv',
+        id: 'd3.rootdiv', category: 'D3', subCategory: 'Containers',
+        caption: 'RootDiv',
         tagName: 'div', hidden: true,
         folder: 'RootDiv',
         iconUrl: (function () {

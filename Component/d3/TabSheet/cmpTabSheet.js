@@ -34,6 +34,7 @@
 
     D3.register({
         id: 'd3.tabsheet', tagName: 'cmpTabSheet', caption: 'TabSheet',
+        subCategory: 'Containers',
         parentOnly: 'cmppagecontrol',
         icon: 'images/icon.png',
         nameTemplate: 'tabSheet',

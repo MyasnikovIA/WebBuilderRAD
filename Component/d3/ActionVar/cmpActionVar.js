@@ -8,6 +8,7 @@
 
     D3.register({
         id: 'd3.actionvar', tagName: 'cmpActionVar', caption: 'ActionVar',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'actionVar',
         parentOnly: ['cmpaction', 'cmpsubaction'],

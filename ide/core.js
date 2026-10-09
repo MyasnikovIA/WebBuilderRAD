@@ -60,6 +60,7 @@
         categoryTree: function () {
             var ORDER = ['D3', 'M2', 'HTML', 'General'];
             var SUB_ORDER = {
+                'D3': ['Data', 'Containers', 'Grids', 'Controls', 'Display', 'Menus', 'Filters'],
                 'HTML': ['Basic', 'Text', 'Layout', 'Lists', 'Forms', 'Tables',
                     'Media', 'Head', 'Document', 'Data', 'UI']
             };

@@ -26,6 +26,7 @@
 
     D3.register({
         id: 'd3.layoutcell', tagName: 'cmpLayoutCell', caption: 'LayoutCell',
+        subCategory: 'Containers',
         parentOnly: 'cmplayoutrow',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

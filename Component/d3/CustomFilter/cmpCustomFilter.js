@@ -49,6 +49,7 @@
 
     D3.register({
         id: 'd3.customfilter', tagName: 'cmpCustomFilter', caption: 'CustomFilter',
+        subCategory: 'Filters',
         icon: 'images/icon.png',
         nameTemplate: 'customFilter',
         previewCss: ['css/preview.css'],

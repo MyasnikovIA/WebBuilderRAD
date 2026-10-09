@@ -13,6 +13,7 @@
 
     D3.register({
         id: 'd3.comboitem', tagName: 'cmpComboItem', caption: 'ComboItem',
+        subCategory: 'Controls',
         parentOnly: 'cmpcombobox',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

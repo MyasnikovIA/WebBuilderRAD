@@ -22,6 +22,7 @@
 
     D3.register({
         id: 'd3.module', tagName: 'cmpModule', caption: 'Module',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'module',
         previewCss: ['css/preview.css'],

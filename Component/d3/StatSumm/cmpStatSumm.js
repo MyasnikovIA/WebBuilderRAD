@@ -26,6 +26,7 @@
 
     D3.register({
         id: 'd3.statgridsumm', tagName: 'cmpStatSumm', caption: 'StatSumm',
+        subCategory: 'Grids',
         parentOnly: 'cmpstatgridcolumn',
         icon: 'images/icon.png',
         nameTemplate: 'statSumm',

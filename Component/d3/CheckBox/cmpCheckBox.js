@@ -15,6 +15,7 @@
 
     D3.register({
         id: 'd3.checkbox', tagName: 'cmpCheckBox', caption: 'CheckBox',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'checkBox',
         previewCss: ['css/preview.css'],

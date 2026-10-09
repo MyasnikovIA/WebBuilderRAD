@@ -48,6 +48,7 @@
 
     D3.register({
         id: 'd3.unitprops', tagName: 'cmpUnitProps', caption: 'UnitProps',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'unitProps',
         previewCss: ['css/preview.css'],

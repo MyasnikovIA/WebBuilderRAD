@@ -36,6 +36,7 @@
 
     D3.register({
         id: 'd3.radioitem', tagName: 'cmpRadioItem', caption: 'RadioItem',
+        subCategory: 'Controls',
         parentOnly: 'cmpradiogroup',
         icon: 'images/icon.png',
         nameTemplate: 'radioItem',

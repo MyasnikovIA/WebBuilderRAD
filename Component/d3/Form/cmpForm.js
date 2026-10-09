@@ -24,6 +24,7 @@
 
     D3.register({
         id: 'd3.form', tagName: 'cmpForm', caption: 'Form',
+        subCategory: 'Containers',
         unique: true, hidden: true,
         icon: 'images/icon.png',
         nameTemplate: 'Form',

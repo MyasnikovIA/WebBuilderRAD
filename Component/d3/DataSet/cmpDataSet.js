@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.dataset', tagName: 'cmpDataSet', caption: 'DataSet',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'dataSet',
         attrs: { name: 'DataSetName', activateoncreate: 'true' },

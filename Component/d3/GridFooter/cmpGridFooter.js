@@ -20,6 +20,7 @@
 
     D3.register({
         id: 'd3.gridfooter', tagName: 'cmpGridFooter', caption: 'GridFooter',
+        subCategory: 'Grids',
         parentOnly: 'cmpgrid',
         icon: 'images/icon.png',
         nameTemplate: 'gridFooter',

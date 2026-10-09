@@ -35,6 +35,7 @@
 
     D3.register({
         id: 'd3.selectlist', tagName: 'cmpSelectList', caption: 'SelectList',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'selectList',
         previewCss: ['css/preview.css'],

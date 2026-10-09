@@ -10,6 +10,7 @@
 
     D3.register({
         id: 'd3.celllabel', tagName: 'cmpCellLabel', caption: 'CellLabel',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'cellLabel',
         previewCss: ['css/preview.css'],

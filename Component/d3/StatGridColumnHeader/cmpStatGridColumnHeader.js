@@ -14,6 +14,7 @@
     D3.register({
         id: 'd3.statgridcolumnheader', tagName: 'cmpStatGridColumnHeader',
         caption: 'StatGridColumnHeader',
+        subCategory: 'Grids',
         parentOnly: 'cmpstatgridcolumn',
         icon: 'images/icon.png',
         nameTemplate: 'statGridColumnHeader',

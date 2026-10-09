@@ -18,6 +18,7 @@
 
     D3.register({
         id: 'd3.completer', tagName: 'cmpCompleter', caption: 'Completer',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],
         attrs: {

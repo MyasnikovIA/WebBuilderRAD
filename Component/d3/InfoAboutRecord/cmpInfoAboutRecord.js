@@ -46,6 +46,7 @@
     D3.register({
         id: 'd3.infoaboutrecord', tagName: 'cmpInfoAboutRecord',
         caption: 'InfoAboutRecord',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'infoAboutRecord',
         previewCss: ['css/preview.css'],

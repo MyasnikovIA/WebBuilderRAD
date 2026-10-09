@@ -43,6 +43,7 @@
 
     D3.register({
         id: 'd3.mask', tagName: 'cmpMask', caption: 'Mask',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'mask',
         previewCss: ['css/preview.css'],

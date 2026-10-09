@@ -35,6 +35,7 @@
 
     D3.register({
         id: 'd3.locate', tagName: 'cmpLocate', caption: 'Locate',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'locate',
         previewCss: ['css/preview.css'],

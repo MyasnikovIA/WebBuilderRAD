@@ -27,6 +27,7 @@
 
     D3.register({
         id: 'd3.subform', tagName: 'cmpSubForm', caption: 'SubForm',
+        subCategory: 'Containers',
         icon: 'images/icon.png',
         nameTemplate: 'subForm',
         previewCss: ['css/preview.css'],

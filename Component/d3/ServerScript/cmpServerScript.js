@@ -58,6 +58,7 @@
 
     D3.register({
         id: 'd3.serverscript', tagName: 'cmpServerScript', caption: 'ServerScript',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'serverScript',
         previewCss: ['css/preview.css'],

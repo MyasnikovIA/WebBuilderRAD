@@ -15,6 +15,7 @@
 
     D3.register({
         id: 'd3.popupgroupitem', tagName: 'cmpPopupGroupItem', caption: 'PopupGroupItem',
+        subCategory: 'Menus',
         parentOnly: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         icon: 'images/icon.png',
         nameTemplate: 'popupGroupItem',

@@ -117,6 +117,7 @@
         var comp = {
             id: opts.id,
             category: 'D3',
+            subCategory: opts.subCategory,     /* ← ДОБАВЛЕНО */
             caption: opts.caption,
             tagName: tagLower,
             xmlTag: tagName,

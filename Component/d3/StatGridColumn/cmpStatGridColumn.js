@@ -34,6 +34,7 @@
 
     D3.register({
         id: 'd3.statgridcolumn', tagName: 'cmpStatGridColumn', caption: 'StatGridColumn',
+        subCategory: 'Grids',
         parentOnly: 'cmpstatgrid',
         icon: 'images/icon.png',
         nameTemplate: 'statGridColumn',

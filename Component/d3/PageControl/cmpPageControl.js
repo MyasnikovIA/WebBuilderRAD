@@ -63,6 +63,7 @@
 
     D3.register({
         id: 'd3.pagecontrol', tagName: 'cmpPageControl', caption: 'PageControl',
+        subCategory: 'Containers',
         icon: 'images/icon.png',
         nameTemplate: 'pageControl',
         previewCss: ['css/preview.css'],

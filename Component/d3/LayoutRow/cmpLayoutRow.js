@@ -20,6 +20,7 @@
 
     D3.register({
         id: 'd3.layoutrow', tagName: 'cmpLayoutRow', caption: 'LayoutRow',
+        subCategory: 'Containers',
         parentOnly: 'cmplayout',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],

@@ -39,6 +39,7 @@
 
     D3.register({
         id: 'd3.column', tagName: 'cmpColumn', caption: 'Column',
+        subCategory: 'Grids',
         parentOnly: 'cmpgrid',
         icon: 'images/icon.png',
         nameTemplate: 'column',

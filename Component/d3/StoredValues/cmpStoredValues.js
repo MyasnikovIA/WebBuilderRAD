@@ -39,6 +39,7 @@
 
     D3.register({
         id: 'd3.storedvalues', tagName: 'cmpStoredValues', caption: 'StoredValues',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'storedValues',
         previewCss: ['css/preview.css'],

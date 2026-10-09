@@ -37,6 +37,7 @@
     D3.register({
         id: 'd3.uniteditgenerate', tagName: 'cmpUnitEditGenerate',
         caption: 'UnitEditGenerate',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'unitEditGenerate',
         previewCss: ['css/preview.css'],

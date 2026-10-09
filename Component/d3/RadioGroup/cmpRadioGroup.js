@@ -52,6 +52,7 @@
 
     D3.register({
         id: 'd3.radiogroup', tagName: 'cmpRadioGroup', caption: 'RadioGroup',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'radioGroup',
         previewCss: ['css/preview.css'],

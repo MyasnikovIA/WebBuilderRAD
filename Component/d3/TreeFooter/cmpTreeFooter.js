@@ -13,6 +13,7 @@
 
     D3.register({
         id: 'd3.treefooter', tagName: 'cmpTreeFooter', caption: 'TreeFooter',
+        subCategory: 'Grids',
         parentOnly: 'cmptree',
         icon: 'images/icon.png',
         nameTemplate: 'treeFooter',

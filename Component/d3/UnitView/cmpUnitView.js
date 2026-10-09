@@ -22,8 +22,7 @@
      - <cmpDataSetVar> для lpu/version/admissible_filter;
      - <cmpAction AutoDelete…> (при del_script="auto");
      - <cmpAction …AutoMove…> (при move_script="auto");
-     - <cmpPopupMenu name="<name>_popup"> с пунктами Refresh/Add/Edit/…
-       и Action-ом прав <name>_popup_rights;
+     - <cmpPopupMenu name="<name>_popup"> с пунктами Refresh/Add/Edit/…;
      - <cmpScript> с Form.<name>_add_script / _edit_script / …;
      - <cmpFilter> / <cmpRepeaterStyler> / <cmpCustomFilter> — из JSON;
      - <cmpSubForm> — если popup_type=0/1 и задан popup_form.
@@ -39,6 +38,7 @@
 
     D3.register({
         id: 'd3.unitview', tagName: 'cmpUnitView', caption: 'UnitView',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'unitView',
         previewCss: ['css/preview.css'],

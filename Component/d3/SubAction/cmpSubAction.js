@@ -9,6 +9,7 @@
 
     D3.register({
         id: 'd3.subaction', tagName: 'cmpSubAction', caption: 'SubAction',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'subAction',
         parentOnly: ['cmpaction', 'cmpsubaction'],

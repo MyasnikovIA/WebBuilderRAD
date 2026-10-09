@@ -32,6 +32,7 @@
 
     D3.register({
         id: 'd3.treecolumn', tagName: 'cmpTreeColumn', caption: 'TreeColumn',
+        subCategory: 'Grids',
         parentOnly: 'cmptree',
         icon: 'images/icon.png',
         nameTemplate: 'treeColumn',

@@ -15,6 +15,7 @@
 
     D3.register({
         id: 'd3.broker', tagName: 'cmpBroker', caption: 'Broker',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'broker',
         attrs: { name: '' },

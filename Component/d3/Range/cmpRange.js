@@ -42,6 +42,7 @@
 
     D3.register({
         id: 'd3.range', tagName: 'cmpRange', caption: 'Range',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'range',
         previewCss: ['css/preview.css'],

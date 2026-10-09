@@ -48,6 +48,7 @@
 
     D3.register({
         id: 'd3.hyperlink', tagName: 'cmpHyperLink', caption: 'HyperLink',
+        subCategory: 'Display',
         icon: 'images/icon.png',
         nameTemplate: 'hyperLink',
         previewCss: ['css/preview.css'],

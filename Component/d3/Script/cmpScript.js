@@ -56,6 +56,7 @@
 
     D3.register({
         id: 'd3.script', tagName: 'cmpScript', caption: 'Script',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'script',
         previewCss: ['css/preview.css'],

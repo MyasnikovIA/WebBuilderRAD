@@ -5,6 +5,7 @@
 
     D3.register({
         id: 'd3.datasetvar', tagName: 'cmpDataSetVar', caption: 'DataSetVar',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'dataSetVar',
         parentOnly: 'cmpdataset',

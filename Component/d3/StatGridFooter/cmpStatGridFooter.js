@@ -13,6 +13,7 @@
 
     D3.register({
         id: 'd3.statgridfooter', tagName: 'cmpStatGridFooter', caption: 'StatGridFooter',
+        subCategory: 'Grids',
         parentOnly: 'cmpstatgrid',
         icon: 'images/icon.png',
         nameTemplate: 'statGridFooter',

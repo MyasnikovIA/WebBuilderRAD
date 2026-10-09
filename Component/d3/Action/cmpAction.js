@@ -8,6 +8,7 @@
 
     D3.register({
         id: 'd3.action', tagName: 'cmpAction', caption: 'Action',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'action',
         attrs: { name: 'ActionName' },

@@ -117,6 +117,7 @@
 
     D3.register({
         id: 'd3.charts', tagName: 'cmpCharts', caption: 'Charts',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'charts',
         previewCss: ['css/preview.css'],

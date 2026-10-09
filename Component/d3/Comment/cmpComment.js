@@ -38,7 +38,7 @@
         id: 'html.comment',
         tagName: 'cmpComment',
         caption: 'Comment',
-        category: 'HTML',
+        subCategory: 'Display',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],
         attrs: {},

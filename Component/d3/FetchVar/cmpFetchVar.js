@@ -37,6 +37,7 @@
 
     D3.register({
         id: 'd3.fetchvar', tagName: 'cmpFetchVar', caption: 'FetchVar',
+        subCategory: 'Data',
         parentOnly: 'cmpfetch',
         icon: 'images/icon.png',
         nameTemplate: 'fetchVar',

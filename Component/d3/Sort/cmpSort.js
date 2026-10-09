@@ -20,6 +20,7 @@
 
     D3.register({
         id: 'd3.sort', tagName: 'cmpSort', caption: 'Sort',
+        subCategory: 'Filters',
         icon: 'images/icon.png',
         nameTemplate: 'sort',
         previewCss: ['css/preview.css'],

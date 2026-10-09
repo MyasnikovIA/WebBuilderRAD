@@ -38,6 +38,7 @@
 
     D3.register({
         id: 'd3.popupitem', tagName: 'cmpPopupItem', caption: 'PopupItem',
+        subCategory: 'Menus',
         parentOnly: ['cmppopupmenu', 'cmppopupgroupitem', 'cmppopupitem'],
         icon: 'images/icon.png',
         nameTemplate: 'popupItem',

@@ -70,6 +70,7 @@
 
     D3.register({
         id: 'd3.tree', tagName: 'cmpTree', caption: 'Tree',
+        subCategory: 'Grids',
         icon: 'images/icon.png',
         nameTemplate: 'tree',
         previewCss: ['css/preview.css'],

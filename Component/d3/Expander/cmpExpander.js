@@ -42,6 +42,7 @@
 
     D3.register({
         id: 'd3.expander', tagName: 'cmpExpander', caption: 'Expander',
+        subCategory: 'Containers',
         icon: 'images/icon.png',
         nameTemplate: 'expander',
         previewCss: ['css/preview.css'],

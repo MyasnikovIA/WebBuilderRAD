@@ -18,6 +18,7 @@
 
     D3.register({
         id: 'd3.button', tagName: 'cmpButton', caption: 'Button',
+        subCategory: 'Controls',
         icon: 'images/icon.png',
         nameTemplate: 'button',
         previewCss: ['css/preview.css'],

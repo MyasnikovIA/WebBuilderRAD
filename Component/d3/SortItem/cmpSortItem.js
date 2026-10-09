@@ -62,6 +62,7 @@
 
     D3.register({
         id: 'd3.sortitem', tagName: 'cmpSortItem', caption: 'SortItem',
+        subCategory: 'Filters',
         icon: 'images/icon.png',
         previewCss: ['css/preview.css'],
         attrs: { name: '', field: '', refreshdataset: '' },

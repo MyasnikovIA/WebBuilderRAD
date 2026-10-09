@@ -81,6 +81,7 @@
 
     D3.register({
         id: 'd3.repeaterstyler', tagName: 'cmpRepeaterStyler', caption: 'RepeaterStyler',
+        subCategory: 'Data',
         icon: 'images/icon.png',
         nameTemplate: 'repeaterStyler',
         previewCss: ['css/preview.css'],

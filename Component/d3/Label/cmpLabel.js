@@ -33,6 +33,7 @@
 
     D3.register({
         id: 'd3.label', tagName: 'cmpLabel', caption: 'Label',
+        subCategory: 'Display',
         icon: 'images/icon.png',
         nameTemplate: 'label',
         previewCss: ['css/preview.css'],
