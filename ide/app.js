@@ -16,6 +16,14 @@
         var canvas    = new Canvas(document.getElementById('wb-canvas'));
         History.attach(canvas);
 
+        /* Привязка модуля предпросмотра к текущим canvas / codeView. */
+        if (global.RunPreview) {
+            global.RunPreview.attach({
+                canvas:   canvas,
+                codeView: codeView
+            });
+        }
+
         var clipboard = null;
 
         /* ---------- Переключение вкладок Scene / Code ----------
@@ -110,6 +118,7 @@
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
             else if (e.keyCode === 46) { App.cmd('delete'); }
+            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }   /* F9 */
         });
 
         function moveSel(dx, dy, resize) {
@@ -276,6 +285,15 @@
 
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
+
+            /* ---------- Запуск предпросмотра в новом окне ---------- */
+            run: function () {
+                if (global.RunPreview) {
+                    global.RunPreview.run();
+                } else {
+                    alert('Модуль RunPreview не подключён.');
+                }
+            },
 
             /* ---------- Тема оформления ---------- */
 

@@ -41,6 +41,7 @@
             <a class="mini-menubutton" plain="true" menu="#viewMenu">View</a>
             <span class="mini-separator"></span>
             <a class="mini-button" iconCls="icon-save" onclick="App.cmd('save')">Save HTML</a>
+            <a class="mini-button" onclick="App.cmd('run')" title="Run — предпросмотр в новом окне (F9)">&#9654; Run</a>
             <a class="mini-button" onclick="App.cmd('undo')" title="Ctrl+Z">Undo</a>
             <a class="mini-button" onclick="App.cmd('redo')" title="Ctrl+Y">Redo</a>
             <a class="mini-button" onclick="App.cmd('designMode')" title="Toggle Design Mode">Design Mode</a>
@@ -120,6 +121,7 @@
     <li class="separator"></li>
     <li iconCls="icon-open" onclick="App.cmd('load')">Load HTML…</li>
     <li iconCls="icon-save" onclick="App.cmd('save')">Save HTML</li>
+    <li onclick="App.cmd('run')">Run (Preview in new window)</li>
     <li class="separator"></li>
     <li onclick="App.cmd('loadJson')">Load Form JSON…</li>
     <li onclick="App.cmd('saveJson')">Save Form JSON…</li>
@@ -226,6 +228,7 @@
 <script src="ide/canvas.js"></script>
 <script src="ide/panels.js"></script>
 <script src="ide/form-json.js"></script>
+<script src="ide/run-preview.js"></script>
 
 <!-- =========================================================
      HTML / UI components (все в категории HTML)
