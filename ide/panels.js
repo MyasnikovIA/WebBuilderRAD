@@ -1147,15 +1147,50 @@
     Inspector.prototype._get = function (tab, f) {
         var el = this.element; if (!el) return '';
         if (tab === 'properties') {
-            if (f.get) return f.get(el);
+
+            /* Хелпер: читаем оригинал пути из data-wb-orig-<name>.
+               ProjectResolver кладёт туда исходный путь, когда подменяет
+               значение на blob:/data:-URL. */
+            var readOrig = function () {
+                if (!el.getAttribute) return null;
+                var v = el.getAttribute('data-wb-orig-' + f.name);
+                return (v == null) ? null : v;
+            };
+
+            /* 1. Кастомный getter. Но если он вернул blob:/data:-URL —
+                  это подмена resolver'а, отдаём оригинал. */
+            if (f.get) {
+                var v0 = f.get(el);
+                if (typeof v0 === 'string' && /^(blob:|data:)/i.test(v0)) {
+                    var o0 = readOrig();
+                    if (o0 != null) return o0;
+                }
+                return v0;
+            }
 
             if (f.name === 'class' || f.name === 'className') {
                 var raw = f.attr ? (el.getAttribute('class') || '') : (el.className || '');
                 return stripServiceClasses(raw);
             }
 
+            /* 2. У любого поля сначала проверяем orig — это приоритетнее
+                  того, что лежит сейчас в атрибуте (там может быть blob:/data:). */
+            var orig = readOrig();
+            if (orig != null) return orig;
+
+            /* 3. Обычный attr-филд. */
             if (f.attr) return el.getAttribute(f.name) || '';
-            var v = el[f.name]; return (v == null) ? '' : v;
+
+            /* 4. URL-подобное поле без attr=true: читаем через getAttribute,
+                  иначе el.src вернёт абсолютный/blob:-URL. */
+            if (isFileField(f)) {
+                var av = el.getAttribute && el.getAttribute(f.name);
+                if (av != null) return av;
+            }
+
+            /* 5. Обычное DOM-свойство. */
+            var v = el[f.name];
+            return (v == null) ? '' : v;
         }
         if (tab === 'styles') return el.style[f.name] || '';
         if (tab === 'events') return el.getAttribute(f.name) || '';
@@ -1174,6 +1209,11 @@
         if (tab === 'properties') {
             if (f.set) {
                 f.set(el, v);
+                /* После кастомного сеттера — подтягиваем resolver,
+                   если значение совпадает с файлом проекта. */
+                if (global.ProjectResolver && global.ProjectResolver.applyElement) {
+                    try { global.ProjectResolver.applyElement(el); } catch (e) {}
+                }
             } else if (f.type === 'boolean') {
                 var bv = !!v;
                 el[f.name] = bv;
@@ -1187,8 +1227,16 @@
                 var merged    = (userCls + ' ' + preserved).replace(/\s+/g, ' ').trim();
                 if (merged) el.setAttribute('class', merged);
                 else el.removeAttribute('class');
-            } else if (f.attr) {
-                el.setAttribute(f.name, v);
+            } else if (f.attr || isFileField(f)) {
+                /* Обычный HTML-атрибут ИЛИ URL-подобное поле без attr=true:
+                   применяем через ProjectResolver, чтобы сразу подменить
+                   путь проекта на blob:/data:-URL и сохранить оригинал
+                   в data-wb-orig-<name>. */
+                if (global.ProjectResolver && global.ProjectResolver.applyToAttribute) {
+                    global.ProjectResolver.applyToAttribute(el, f.name, v);
+                } else {
+                    el.setAttribute(f.name, v);
+                }
             } else {
                 el[f.name] = v;
             }

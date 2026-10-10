@@ -1,10 +1,4 @@
-/* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode.
-   Поддерживает:
-     - четыре режима корневого контейнера: 'html', 'cmpForm', 'm2Form', 'div';
-     - D3-компоненты (<cmpButton>) и M2-компоненты (<component cmptype="Button">);
-     - CDATA-контейнеры в обоих форматах;
-     - nameTemplate для авто-присвоения имён;
-     - тёмную/светлую тему сцены (синхронно с IDE). */
+/* Canvas: iframe-холст, выбор элементов, размещение компонентов, Design Mode. */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -38,9 +32,6 @@
         });
     }
 
-    /* M2: <component cmptype="X" …/> → <component cmptype="X" …></component>.
-       HTML-парсер игнорирует '/>' у нестандартного тега <component>,
-       из-за чего соседние компоненты вкладываются друг в друга. */
     var COMPONENT_SELF_CLOSE_RE = /<component((?:\s+[^<>]*?)?)\s*\/>/g;
     function expandSelfClosingComponentTags(str) {
         return String(str).replace(COMPONENT_SELF_CLOSE_RE, function (m, attrs) {
@@ -176,8 +167,6 @@
         this._rootType = 'html';
         this._handles = null;
         this._handlesPending = false;
-        /* Массив навешанных обработчиков и документ, на который они навешаны.
-           Позволяет корректно снять их при повторном _bind(). */
         this._handlers = null;
         this._boundDoc = null;
         this._init();
@@ -591,7 +580,7 @@
 
         this._injectIdeStyle();
         this._injectComponentAssets();
-        this._bind();                     /* FIX: обработчики потеряны при doc.write — навешиваем заново. */
+        this._bind();
         this.pending = null;
         this.designMode = false;
         this._rootType = 'html';
@@ -643,6 +632,11 @@
         doc.open();
         doc.write(prepared);
         doc.close();
+
+        /* Сразу после парсинга — подменяем пути на blob/data URL. */
+        if (global.ProjectResolver) {
+            try { global.ProjectResolver.applyTree(doc.documentElement); } catch (e) {}
+        }
 
         if (cdataStore.length) {
             var re = new RegExp('\u0001WB_CDATA_PH_(\\d+)_\u0001', 'g');
@@ -720,7 +714,7 @@
 
         this._injectIdeStyle();
         this._injectComponentAssets();
-        this._bind();                     /* FIX: обработчики потеряны при doc.write — навешиваем заново. */
+        this._bind();
 
         this.pending = null;
         this.designMode = false;
@@ -731,6 +725,11 @@
 
         var body = this.getBody();
         if (body) this._renderAllPreviews(body);
+
+        /* Ещё раз — после создания preview-узлов. */
+        if (global.ProjectResolver) {
+            try { global.ProjectResolver.applyTree(doc.documentElement); } catch (e) {}
+        }
 
         this._cleanClass(this.getBody());
         this._reobserve();
@@ -859,7 +858,6 @@
         return eTarget;
     };
 
-    /* Снять ранее навешанные обработчики (если есть). */
     Canvas.prototype._unbind = function () {
         if (!this._handlers) return;
         var doc = this._boundDoc || this.getDoc();
@@ -873,9 +871,6 @@
     };
 
     Canvas.prototype._bind = function () {
-        /* FIX: идемпотентность. После doc.write обработчики могли быть
-           потеряны, поэтому просто навешиваем заново. Если старые всё
-           ещё живы — снимаем их через _unbind. */
         this._unbind();
 
         var self = this, doc = this.getDoc();
@@ -891,10 +886,6 @@
             bus.emit('contextmenu:hide');
             if (self.designMode) return;
 
-            /* FIX: сначала проверяем pending — если пользователь выбрал
-               компонент в палитре, любой клик по сцене должен вставить.
-               Проверка resize-handle идёт после, чтобы клик по handle
-               тоже вставлял компонент, если pending установлен. */
             if (self.pending) {
                 var target0 = self._placementTarget(e.target);
                 self._place(self.pending, target0);
@@ -972,8 +963,6 @@
         if (!html) return null;
         if (!el || el.nodeType !== 1) return body;
 
-        /* FIX: fallback — если корневой контейнер определён, но target
-           вне него, всегда используем корневой контейнер. */
         if (this._rootType !== 'html') {
             var rc = this.getRootContainer();
             if (rc && el !== rc && !rc.contains(el)) return rc;
@@ -992,8 +981,6 @@
         }
         if (n === head) return head;
 
-        /* FIX: если не нашли внутри — используем корневой контейнер
-           или body, чтобы вставка всегда была возможна. */
         if (this._rootType !== 'html') {
             var rc2 = this.getRootContainer();
             if (rc2) return rc2;
@@ -1128,6 +1115,12 @@
 
         node.setAttribute('data-wb-preview', '1');
         el.appendChild(node);
+
+        /* Preview-узел может содержать img/iframe с относительным путём —
+           сразу подменяем на blob/data URL. */
+        if (global.ProjectResolver) {
+            try { global.ProjectResolver.applyTree(node); } catch (e) {}
+        }
     };
 
     Canvas.prototype.refreshPreview = function (el) {
@@ -1576,6 +1569,8 @@
         for (var i = 0; i < attrs.length; i++) {
             var a = attrs[i];
             var name = a.name;
+
+            if (name.indexOf('data-wb-orig-') === 0) continue;
             if (name === 'data-cmptype') continue;
             if (name === 'data-wb-editable') continue;
             if (name === 'data-wb-ide') continue;
@@ -1589,6 +1584,9 @@
             }
 
             var val = a.value == null ? '' : String(a.value);
+
+            var orig = el.getAttribute && el.getAttribute('data-wb-orig-' + name);
+            if (orig != null) val = String(orig);
 
             if (name === 'class') {
                 var parts = val.split(/\s+/).filter(function (c) {
