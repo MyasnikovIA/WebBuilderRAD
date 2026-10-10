@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="css/code-editor.css">
     <link rel="stylesheet" href="css/code-view.css">
     <link rel="stylesheet" href="css/d3-preview.css">
+    <link rel="stylesheet" href="css/component-tab.css">
 
     <!-- Библиотеки и тема -->
     <link rel="stylesheet" href="lib/highlight/styles/dark.css" id="wb-hljs-theme">
@@ -91,12 +92,13 @@
         </div>
     </div>
 
-    <!-- Center: Scene / Code -->
+    <!-- Center: Scene / Code / Component -->
     <div region="center" style="padding:0;background:#808080;position:relative;overflow:hidden;">
 
         <div id="wb-center-tabs" class="wb-center-tabs">
             <div class="wb-center-tab wb-active" data-pane="scene">Scene</div>
             <div class="wb-center-tab" data-pane="code">Code</div>
+            <div class="wb-center-tab" data-pane="component" style="display:none;">Component</div>
         </div>
 
         <div id="wb-center-panes" style="position:absolute;top:28px;left:0;right:0;bottom:0;">
@@ -110,6 +112,11 @@
             <div class="wb-center-pane" data-pane="code"
                  style="position:absolute;top:0;left:0;right:0;bottom:0;display:none;">
                 <!-- содержимое строится CodeView -->
+            </div>
+
+            <div class="wb-center-pane" data-pane="component"
+                 style="position:absolute;top:0;left:0;right:0;bottom:0;display:none;">
+                <!-- содержимое строится ComponentTab -->
             </div>
         </div>
     </div>
@@ -166,6 +173,8 @@
     <li class="separator"></li>
     <li onclick="App.cmd('loadJson')">Load Form JSON…</li>
     <li onclick="App.cmd('saveJson')">Save Form JSON…</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('exportProjectAsComponent')">Export Project as Component…</li>
 </ul>
 
 <ul id="editMenu" class="mini-menu" style="display:none;">
@@ -257,6 +266,8 @@
     <li onclick="App.cmd('setRootCmpForm')">Root: cmpForm (D3 Form)</li>
     <li onclick="App.cmd('setRootM2Form')">Root: div (M2 Form)</li>
     <li onclick="App.cmd('setRootDiv')">Root: div</li>
+    <li class="separator"></li>
+    <li onclick="App.cmd('setRootComponent')">Root: component</li>
 </ul>
 
 <!-- =========================================================
@@ -300,6 +311,35 @@
 </ul>
 
 <!-- =========================================================
+     Контекстное меню USER-КОМПОНЕНТОВ (пользовательская палитра)
+     ========================================================= -->
+<ul id="wb-usercompmenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxExportSelected()">Export Component(s) to ZIP…</li>
+    <li class="separator"></li>
+    <li onclick="palette.userCtxDeleteComponents()">Delete Component(s)</li>
+</ul>
+
+<!-- =========================================================
+     Контекстное меню USER-КАТАЛОГА (пользовательская палитра)
+     ========================================================= -->
+<ul id="wb-userfoldermenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxNewFolder()">New Folder…</li>
+    <li onclick="palette.userCtxRenameFolder()">Rename Folder…</li>
+    <li onclick="palette.userCtxDeleteFolder()">Delete Folder</li>
+    <li class="separator"></li>
+    <li onclick="palette.userCtxImport()">Import Component(s) from ZIP…</li>
+</ul>
+
+<!-- =========================================================
+     Контекстное меню USER-КОРНЯ палитры
+     ========================================================= -->
+<ul id="wb-userpalettemenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxNewFolder()">New Folder…</li>
+    <li class="separator"></li>
+    <li onclick="palette.userCtxImport()">Import Component(s) from ZIP…</li>
+</ul>
+
+<!-- =========================================================
      IDE core
      ========================================================= -->
 <script src="ide/core.js"></script>
@@ -331,6 +371,13 @@
 <script src="ide/project-tree.js"></script>
 <script src="ide/project-manager.js"></script>
 <script src="ide/panel-splitter.js"></script>
+
+<!-- =========================================================
+     User Component Palette (новое)
+     ========================================================= -->
+<script src="ide/component-storage.js"></script>
+<script src="ide/component-export-utils.js"></script>
+<script src="ide/component-tab.js"></script>
 
 <!-- =========================================================
      HTML / UI components (все в категории HTML)

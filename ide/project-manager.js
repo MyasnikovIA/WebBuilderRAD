@@ -1,19 +1,4 @@
-/* ProjectManager — центральный контроллер управления проектами.
-
-   Отвечает за:
-     • combobox выбора проекта + кнопки New / Delete;
-     • передачу проекта в ProjectTree;
-     • контекстные меню (файл / папка / корень);
-     • создание папок и файлов, удаление, переименование;
-     • загрузку внешних файлов (в т.ч. ZIP);
-     • экспорт проекта в ZIP;
-     • установку головного (main) файла;
-     • открытие файла на предпросмотр или редактирование;
-     • авто-сохранение сцены в текущий проектный файл (HTML/frm);
-     • диалог сохранения при переключении между файлами проекта.
-
-   ВАЖНО: все обработчики DOM навешиваются через нативный addEventListener,
-   потому что MiniUI патчит jQuery.fn.on/.delegate и ломает их на 1.6.2. */
+/* ProjectManager — центральный контроллер управления проектами. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -46,7 +31,6 @@
             this.comboEl.addEventListener('change', function () {
                 var name = self.comboEl.value;
                 if (!self._confirmSwitchProject(name)) {
-                    /* Пользователь отменил — возвращаем прежнее значение. */
                     self.comboEl.value = self.current ? self.current.name : '';
                     return;
                 }
@@ -79,8 +63,6 @@
             var canvas = global.IDE && global.IDE._canvas;
             if (!canvas) return;
 
-            /* Если сейчас редактируется другой файл с несохранёнными
-               изменениями — предлагаем сохранить / отменить / отказаться. */
             if (self.editing && self.editing.path !== e.path) {
                 if (!self._confirmSwitchFrom(canvas)) return;
             }
@@ -103,7 +85,6 @@
             }
         });
 
-        /* Автосохранение — только если реально есть изменения. */
         bus.on('canvas:changed', function () {
             if (!self.editing || !self.current) return;
             var canvas = global.IDE && global.IDE._canvas;
@@ -115,11 +96,16 @@
                 self._saveCurrentEdit(canvas);
             }, 700);
         });
+
+        /* Режим корня изменился — зафиксировать в проекте. */
+        bus.on('canvas:rootType:changed', function () {
+            if (!self.current) return;
+            self.save();
+        });
     };
 
     /* ---------------- Диалог сохранения при переключении ---------------- */
 
-    /* Есть ли изменения в текущем редактируемом файле. */
     ProjectManager.prototype._hasUnsavedChanges = function (canvas) {
         if (!this.editing || !canvas) return false;
         var current;
@@ -128,9 +114,6 @@
         return current !== (this.editing.initialClean || '');
     };
 
-    /* Спросить пользователя, что делать с изменениями.
-       Возвращает true — можно продолжать переключение,
-       false — пользователь отменил. */
     ProjectManager.prototype._confirmSwitchFrom = function (canvas) {
         if (!this.editing) return true;
         if (!this._hasUnsavedChanges(canvas)) return true;
@@ -150,7 +133,6 @@
         );
     };
 
-    /* Проверка перед сменой проекта (через combobox). */
     ProjectManager.prototype._confirmSwitchProject = function (newName) {
         if (!this.current) return true;
         if (newName === this.current.name) return true;
@@ -160,7 +142,6 @@
         return this._confirmSwitchFrom(canvas);
     };
 
-    /* Сохранить текущее состояние сцены в текущий файл проекта. */
     ProjectManager.prototype._saveCurrentEdit = function (canvas) {
         if (!this.editing || !this.current) return;
         var f = this.current.files[this.editing.path];
@@ -206,14 +187,45 @@
         if (this.comboEl) this.comboEl.value = name;
         bus.emit('project:loaded', { project: p, name: name });
         bus.emit('project:changed', { project: p });
+
+        /* Восстановить режим корня, сохранённый в проекте. */
+        this._applyProjectMode(p);
     };
 
     ProjectManager.prototype.close = function () {
         this.current = null;
         this.editing = null;
         global.ProjectStorage.setCurrent('');
+        /* Сбросить режим компонента. */
+        if (global.App) global.App._componentMode = false;
+        try {
+            $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+        } catch (e) {}
         bus.emit('project:loaded', { project: null, name: '' });
         bus.emit('project:changed', { project: null });
+    };
+
+    /* Применить к canvas / вкладкам сохранённый в проекте режим корня. */
+    ProjectManager.prototype._applyProjectMode = function (p) {
+        var canvas = global.IDE && global.IDE._canvas;
+        var $tabs = null;
+        try { $tabs = $('#wb-center-tabs .wb-center-tab[data-pane="component"]'); }
+        catch (e) {}
+
+        var rt = (p && p.rootType) || 'html';
+
+        if (rt === 'component') {
+            if (global.App) global.App._componentMode = true;
+            if ($tabs) $tabs.show();
+            if (canvas) canvas.setRootType('div');
+            if (global.componentTab && p && p.componentData) {
+                try { global.componentTab.setComponent(p.componentData); } catch (e) {}
+            }
+        } else {
+            if (global.App) global.App._componentMode = false;
+            if ($tabs) $tabs.hide();
+            if (canvas) canvas.setRootType(rt);
+        }
     };
 
     ProjectManager.prototype.createNew = function () {
@@ -235,6 +247,7 @@
                 '</head>\n<body>\n\n</body>\n</html>'
         };
         p.mainFile = 'index.html';
+        p.rootType = 'html';
         global.ProjectStorage.save(p);
 
         this.refreshCombo();
@@ -249,8 +262,19 @@
         this.refreshCombo();
     };
 
+    /* Сохранение — с обогащением данных о режиме/компоненте. */
     ProjectManager.prototype.save = function () {
         if (!this.current) return;
+        var canvas = global.IDE && global.IDE._canvas;
+        if (canvas && canvas.getRootType) {
+            var isComp = !!(global.App && global.App._componentMode);
+            this.current.rootType = isComp ? 'component' : (canvas.getRootType() || 'html');
+            if (isComp && global.componentTab && global.componentTab.getFormData) {
+                try {
+                    this.current.componentData = global.componentTab.getFormData();
+                } catch (e) { /* ignore */ }
+            }
+        }
         global.ProjectStorage.save(this.current);
     };
 
@@ -394,6 +418,7 @@
         inp.click();
     };
 
+    /* Upload ZIP — только если это проект (не компонент). */
     ProjectManager.prototype.ctxUploadZip = function () {
         if (!this.current) return;
         var self = this;
@@ -403,10 +428,29 @@
         inp.onchange = function () {
             var f = inp.files[0];
             if (!f) return;
-            global.ZipUtils.importInto(self.current, f).then(function () {
-                self.save();
-                bus.emit('project:changed', { project: self.current });
-                alert('ZIP успешно распакован в проект "' + self.current.name + '".');
+
+            global.ZipUtils.readManifest(f).then(function (manifest) {
+                if (manifest && manifest.type === 'component') {
+                    alert('Выбранный ZIP является компонентом, а не проектом.\n\n' +
+                        'Для загрузки компонентов используйте пользовательскую ' +
+                        'палитру: ПКМ по User Palette → Import Component(s) from ZIP…');
+                    return null;
+                }
+                return global.ZipUtils.importInto(self.current, f).then(function () {
+                    self.save();
+                    bus.emit('project:changed', { project: self.current });
+
+                    /* Восстановить режим корня + componentData из манифеста. */
+                    if (manifest && manifest.rootType) {
+                        self.current.rootType = manifest.rootType;
+                        if (manifest.rootType === 'component' && manifest.component) {
+                            self.current.componentData = manifest.component;
+                        }
+                        self.save();
+                        self._applyProjectMode(self.current);
+                    }
+                    alert('ZIP успешно распакован в проект "' + self.current.name + '".');
+                });
             }).catch(function (err) {
                 alert('Ошибка загрузки ZIP: ' + (err && err.message || err));
             });
@@ -416,6 +460,7 @@
 
     ProjectManager.prototype.ctxExportZip = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
+        this.save();  /* зафиксировать rootType / componentData */
         global.ZipUtils.exportProject(this.current);
     };
 

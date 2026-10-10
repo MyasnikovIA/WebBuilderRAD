@@ -58,7 +58,7 @@
         /* Иерархическое дерево категорий:
            [ { name, components, subcategories: [ { name, components } ] } ] */
         categoryTree: function () {
-            var ORDER = ['D3', 'M2', 'HTML', 'General'];
+            var ORDER = ['D3', 'M2', 'HTML', 'General', 'User'];
             var SUB_ORDER = {
                 'D3': ['Data', 'Containers', 'Grids', 'Controls', 'Display', 'Menus', 'Filters'],
                 'M2': ['Data', 'Containers', 'Grids', 'Controls', 'Display', 'Menus'],
@@ -115,6 +115,33 @@
         },
         match: function (el) {
             if (!el || el.nodeType !== 1) return null;
+
+            /* 0. Пользовательский компонент из Tool Palette.
+                  a) Явный маркер data-wb-user-comp (устанавливается палитрой).
+                  b) Fallback по значению атрибута cmptype — если пользователь
+                     вставил разметку без маркера (например, скопировал HTML). */
+            if (global.ComponentStorage && global.ComponentStorage.toDef) {
+                var ucId = el.getAttribute && el.getAttribute('data-wb-user-comp');
+                var uc = ucId ? global.ComponentStorage.getComponent(ucId) : null;
+
+                if (!uc) {
+                    var userCt = el.getAttribute && el.getAttribute('cmptype');
+                    if (userCt) {
+                        var list = global.ComponentStorage.listComponents();
+                        for (var ui = 0; ui < list.length; ui++) {
+                            var cand = list[ui];
+                            /* Не подменяем D3/M2-компоненты с таким же cmptype. */
+                            if (cand.cmptype && cand.cmptype === userCt
+                                && !_byId['m2.' + String(userCt).toLowerCase()]) {
+                                uc = cand;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (uc) return global.ComponentStorage.toDef(uc);
+            }
 
             /* 1. D3: явный ID через data-cmptype. */
             var ct = el.getAttribute && el.getAttribute('data-cmptype');
@@ -291,18 +318,7 @@
         };
     })();
 
-    /* ---------- M2: регистрация M2-компонентов ----------
-
-       M2.register делает всё то, что делает D3.register, но
-       самостоятельно (чтобы не зависеть от внутренней реализации
-       D3.register и не попасть в категорию D3):
-
-         1. Категория — 'M2'.
-         2. tagName — 'component'.
-         3. previewCss / previewJs — превращаются в абсолютные URL
-            относительно папки Component/m2/<cmptype>/.
-         4. icon — превращается в iconUrl по тому же правилу.
-         5. schema — строится из properties / events / styles. */
+    /* ---------- M2: регистрация M2-компонентов ---------- */
     function _m2ResolvePaths(list, folder) {
         var out = [];
         if (!list || !list.length) return out;
@@ -327,21 +343,17 @@
             if (!def.tagName)  def.tagName  = 'component';
             if (!def.category) def.category = 'M2';
 
-            /* Папка компонента по cmptype: Button → Component/m2/Button/. */
             var folder = _m2Folder(def.cmptype, def.id);
 
-            /* previewCss / previewJs → абсолютные URL. */
             def.previewCssUrls = _m2ResolvePaths(def.previewCss, folder);
             def.previewJsUrls  = _m2ResolvePaths(def.previewJs,  folder);
 
-            /* icon → iconUrl. */
             if (def.icon && !/^(https?:|\/|Component\/)/i.test(def.icon)) {
                 def.iconUrl = folder + def.icon;
             } else {
                 def.iconUrl = def.icon || '';
             }
 
-            /* schema — на основе properties / events / styles. */
             def.schema = {
                 properties: def.properties || [],
                 events:     def.events     || [],

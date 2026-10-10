@@ -460,6 +460,11 @@
     };
 
     Canvas.prototype._detectRootType = function () {
+        /* В режиме создания компонента корень всегда div — независимо от того,
+           какой HTML был загружен (в т.ч. при двойном клике по HTML-файлу
+           проекта). Это гарантирует, что вкладка Component не исчезнет. */
+        if (global.App && global.App._componentMode) return 'div';
+
         var body = this.getBody();
         if (!body) return 'html';
         var kids = body.children;
@@ -536,6 +541,7 @@
             this._rootType = type;
             this._renderPreview(existingRoot);
             bus.emit('canvas:changed');
+            bus.emit('canvas:rootType:changed', { rootType: type });
             bus.emit('selection:changed', { element: existingRoot });
             return;
         }
@@ -589,6 +595,7 @@
         if (newRoot) this._renderPreview(newRoot);
 
         bus.emit('canvas:changed');
+        bus.emit('canvas:rootType:changed', { rootType: type });
         if (newRoot) bus.emit('selection:changed', { element: newRoot });
         else bus.emit('canvas:selection:reset');
     };

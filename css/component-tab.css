@@ -1,0 +1,55 @@
+/* ComponentTab (Root: component) */
+.wb-component-tab { display:flex; flex-direction:column; height:100%; background:var(--wb-panel-bg,#fff); color:var(--wb-text,#222); font-family:'Segoe UI',Tahoma,sans-serif; font-size:12px; overflow:hidden; }
+.wb-comp-form { flex:0 0 auto; max-height:45%; overflow:auto; border-bottom:1px solid var(--wb-border,#c0c0c0); padding-bottom:4px; }
+.wb-comp-form .wb-row { display:flex; border-bottom:1px solid #eee; align-items:center; }
+.wb-comp-form .wb-row-name { flex:0 0 220px; padding:4px 8px; background:var(--wb-panel-head-bg,#f7f7f7); border-right:1px solid #eee; font-size:11px; }
+.wb-comp-form .wb-row-value { flex:1; padding:3px 6px; display:flex; align-items:center; gap:4px; min-width:0; }
+.wb-comp-form input[type="text"], .wb-comp-form textarea { width:100%; box-sizing:border-box; padding:2px 4px; font-size:11px; border:1px solid var(--wb-input-border,#c0c0c0); background:var(--wb-input-bg,#fff); color:var(--wb-text,#222); font-family:inherit; }
+.wb-comp-form textarea { resize:vertical; }
+.wb-comp-file-row .wb-file-btn { flex:0 0 auto; width:22px; height:22px; padding:0; cursor:pointer; border:1px solid var(--wb-input-border,#b0b0b0); border-radius:3px; background:var(--wb-input-bg,#fafafa); font-weight:bold; }
+
+.wb-comp-libs { flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
+.wb-comp-lib { display:flex; gap:3px; align-items:center; }
+.wb-comp-lib-type { flex:0 0 90px; font-size:11px; }
+.wb-comp-lib-value { flex:1; min-width:0; }
+.wb-comp-lib .wb-row-del { flex:0 0 auto; width:18px; height:18px; padding:0; font-weight:bold; color:#c62828; cursor:pointer; border:1px solid #c0c0c0; border-radius:2px; background:#fff; }
+.wb-comp-libs-row .wb-comp-lib-add { flex:0 0 auto; padding:2px 8px; font-size:12px; cursor:pointer; }
+
+.wb-comp-subtabs { flex:0 0 auto; display:flex; background:var(--wb-panel-head-bg,#e0e0e0); border-bottom:1px solid var(--wb-border,#c0c0c0); }
+.wb-comp-subtab { padding:5px 14px; cursor:pointer; font-size:11px; border-right:1px solid var(--wb-border,#c0c0c0); user-select:none; }
+.wb-comp-subtab:last-child { border-right:0; }
+.wb-comp-subtab.wb-active { background:var(--wb-panel-bg,#fff); font-weight:600; color:var(--wb-accent,#1e88e5); }
+.wb-comp-editors { flex:1 1 auto; position:relative; min-height:0; background:#1e1e1e; }
+.wb-comp-editor-box { position:absolute; inset:0; }
+.wb-comp-toolbar { flex:0 0 auto; padding:4px 6px; background:var(--wb-panel-head-bg,#e0e0e0); border-top:1px solid var(--wb-border,#c0c0c0); display:flex; gap:6px; align-items:center; }
+.wb-comp-status { font-size:11px; color:#2e7d32; margin-left:6px; }
+
+/* Component Properties */
+.wb-comp-props-box { background:var(--wb-panel-bg,#fff); overflow:auto; padding:6px; }
+.wb-comp-props { display:flex; flex-direction:column; gap:6px; height:100%; }
+.wb-comp-props-head { display:flex; gap:8px; align-items:center; }
+.wb-comp-props-hint { font-size:11px; color:#777; font-style:italic; }
+.wb-comp-props-table { width:100%; border-collapse:collapse; font-size:11px; }
+.wb-comp-props-table th {
+    background:var(--wb-panel-head-bg,#e8e8e8); color:var(--wb-text,#333);
+    padding:3px 4px; border:1px solid var(--wb-border,#d0d0d0);
+    text-align:left; font-weight:600; white-space:nowrap;
+}
+.wb-comp-props-table td {
+    border:1px solid var(--wb-border,#e0e0e0); padding:2px;
+    vertical-align:middle;
+}
+.wb-comp-props-table input[type="text"],
+.wb-comp-props-table select {
+    width:100%; box-sizing:border-box; padding:2px 4px;
+    font-size:11px; font-family:inherit;
+    border:1px solid var(--wb-input-border,#c0c0c0);
+    background:var(--wb-input-bg,#fff); color:var(--wb-text,#222);
+}
+.wb-comp-props-table .wb-row-del {
+    width:20px; height:20px; line-height:18px; padding:0; margin:0 auto;
+    display:block; font-weight:bold; color:#c62828;
+    background:#fff; border:1px solid #c0c0c0; border-radius:2px; cursor:pointer;
+}
+.wb-comp-props-table .wb-row-del:hover { background:#ffebee; border-color:#c62828; }
+.wb-comp-prop-add { padding:3px 10px; font-size:12px; cursor:pointer; }

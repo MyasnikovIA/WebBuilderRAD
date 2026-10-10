@@ -2,7 +2,7 @@
 
    Содержит конструктор, вкладки, чтение/запись значений, построение
    строк и базовый редактор полей (boolean, enum, color, length, number,
-   string, text, FILE, image, images, code).
+   string, text, FILE, image, images, code, custom-editor-url).
    Вкладка Events реализована в inspector-events.js.
 
    Загружается после panels-utils.js и project-file-picker.js.
@@ -347,12 +347,14 @@
         var self = this, t = f.type || 'string', val = self._get(tab, f);
         var commit = function (v) { self._set(tab, f, v); };
 
+        /* ---- boolean ---- */
         if (t === 'boolean') {
             var cb = $('<input type="checkbox">').prop('checked', !!val);
             cb.change(function () { commit(cb.prop('checked')); });
             return cb;
         }
 
+        /* ---- enum ---- */
         if (t === 'enum') {
             var sel = $('<select></select>');
             (f.values || []).forEach(function (v) {
@@ -363,6 +365,7 @@
             return sel;
         }
 
+        /* ---- color ---- */
         if (t === 'color') {
             var wrapC = $('<div class="wb-color"></div>');
             var ci = $('<input type="color">').val(val || '#000000');
@@ -373,6 +376,7 @@
             return wrapC;
         }
 
+        /* ---- length ---- */
         if (t === 'length') {
             var lw = $('<div class="wb-length"></div>');
             var num = val ? parseFloat(val) : '';
@@ -395,6 +399,7 @@
             return lw;
         }
 
+        /* ---- number ---- */
         if (t === 'number') {
             var nn = $('<input type="number">').val(val === '' ? '' : val);
             nn.change(function () { commit(nn.val()); });
@@ -404,11 +409,12 @@
             return nn;
         }
 
-        /* FILE / image / URL-имена */
+        /* ---- FILE / image / URL-имена ---- */
         if (isFileField(f)) {
             return $(self._buildFileRow(f, val, commit));
         }
 
+        /* ---- text (textarea) ---- */
         if (t === 'text') {
             var ta = $('<textarea rows="3" style="width:100%;box-sizing:border-box;' +
                 'font-family:inherit;font-size:11px;border:1px solid #c0c0c0;"></textarea>')
@@ -430,6 +436,7 @@
             return ta;
         }
 
+        /* ---- images (map) ---- */
         if (t === 'images') {
             var mBtn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             mBtn.click(function () {
@@ -441,11 +448,15 @@
             return mBtn;
         }
 
+        /* ---- code (events) ---- */
         if (t === 'code' && tab === 'events') {
             /* Реализовано в inspector-events.js */
-            return self._buildEventEditor ? self._buildEventEditor(f, val, commit) : $('<input type="text">').val(val || '');
+            return self._buildEventEditor
+                ? self._buildEventEditor(f, val, commit)
+                : $('<input type="text">').val(val || '');
         }
 
+        /* ---- code ---- */
         if (t === 'code') {
             var btn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn.click(function () {
@@ -464,6 +475,7 @@
             return btn;
         }
 
+        /* ---- code-editor ---- */
         if (t === 'code-editor') {
             var btn2 = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn2.click(function () {
@@ -482,7 +494,62 @@
             return btn2;
         }
 
-        /* string по умолчанию */
+        /* ---- custom-editor-url ----
+           Открывает внешний редактор (iframe по f.editorUrl) в модальном
+           окне. Значение читается/пишется через input над iframe.
+           Внешний редактор может слать postMessage:
+             { wbComponentFieldValue: '…' } */
+        if (t === 'custom-editor-url') {
+            var btnEU = $('<button type="button" class="wb-code-btn">Edit…</button>');
+            btnEU.click(function () {
+                var current = self._get(tab, f) || '';
+                var url = f.editorUrl || '';
+                if (!url) { alert('URL редактора не задан.'); return; }
+
+                var host = document.createElement('div');
+                host.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;gap:4px;';
+
+                var inpRow = document.createElement('input');
+                inpRow.type = 'text';
+                inpRow.value = current;
+                inpRow.style.cssText = 'width:100%;box-sizing:border-box;padding:4px 6px;font-size:12px;';
+                host.appendChild(inpRow);
+
+                var iframe = document.createElement('iframe');
+                iframe.src = url;
+                iframe.style.cssText = 'flex:1;min-height:400px;border:1px solid #c0c0c0;background:#fff;';
+                host.appendChild(iframe);
+
+                global.Modal.open({
+                    title: (f.caption || f.name) + ' — внешний редактор',
+                    content: host,
+                    onOk: function () { commit(inpRow.value); }
+                });
+
+                var onMsg = function (ev) {
+                    try {
+                        var d = ev.data;
+                        if (d && typeof d === 'object' && 'wbComponentFieldValue' in d) {
+                            inpRow.value = String(d.wbComponentFieldValue);
+                        }
+                    } catch (e) {}
+                };
+                window.addEventListener('message', onMsg);
+                setTimeout(function () {
+                    var okBtn = document.querySelector(
+                        '#wb-window [property="footer"] .mini-button:first-child'
+                    );
+                    if (okBtn) {
+                        okBtn.addEventListener('click', function () {
+                            window.removeEventListener('message', onMsg);
+                        }, { once: true });
+                    }
+                }, 50);
+            });
+            return btnEU;
+        }
+
+        /* ---- string по умолчанию ---- */
         var inp = $('<input type="text">').val(val == null ? '' : val);
         inp.change(function () { commit(inp.val()); });
 

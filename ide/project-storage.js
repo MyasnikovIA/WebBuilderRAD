@@ -3,12 +3,10 @@
    Модель проекта:
      {
        name:     'MyProject',
-       mainFile: 'index.html',   — путь к стартовому файлу (для ZIP-экспорта)
-       files: {
-         'index.html':    { kind: 'text',  content: '...' },
-         'css/style.css': { kind: 'text',  content: '...' },
-         'img/logo.png':  { kind: 'image', content: 'data:image/png;base64,...' }
-       }
+       mainFile: 'index.html',
+       rootType: 'html' | 'cmpForm' | 'm2Form' | 'div' | 'component',
+       componentData: { ... } (только для rootType='component'),
+       files: { … }
      }
 
    Ключи LocalStorage:
@@ -49,14 +47,23 @@
         get: function (name) {
             if (!name) return null;
             var all = readAll();
-            return all[name] || null;
+            var p = all[name];
+            if (!p) return null;
+            if (!p.files)    p.files    = {};
+            if (!p.rootType) p.rootType = 'html';
+            return p;
         },
 
         create: function (name) {
             if (!name) return null;
             var all = readAll();
             if (all[name]) return null;
-            all[name] = { name: name, mainFile: '', files: {} };
+            all[name] = {
+                name:     name,
+                mainFile: '',
+                rootType: 'html',
+                files:    {}
+            };
             writeAll(all);
             return all[name];
         },
@@ -84,8 +91,6 @@
             try { localStorage.setItem(CURRENT_KEY, name || ''); } catch (e) {}
         },
 
-        /* Уникальное имя нового файла в папке — если 'file.txt' уже есть,
-           вернёт 'file (1).txt', 'file (2).txt' и т.д. */
         suggestPath: function (project, folder, filename) {
             if (!project) return filename;
             var base = folder ? folder + '/' + filename : filename;
@@ -103,7 +108,6 @@
             }
         },
 
-        /* Плоский список каталогов, выведенный из путей файлов. */
         listFolders: function (project) {
             var set = {};
             if (!project || !project.files) return [];

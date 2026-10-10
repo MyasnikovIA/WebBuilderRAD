@@ -8,6 +8,7 @@
 
         var domTree   = new DomTree(document.getElementById('wb-domtree'));
         var palette   = new Palette(document.getElementById('wb-palette'));
+        global.palette = palette;
         var inspector = new Inspector(document.getElementById('wb-right') || document.body);
 
         var codePaneEl = document.querySelector('#wb-center-panes .wb-center-pane[data-pane="code"]');
@@ -23,6 +24,31 @@
                 codeView: codeView
             });
         }
+
+        /* ---------- Component tab (Root: component) ---------- */
+        var componentPaneEl = document.querySelector('#wb-center-panes .wb-center-pane[data-pane="component"]');
+        var componentTab = componentPaneEl && global.ComponentTab
+            ? new global.ComponentTab(componentPaneEl)
+            : null;
+        global.componentTab = componentTab;   /* нужен ProjectManager.save() и MiniUI-eval */
+        $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+
+        /* Контекстное меню пользовательской палитры. */
+        EventBus.on('palette:contextmenu', function (ctx) {
+            if (!palette) return;
+            var menuId = (ctx.type === 'user-components') ? 'wb-usercompmenu'
+                : (ctx.type === 'user-folder')     ? 'wb-userfoldermenu'
+                    : 'wb-userpalettemenu';
+            var m = mini.get(menuId);
+            if (m) m.showAtPos(ctx.x, ctx.y);
+        });
+
+        /* Двойной клик по user-компоненту — открыть вкладку Component. */
+        EventBus.on('component:edit-request', function (e) {
+            if (!componentTab) return;
+            $('#wb-center-tabs .wb-center-tab[data-pane="component"]').show().click();
+            componentTab.setComponent(e.component);
+        });
 
         /* ---------- Project management ---------- */
         if (global.ProjectManager) {
@@ -49,7 +75,7 @@
 
         var clipboard = null;
 
-        /* ---------- Переключение вкладок Scene / Code ---------- */
+        /* ---------- Переключение вкладок Scene / Code / Component ---------- */
         $('#wb-center-tabs').delegate('.wb-center-tab', 'click', function () {
             var paneName = $(this).attr('data-pane');
 
@@ -76,6 +102,8 @@
                     }
                 }
             }
+
+            if (componentTab) componentTab.setActive(paneName === 'component');
         });
 
         EventBus.on('palette:selected', function (e) { canvas.setPending(e.component); });
@@ -107,6 +135,9 @@
             var m4 = mini.get('wb-pfilemenu');  if (m4) m4.hide();
             var m5 = mini.get('wb-pfoldermenu');if (m5) m5.hide();
             var m6 = mini.get('wb-prootmenu');  if (m6) m6.hide();
+            var m7 = mini.get('wb-usercompmenu'); if (m7) m7.hide();
+            var m8 = mini.get('wb-userfoldermenu'); if (m8) m8.hide();
+            var m9 = mini.get('wb-userpalettemenu'); if (m9) m9.hide();
         });
 
         EventBus.on('canvas:selection:reset', function () {
@@ -614,10 +645,51 @@
                 setTimeout(function () { editor.focus(); }, 50);
             },
 
-            setRootHtml:    function () { canvas.setRootType('html'); },
-            setRootCmpForm: function () { canvas.setRootType('cmpForm'); },
-            setRootM2Form:  function () { canvas.setRootType('m2Form'); },
-            setRootDiv:     function () { canvas.setRootType('div'); },
+            setRootHtml:    function () {
+                App._componentMode = false;
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                canvas.setRootType('html');
+            },
+            setRootCmpForm: function () {
+                App._componentMode = false;
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                canvas.setRootType('cmpForm');
+            },
+            setRootM2Form:  function () {
+                App._componentMode = false;
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                canvas.setRootType('m2Form');
+            },
+            setRootDiv:     function () {
+                App._componentMode = false;
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                canvas.setRootType('div');
+            },
+            setRootComponent: function () {
+                App._componentMode = true;
+                canvas.setRootType('div');
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').show().click();
+            },
+
+            /* Выгрузить текущий проект как ZIP-архив компонента.
+               Не создаёт запись в палитре — только формирует ZIP с
+               project.json (type='component') и всеми файлами проекта. */
+            exportProjectAsComponent: function () {
+                var pm = global.ProjectManagerInstance;
+                if (!pm || !pm.current) {
+                    alert('Проект не выбран.');
+                    return;
+                }
+                /* Зафиксировать актуальный rootType / componentData. */
+                pm.save();
+
+                /* Если не в режиме компонента — временно пометить. */
+                var p = pm.current;
+                if (global.componentTab && global.componentTab.getFormData) {
+                    try { p.componentData = global.componentTab.getFormData(); } catch (e) {}
+                }
+                global.ZipUtils.exportProject(p, { asComponent: true });
+            },
 
             designMode: function () { canvas.toggleDesignMode(); },
 

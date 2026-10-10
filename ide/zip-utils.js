@@ -1,17 +1,19 @@
 /* ZipUtils — экспорт проекта в ZIP и импорт ZIP-архива в проект.
 
-   JSZip загружается лениво с CDN при первом использовании, если
-   глобальный JSZip не найден.
-
-   Соглашение о манифесте:
-     В корень архива кладётся project.json:
-       { "name": "...", "mainFile": "index.html", "version": 1 }
-     При импорте, если в архиве есть project.json и указанный mainFile
-     существует среди файлов — он становится стартовым.
-
-   Служебный файл .keep (используется для хранения пустых папок):
-     • НЕ экспортируется в архив;
-     • при импорте создаётся для каждой пустой папки из архива. */
+   Манифест project.json:
+     {
+       name:     '...',
+       mainFile: 'index.html',
+       version:  3,
+       type:     'project' | 'component',
+       rootType: 'html' | 'cmpForm' | 'm2Form' | 'div' | 'component',
+       component: {
+         name, icon, tagName, cmptype, description,
+         jsLibs, cssLibs, js, css, previewIdeHtml,
+         customProperties: [ { name, caption, type, values, unit,
+                               fieldType, fieldUrl, fieldPredefined } ]
+       }   — только при type='component'
+     } */
 (function (global) {
     'use strict';
 
@@ -39,9 +41,7 @@
                     else rej(new Error('JSZip загружен, но не определён глобально.'));
                 };
                 s.onerror = function () {
-                    rej(new Error('Не удалось загрузить JSZip с CDN.\n' +
-                        'Проверьте интернет, либо положите jszip.min.js в lib/ ' +
-                        'и подключите его в index.html.'));
+                    rej(new Error('Не удалось загрузить JSZip с CDN.'));
                 };
                 document.head.appendChild(s);
             });
@@ -61,10 +61,50 @@
             : ('image/' + e);
     }
 
+    /* Нормализация customProperties — гарантирует, что во всех записях
+       будут все поля, даже если чего-то не было задано. */
+    function normalizeCustomProps(arr) {
+        var out = [];
+        if (!Array.isArray(arr)) return out;
+        for (var i = 0; i < arr.length; i++) {
+            var p = arr[i] || {};
+            out.push({
+                name:            p.name || '',
+                caption:         p.caption || p.name || '',
+                type:            p.type || 'string',
+                values:          p.values || '',
+                unit:            p.unit || '',
+                fieldType:       p.fieldType || 'none',
+                fieldUrl:        p.fieldUrl || '',
+                fieldPredefined: p.fieldPredefined || ''
+            });
+        }
+        return out;
+    }
+
     var ZipUtils = {
-        /* Экспорт проекта в ZIP и скачивание. */
-        exportProject: function (project) {
+        /* Чтение project.json без побочных эффектов. Promise<obj|null>. */
+        readManifest: function (file) {
+            return loadJSZip().then(function (JSZip) {
+                return JSZip.loadAsync(file);
+            }).then(function (zip) {
+                var entry = zip.file('project.json');
+                if (!entry) return null;
+                return entry.async('string').then(function (txt) {
+                    try { return JSON.parse(txt); } catch (e) { return null; }
+                });
+            });
+        },
+
+        /* Экспорт проекта в ZIP.
+           opts.asComponent === true — принудительно пометить как компонент. */
+        exportProject: function (project, opts) {
             if (!project) return;
+            opts = opts || {};
+
+            var isComponent = opts.asComponent === true
+                || project.rootType === 'component'
+                || (global.App && global.App._componentMode);
 
             loadJSZip().then(function (JSZip) {
                 var zip = new JSZip();
@@ -72,15 +112,38 @@
                 var manifest = {
                     name:     project.name || '',
                     mainFile: project.mainFile || '',
-                    version:  1
+                    version:  3,
+                    type:     isComponent ? 'component' : 'project',
+                    rootType: isComponent ? 'component' : (project.rootType || 'html')
                 };
+
+                if (isComponent) {
+                    /* Собираем все поля формы ComponentTab — включая customProperties. */
+                    var cd = project.componentData;
+                    if (!cd && global.componentTab && global.componentTab.getFormData) {
+                        try { cd = global.componentTab.getFormData(); } catch (e) { cd = null; }
+                    }
+                    cd = cd || {};
+                    manifest.component = {
+                        name:           cd.name || project.name || 'Component',
+                        icon:           cd.icon || '',
+                        tagName:        cd.tagName || 'div',
+                        cmptype:        cd.cmptype || '',
+                        description:    cd.description || '',
+                        jsLibs:         Array.isArray(cd.jsLibs)  ? cd.jsLibs  : [],
+                        cssLibs:        Array.isArray(cd.cssLibs) ? cd.cssLibs : [],
+                        js:             cd.js || '',
+                        css:            cd.css || '',
+                        previewIdeHtml: cd.previewIdeHtml || '',
+                        customProperties: normalizeCustomProps(cd.customProperties)
+                    };
+                }
+
                 zip.file('project.json', JSON.stringify(manifest, null, 2));
 
                 var files = project.files || {};
                 for (var path in files) {
                     if (!files.hasOwnProperty(path)) continue;
-
-                    /* .keep — служебный файл, в архив не пишем. */
                     if (isKeep(path)) continue;
 
                     var f = files[path];
@@ -88,7 +151,6 @@
 
                     var content = f.content || '';
 
-                    /* data URL → base64-полезная нагрузка. */
                     if (/^data:/.test(content)) {
                         var m = content.match(/^data:[^;,]*;base64,(.*)$/);
                         if (m) {
@@ -105,7 +167,9 @@
                 var url = URL.createObjectURL(blob);
                 var a = document.createElement('a');
                 a.href = url;
-                a.download = (project.name || 'project') + '.zip';
+                var baseName = (project.name || 'project');
+                if (isComponent) baseName += '.component';
+                a.download = baseName + '.zip';
                 document.body.appendChild(a);
                 a.click();
                 setTimeout(function () {
@@ -117,7 +181,7 @@
             });
         },
 
-        /* Импорт ZIP-файла в проект. Возвращает Promise. */
+        /* Импорт ZIP в проект (без проверки типа). Promise<Project>. */
         importInto: function (project, file) {
             if (!project) return Promise.reject(new Error('No project'));
 
@@ -127,28 +191,26 @@
                 var tasks = [];
                 var mainFromManifest = null;
                 var emptyDirs = {};
+                var manifest = null;
+
+                var projJson = zip.file('project.json');
+                if (projJson) {
+                    tasks.push(projJson.async('string').then(function (txt) {
+                        try { manifest = JSON.parse(txt); } catch (e) { manifest = null; }
+                        if (manifest && manifest.mainFile) mainFromManifest = manifest.mainFile;
+                    }));
+                }
 
                 zip.forEach(function (relPath, entry) {
-                    /* JSZip отдаёт директории с entry.dir === true.
-                       Запоминаем их, чтобы потом создать .keep. */
+                    if (relPath === 'project.json') return;
+
                     if (entry.dir) {
                         var dir = relPath.replace(/\/+$/, '');
                         if (dir) emptyDirs[dir] = true;
                         return;
                     }
 
-                    /* Пропускаем .keep, если он случайно есть в архиве. */
                     if (isKeep(relPath)) return;
-
-                    if (relPath === 'project.json') {
-                        tasks.push(entry.async('string').then(function (txt) {
-                            try {
-                                var m = JSON.parse(txt);
-                                if (m && m.mainFile) mainFromManifest = m.mainFile;
-                            } catch (e) { /* ignore */ }
-                        }));
-                        return;
-                    }
 
                     var e = extOf(relPath);
                     var isImage = /^(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/.test(e);
@@ -171,8 +233,6 @@
                 });
 
                 return Promise.all(tasks).then(function () {
-                    /* Создаём .keep для каждой папки, которая в архиве
-                       оказалась пустой (не содержит файлов). */
                     for (var dir in emptyDirs) {
                         if (!emptyDirs.hasOwnProperty(dir)) continue;
                         var prefix = dir + '/';
@@ -193,6 +253,10 @@
                     if (mainFromManifest && project.files[mainFromManifest]) {
                         project.mainFile = mainFromManifest;
                     }
+
+                    /* Сохраняем обработанный манифест на проекте, чтобы
+                       ProjectManager мог восстановить режим и componentData. */
+                    project._lastImportedManifest = manifest;
                     return project;
                 });
             });
