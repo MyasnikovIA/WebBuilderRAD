@@ -348,3 +348,88 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahom
     font-family: 'Consolas', 'Courier New', monospace;
     font-size: 11px;
 }
+
+/* ============================================================
+   Project panel + splitter (project management)
+   ============================================================ */
+
+.wb-project-bar {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 4px;
+    background: var(--wb-panel-head-bg, #dfe4e8);
+    border-bottom: 1px solid var(--wb-border, #c0c0c0);
+    flex: 0 0 auto;
+}
+
+.wb-project-combo {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 11px;
+    padding: 2px 4px;
+    border: 1px solid var(--wb-input-border, #b0b0b0);
+    background: var(--wb-input-bg, #fff);
+    color: var(--wb-text, #222);
+    border-radius: 3px;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+.wb-project-combo:focus {
+    border-color: var(--wb-input-focus, #1e88e5);
+    outline: none;
+}
+
+.wb-project-btn {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 14px;
+    line-height: 1;
+    font-weight: bold;
+    color: #333;
+    background: var(--wb-input-bg, #fafafa);
+    border: 1px solid var(--wb-input-border, #b0b0b0);
+    border-radius: 3px;
+    cursor: pointer;
+    box-sizing: border-box;
+    user-select: none;
+}
+.wb-project-btn:hover { background: var(--wb-hover-bg, #e0eefb); }
+.wb-project-btn:active { background: var(--wb-selected-bg, #cce4f7); }
+
+.wb-project-tree {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 3px 4px;
+    background: var(--wb-panel-bg, #fff);
+    min-height: 0;
+    font-family: Consolas, monospace;
+    font-size: 11px;
+}
+
+/* Project file tree items */
+.wb-ptree { list-style: none; margin: 0; padding: 0; }
+.wb-ptree ul { list-style: none; margin: 0; padding-left: 14px; }
+.wb-ptree-root { padding-left: 0 !important; }
+.wb-ptree li { white-space: nowrap; line-height: 16px; }
+
+.wb-ptree-folder { color: #5e35b1; font-weight: 600; }
+.wb-ptree-file   { color: #333; }
+.wb-ptree-main   { color: #d97706; font-weight: bold; }
+
+/* Splitter */
+.wb-panel-splitter {
+    flex: 0 0 5px;
+    cursor: row-resize;
+    background: var(--wb-border, #d0d0d0);
+    border-top: 1px solid var(--wb-border, #c0c0c0);
+    border-bottom: 1px solid var(--wb-border, #c0c0c0);
+    box-sizing: border-box;
+}
+.wb-panel-splitter:hover,
+.wb-panel-splitter.wb-active {
+    background: var(--wb-accent, #1e88e5);
+}

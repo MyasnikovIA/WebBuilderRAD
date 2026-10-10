@@ -24,17 +24,35 @@
             });
         }
 
+        /* ---------- Project management ---------- */
+        if (global.ProjectManager) {
+            var projectManager = new global.ProjectManager({
+                comboSel:  '#wb-project-combo',
+                treeSel:   '#wb-project-tree',
+                btnNewSel: '#wb-project-new',
+                btnDelSel: '#wb-project-del'
+            });
+            if (global.IDE) global.IDE.projectManager = projectManager;
+            global.ProjectManagerInstance = projectManager;
+        }
+
+        /* ---------- Panel splitter (project panel / palette) ---------- */
+        if (global.PanelSplitter) {
+            new global.PanelSplitter({
+                topSel:       '#wb-project-panel',
+                splitSel:     '#wb-panel-splitter',
+                containerSel: '#wb-right-panel',
+                minTop:       80,
+                minBottom:    120
+            });
+        }
+
         var clipboard = null;
 
-        /* ---------- Переключение вкладок Scene / Code ----------
-           При уходе с Code, если есть несохранённые правки —
-           сначала применяем их в canvas, только потом переключаем вкладку.
-           Если применение не удалось — вкладка НЕ переключается. */
+        /* ---------- Переключение вкладок Scene / Code ---------- */
         $('#wb-center-tabs').delegate('.wb-center-tab', 'click', function () {
             var paneName = $(this).attr('data-pane');
 
-            /* Автоматический Apply при клике на Scene,
-               если есть несохранённые изменения в редакторе Code. */
             if (codeView &&
                 paneName !== 'code' &&
                 codeView.isActive() &&
@@ -86,6 +104,9 @@
             var m1 = mini.get('wb-contextmenu'); if (m1) m1.hide();
             var m2 = mini.get('wb-treemenu');   if (m2) m2.hide();
             var m3 = mini.get('wb-rootmenu');   if (m3) m3.hide();
+            var m4 = mini.get('wb-pfilemenu');  if (m4) m4.hide();
+            var m5 = mini.get('wb-pfoldermenu');if (m5) m5.hide();
+            var m6 = mini.get('wb-prootmenu');  if (m6) m6.hide();
         });
 
         EventBus.on('canvas:selection:reset', function () {
@@ -93,9 +114,7 @@
             if (t) t.textContent = '—';
         });
 
-        /* ---------- Глобальные хоткеи ----------
-           Если фокус в текстовом поле / contentEditable — не перехватываем
-           клавиши: пользователь вводит текст, а не управляет IDE. */
+        /* ---------- Глобальные хоткеи ---------- */
         function isTextInputFocused() {
             var el = document.activeElement;
             if (!el || el === document.body || el === document.documentElement) return false;
@@ -107,9 +126,6 @@
 
         $(document).keydown(function (e) {
             if (canvas.designMode && document.activeElement === canvas.iframe) return;
-
-            /* Не перехватываем клавиши, когда пользователь печатает
-               в текстовом поле (Code, Inspector, модальные окна). */
             if (isTextInputFocused()) return;
 
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
@@ -118,7 +134,7 @@
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
             else if (e.keyCode === 46) { App.cmd('delete'); }
-            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }   /* F9 */
+            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }
         });
 
         function moveSel(dx, dy, resize) {
@@ -264,9 +280,6 @@
             });
         }
 
-        /* M2: <component …/> → <component …></component>.
-           HTML-парсер игнорирует '/>' у нестандартного тега <component>,
-           из-за чего соседние компоненты вкладываются друг в друга. */
         var COMPONENT_SELF_CLOSE_RE = /<component((?:\s+[^<>]*?)?)\s*\/>/g;
         function expandSelfClosingComponentTags(str) {
             return String(str).replace(COMPONENT_SELF_CLOSE_RE, function (m, attrs) {
@@ -286,7 +299,6 @@
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
-            /* ---------- Запуск предпросмотра в новом окне ---------- */
             run: function () {
                 if (global.RunPreview) {
                     global.RunPreview.run();
@@ -294,8 +306,6 @@
                     alert('Модуль RunPreview не подключён.');
                 }
             },
-
-            /* ---------- Тема оформления ---------- */
 
             setTheme: function (theme) {
                 if (theme !== 'light' && theme !== 'dark') theme = 'light';
@@ -323,15 +333,25 @@
                 App.setTheme(App.getTheme() === 'dark' ? 'light' : 'dark');
             },
 
-            /* ---------- HTML ---------- */
-
+            /* ---- New — с проверкой несохранённых правок проекта ---- */
             new: function () {
+                var pm = global.ProjectManagerInstance;
+                if (pm && pm.editing) {
+                    if (!pm._confirmSwitchFrom(canvas)) return;
+                }
                 if (!confirm('Очистить холст?')) return;
                 clipboard = null;
+                if (pm) pm.stopEditing();
                 canvas.reset();
             },
 
+            /* ---- Load HTML — с проверкой несохранённых правок проекта ---- */
             load: function () {
+                var pm = global.ProjectManagerInstance;
+                if (pm && pm.editing) {
+                    if (!pm._confirmSwitchFrom(canvas)) return;
+                }
+
                 var editor = new CodeEditor({ value: '', language: 'xml' });
 
                 Modal.open({
@@ -344,6 +364,7 @@
                             return;
                         }
                         try {
+                            if (pm) pm.stopEditing();
                             canvas.loadHtml(html);
                         } catch (ex) {
                             alert('Ошибка загрузки HTML: ' + ex.message);
@@ -366,8 +387,6 @@
                 });
             },
 
-            /* ---------- JSON ---------- */
-
             saveJson: function () {
                 if (global.FormJSON) {
                     global.FormJSON.save(canvas);
@@ -383,8 +402,6 @@
                     alert('Модуль FormJSON не подключён.');
                 }
             },
-
-            /* ---------- Остальные команды ---------- */
 
             undo: function () { History.undo(); },
             redo: function () { History.redo(); },
