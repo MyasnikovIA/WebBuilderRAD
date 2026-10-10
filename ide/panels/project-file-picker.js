@@ -52,14 +52,20 @@
 
                 for (var p in files) {
                     if (!files.hasOwnProperty(p)) continue;
-                    if (p === '.keep' || /(^|\/)\.keep$/.test(p)) continue;
                     if (searchPrefix && p.indexOf(searchPrefix) !== 0) continue;
 
                     var rest = prefix ? p.substring(searchPrefix.length) : p;
                     if (!rest) continue;
+
                     var slash = rest.indexOf('/');
-                    if (slash < 0) fileList.push(rest);
-                    else folders[rest.substring(0, slash)] = true;
+                    if (slash < 0) {
+                        /* .keep в корне — служебный, не показываем как файл. */
+                        if (rest === '.keep') continue;
+                        fileList.push(rest);
+                    } else {
+                        /* folder/.keep тоже создаёт папку folder — это правильно. */
+                        folders[rest.substring(0, slash)] = true;
+                    }
                 }
 
                 var folderNames = Object.keys(folders).sort();

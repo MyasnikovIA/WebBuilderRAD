@@ -83,3 +83,55 @@
 .wb-panel-splitter.wb-active {
     background: var(--wb-accent, #1e88e5);
 }
+
+/* ============================================================
+   Multi-select + drag-and-drop в дереве проекта (ProjectTree)
+   ============================================================ */
+
+/* Выделение — те же правила, что и в tree.css, но усилены для проекта. */
+.wb-project-tree .wb-tree-label.wb-selected {
+    background: var(--wb-accent, #1e88e5) !important;
+    color: #ffffff !important;
+}
+
+/* Источник(и) в момент drag. */
+.wb-project-tree .wb-tree-label.wb-dragging {
+    opacity: 0.4;
+}
+
+/* Drop на папку / файл-цель. */
+.wb-project-tree .wb-tree-label.wb-drop-inside {
+    background: #c8e6ff !important;
+    color: #0d47a1 !important;
+    outline: 1px dashed #1e88e5;
+    outline-offset: -1px;
+}
+
+/* Недопустимый drop. */
+.wb-project-tree .wb-tree-label.wb-drop-forbidden {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background: #ffebee !important;
+}
+
+/* Drop в пустое место = перемещение в корень проекта. */
+.wb-project-tree.wb-drop-root {
+    background: rgba(30, 136, 229, 0.08);
+    outline: 2px dashed #1e88e5;
+    outline-offset: -2px;
+}
+
+/* Тёмная тема — только для drop-индикаторов (selected/dragging совпадают). */
+[data-wb-theme="dark"] .wb-project-tree .wb-tree-label.wb-drop-inside {
+    background: #094771 !important;
+    color: #ffffff !important;
+    outline-color: #0e639c;
+}
+[data-wb-theme="dark"] .wb-project-tree .wb-tree-label.wb-drop-forbidden {
+    background: #3a1d1d !important;
+    color: #f48771 !important;
+}
+[data-wb-theme="dark"] .wb-project-tree.wb-drop-root {
+    background: rgba(14, 99, 156, 0.15);
+    outline-color: #0e639c;
+}
