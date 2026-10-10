@@ -13,14 +13,16 @@
      пустой src → добавляется класс ctrl_hidden
 
    Атрибуты:
-     src      — источник (URL, id lob-файла, data-URL).
+     src      — источник (URL, id lob-файла, data-URL, путь к файлу проекта).
      lob      — 'true' — источник через -file_lob (БД).
      mtype    — MIME-тип для lob-режима.
      tabindex — tabindex.
      alt      — альтернативный текст (стандартный HTML, сервер передаёт как есть).
 
    В IDE: видимый компонент; в canvas показывается реальная картинка
-   (или плейсхолдер, если src пуст). */
+   (или плейсхолдер, если src пуст).
+   Поле src использует тип 'FILE' — можно выбрать файл из текущего
+   проекта или ввести путь вручную. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
@@ -109,12 +111,14 @@
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name',    caption: 'Name',    type: 'string',  attr: true },
             {
-                name: 'src', caption: 'Src', type: 'string', attr: true,
+                name: 'src', caption: 'Src (файл проекта или URL)',
+                type: 'FILE', attr: true,
                 get: function (el) { return getSrc(el); },
                 set: function (el, v) { setSrc(el, v); }
             },
             {
-                name: 'value', caption: 'Value (alias Src)', type: 'string', attr: true,
+                name: 'value', caption: 'Value (alias Src)',
+                type: 'FILE', attr: true,
                 get: function (el) { return getSrc(el); },
                 set: function (el, v) { setSrc(el, v); }
             },

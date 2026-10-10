@@ -168,8 +168,6 @@
        ============================================================ */
     var _idCounter = 0;
 
-    /* Единый фильтр дочерних элементов дерева — используется и в
-       _build, и в _collapseSubtree, чтобы поведение совпадало. */
     function collectTreeKids(el) {
         var kids = [];
         for (var i = 0; i < el.children.length; i++) {
@@ -203,8 +201,6 @@
         });
         bus.on('canvas:changed',   function () { self.rebuild(); });
         bus.on('canvas:refreshed', function (e) {
-            /* collapseTree !== false → сворачиваем всё (Load HTML, New).
-               collapseTree === false → сохраняем раскрытие (Apply из Code). */
             if (!e || e.collapseTree !== false) {
                 self._collapseAll = true;
             }
@@ -1108,15 +1104,19 @@
         return row;
     };
 
+    /* -------- Редактор поля инспектора -------- */
     Inspector.prototype._editor = function (tab, f) {
         var self = this, t = f.type || 'string', val = self._get(tab, f);
         var commit = function (v) { self._set(tab, f, v); };
 
+        /* ---------- boolean ---------- */
         if (t === 'boolean') {
             var cb = $('<input type="checkbox">').prop('checked', !!val);
             cb.change(function () { commit(cb.prop('checked')); });
             return cb;
         }
+
+        /* ---------- enum ---------- */
         if (t === 'enum') {
             var sel = $('<select></select>');
             (f.values || []).forEach(function (v) {
@@ -1126,15 +1126,19 @@
             sel.change(function () { commit(sel.val()); });
             return sel;
         }
+
+        /* ---------- color ---------- */
         if (t === 'color') {
-            var wrap = $('<div class="wb-color"></div>');
+            var wrapC = $('<div class="wb-color"></div>');
             var ci = $('<input type="color">').val(val || '#000000');
             var ti = $('<input type="text" class="wb-color-text">').val(val || '');
             ci.change(function () { ti.val(ci.val()); commit(ci.val()); });
             ti.change(function () { ci.val(ti.val() || '#000000'); commit(ti.val()); });
-            wrap.append(ci).append(ti);
-            return wrap;
+            wrapC.append(ci).append(ti);
+            return wrapC;
         }
+
+        /* ---------- length ---------- */
         if (t === 'length') {
             var lw = $('<div class="wb-length"></div>');
             var num = val ? parseFloat(val) : '';
@@ -1155,16 +1159,68 @@
             lw.append(ni).append(us);
             return lw;
         }
+
+        /* ---------- number ---------- */
         if (t === 'number') {
             var nn = $('<input type="number">').val(val === '' ? '' : val);
             nn.change(function () { commit(nn.val()); });
             return nn;
         }
+
+        /* ---------- FILE ---------- *
+           input + кнопка «…» — открывает модальный навигатор
+           по файлам текущего проекта. Значение — относительный путь. */
+        if (t === 'FILE') {
+            var fw = $('<div class="wb-file"></div>');
+            var fInp = $('<input type="text">').val(val == null ? '' : val);
+            var fBtn = $('<button type="button" class="wb-file-btn" title="Выбрать файл из проекта">…</button>');
+            fInp.change(function () { commit(fInp.val()); });
+            fBtn.click(function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!global.ProjectFilePicker) {
+                    alert('Модуль ProjectFilePicker не подключён.');
+                    return;
+                }
+                global.ProjectFilePicker.open({
+                    value: fInp.val() || '',
+                    onPick: function (path) {
+                        fInp.val(path);
+                        commit(path);
+                    }
+                });
+            });
+            fw.append(fInp).append(fBtn);
+            return fw;
+        }
+
+        /* ---------- text (многострочный) ---------- *
+           По двойному клику открывается CodeEditor в модальном окне. */
         if (t === 'text') {
-            var ta = $('<textarea rows="3" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:11px;border:1px solid #c0c0c0;"></textarea>').val(val || '');
+            var ta = $('<textarea rows="3" style="width:100%;box-sizing:border-box;' +
+                'font-family:inherit;font-size:11px;border:1px solid #c0c0c0;"></textarea>')
+                .val(val || '');
             ta.change(function () { commit(ta.val()); });
+            ta.dblclick(function () {
+                var editor = new CodeEditor({
+                    value: ta.val() || '',
+                    language: 'plaintext'
+                });
+                Modal.open({
+                    title: (f.caption || f.name) + ' — Edit',
+                    content: editor.el,
+                    onOk: function () {
+                        var v = editor.getValue();
+                        ta.val(v);
+                        commit(v);
+                    }
+                });
+                setTimeout(function () { editor.focus(); }, 50);
+            });
             return ta;
         }
+
+        /* ---------- image ---------- */
         if (t === 'image') {
             var iw = $('<div style="display:flex;width:100%;gap:4px;align-items:center;"></div>');
             var iInp = $('<input type="text">').val(val == null ? '' : val);
@@ -1179,6 +1235,8 @@
             iw.append(iInp).append(iBtn);
             return iw;
         }
+
+        /* ---------- images ---------- */
         if (t === 'images') {
             var mBtn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             mBtn.click(function () {
@@ -1190,23 +1248,33 @@
             return mBtn;
         }
 
+        /* ---------- code (события) ---------- */
         if (t === 'code' && tab === 'events') {
             return self._buildEventEditor(f, val, commit);
         }
 
+        /* ---------- code (обычный) ---------- *
+           Кнопка Edit… — открывает CodeEditor в модальном окне.
+           Также по двойному клику на кнопке. */
         if (t === 'code') {
             var btn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn.click(function () {
                 var current = self._get(tab, f);
-                var ed = $('<textarea class="wb-code-editor"></textarea>').val(current);
+                var editor = new CodeEditor({
+                    value: current || '',
+                    language: f.language || 'javascript'
+                });
                 Modal.open({
                     title: f.caption || f.name,
-                    content: ed[0],
-                    onOk: function () { commit(ed.val()); }
+                    content: editor.el,
+                    onOk: function () { commit(editor.getValue()); }
                 });
+                setTimeout(function () { editor.focus(); }, 50);
             });
             return btn;
         }
+
+        /* ---------- code-editor ---------- */
         if (t === 'code-editor') {
             var btn2 = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn2.click(function () {
@@ -1227,8 +1295,32 @@
             });
             return btn2;
         }
+
+        /* ---------- string (по умолчанию) ---------- *
+           Если задан массив suggest — добавляем datalist
+           для автодополнения. */
         var inp = $('<input type="text">').val(val == null ? '' : val);
         inp.change(function () { commit(inp.val()); });
+
+        if (f.suggest && f.suggest.length) {
+            var listId = 'wb-sug-' + Math.floor(Math.random() * 1e9);
+            var dl = document.createElement('datalist');
+            dl.id = listId;
+            for (var si = 0; si < f.suggest.length; si++) {
+                var opt = document.createElement('option');
+                opt.value = String(f.suggest[si]);
+                dl.appendChild(opt);
+            }
+            inp.attr('list', listId);
+            inp[0].setAttribute('list', listId);
+
+            var wrapNode = document.createElement('div');
+            wrapNode.className = 'wb-suggest';
+            wrapNode.appendChild(inp[0]);
+            wrapNode.appendChild(dl);
+            return $(wrapNode);
+        }
+
         return inp;
     };
 
@@ -1311,7 +1403,6 @@
         return evRow;
     };
 
-    /* Определить: элемент относится к M2-нотации? */
     function isM2Element(el) {
         if (!el || el.nodeType !== 1) return false;
         if (!el.getAttribute) return false;
@@ -1319,10 +1410,6 @@
         return !!el.getAttribute('cmptype');
     }
 
-    /* Найти подходящий контейнер для нового скрипта.
-       D3 → <cmpScript>. M2 → <component cmptype="Script">.
-       Если нужного нет — создать в начале корневого контейнера.
-       Возвращает { node, isFormFunc, created }. */
     function findOrCreateScriptContainer(doc, canvas, isM2) {
         if (isM2) {
             var m2Script = doc.querySelector('component[cmptype="Script"]');
