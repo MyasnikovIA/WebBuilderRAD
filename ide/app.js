@@ -134,7 +134,8 @@
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
             else if (e.keyCode === 46) { App.cmd('delete'); }
-            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }
+            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }         /* F9 — форма */
+            else if (e.keyCode === 121) { App.cmd('runProject'); e.preventDefault(); }  /* F10 — проект */
         });
 
         function moveSel(dx, dy, resize) {
@@ -306,7 +307,13 @@
                     alert('Модуль RunPreview не подключён.');
                 }
             },
-
+            runProject: function () {
+                if (global.ProjectRunner) {
+                    global.ProjectRunner.run();
+                } else {
+                    alert('Модуль ProjectRunner не подключён.');
+                }
+            },
             setTheme: function (theme) {
                 if (theme !== 'light' && theme !== 'dark') theme = 'light';
                 document.documentElement.setAttribute('data-wb-theme', theme);

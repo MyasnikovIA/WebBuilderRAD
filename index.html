@@ -53,7 +53,8 @@
             <a class="mini-menubutton" plain="true" menu="#viewMenu">View</a>
             <span class="mini-separator"></span>
             <a class="mini-button" iconCls="icon-save" onclick="App.cmd('save')">Save HTML</a>
-            <a class="mini-button" onclick="App.cmd('run')" title="Run — предпросмотр в новом окне (F9)">&#9654; Run</a>
+            <a class="mini-button" onclick="App.cmd('run')" title="Run — запуск редактируемой формы (F9)">&#9654; Run</a>
+            <a class="mini-button" onclick="App.cmd('runProject')" title="Run Project — запуск с главного файла проекта (F10)">&#9654;&#9654; Run Project</a>
             <a class="mini-button" onclick="App.cmd('undo')" title="Ctrl+Z">Undo</a>
             <a class="mini-button" onclick="App.cmd('redo')" title="Ctrl+Y">Redo</a>
             <a class="mini-button" onclick="App.cmd('designMode')" title="Toggle Design Mode">Design Mode</a>
@@ -161,6 +162,7 @@
     <li iconCls="icon-open" onclick="App.cmd('load')">Load HTML…</li>
     <li iconCls="icon-save" onclick="App.cmd('save')">Save HTML</li>
     <li onclick="App.cmd('run')">Run (Preview in new window)</li>
+    <li onclick="App.cmd('runProject')">Run Project (from main file)…</li>
     <li class="separator"></li>
     <li onclick="App.cmd('loadJson')">Load Form JSON…</li>
     <li onclick="App.cmd('saveJson')">Save Form JSON…</li>
@@ -318,6 +320,7 @@
 <script src="ide/panels/inspector-events.js"></script>
 <script src="ide/form-json.js"></script>
 <script src="ide/run-preview.js"></script>
+<script src="ide/project-runner.js"></script>
 
 <!-- =========================================================
      Project management (новое)
