@@ -1,6 +1,7 @@
 /* M2 Button — компонент <component cmptype="Button">.
 
-   Регистрация через M2.register — гарантированно попадает в категорию M2. */
+   Поле icon имеет тип FILE — картинка выбирается из текущего проекта
+   или вводится как URL вручную. */
 (function (global) {
     'use strict';
     var M2 = global.M2;
@@ -79,7 +80,7 @@
                 values: ['', 'primary', 'micro'] },
             { name: 'width',      caption: 'Width',      type: 'string',  attr: true },
             { name: 'height',     caption: 'Height',     type: 'string',  attr: true },
-            { name: 'icon',       caption: 'Icon',       type: 'string',  attr: true },
+            { name: 'icon',       caption: 'Icon (файл проекта или URL)', type: 'FILE', attr: true },
             { name: 'background', caption: 'Background', type: 'string',  attr: true },
             { name: 'popupmenu',  caption: 'PopupMenu',  type: 'string',  attr: true },
             { name: 'onlyicon',   caption: 'OnlyIcon',   type: 'boolean', attr: true },

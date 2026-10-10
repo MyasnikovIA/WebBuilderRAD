@@ -5,16 +5,8 @@
    Show() пишет XML-фрагмент <cmpModule …>…</cmpModule> в SetSysInfo(),
    ShowXML() подключает файл модуля и вызывает его функцию/класс.
 
-   Атрибуты:
-     name    — идентификатор модуля (обязателен).
-     module  — путь к модулю без расширения (например 'Test/Some/ModuleName').
-               Резолвится в Modules/<module>.mdl или Modules/<module>/index.php.
-     method  — имя метода класса (по умолчанию 'exec').
-     async   — 'true' | 'false' (по умолчанию 'false').
-
-   Дети: cmpModuleVar (переменные модуля).
-
-   В IDE: невидимый служебный компонент. */
+   Поле module имеет тип FILE: путь к модулю можно выбрать
+   из текущего проекта либо ввести вручную. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
@@ -44,32 +36,24 @@
             return el;
         },
 
-        /* Невидим в canvas — как и в рантайме. */
         preview: null,
 
-        /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
             { type: 'separator', caption: 'HTML attributes' },
             { name: 'id',    caption: 'Id',    type: 'string', attr: true },
             { name: 'class', caption: 'Class', type: 'string', attr: true },
             { name: 'style', caption: 'Style', type: 'string', attr: true },
 
-            /* --- D3 Base --- */
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name', caption: 'Name', type: 'string', attr: true },
 
-            /* --- Module --- */
             { type: 'separator', caption: 'Module' },
-            { name: 'module', caption: 'Module (path)', type: 'string', attr: true },
-            { name: 'method', caption: 'Method',        type: 'string', attr: true },
-            { name: 'async',  caption: 'Async',         type: 'boolean', attr: true }
+            { name: 'module', caption: 'Module (файл проекта или путь)', type: 'FILE', attr: true },
+            { name: 'method', caption: 'Method', type: 'string',  attr: true },
+            { name: 'async',  caption: 'Async',  type: 'boolean', attr: true }
         ],
 
-        /* ---------------- Events ---------------- */
         events: [],
-
-        /* ---------------- Styles ---------------- */
         styles: []
     });
 

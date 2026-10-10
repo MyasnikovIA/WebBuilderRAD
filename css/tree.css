@@ -1,0 +1,85 @@
+/* ============================================================
+   Общие стили деревьев (DomTree, Palette, ProjectTree).
+   Классы .wb-tree-* и .wb-toggle используются во всех деревьях.
+   ============================================================ */
+
+.wb-tree { list-style: none; margin: 0; padding: 0; }
+.wb-tree ul { list-style: none; margin: 0; padding-left: 16px; }
+.wb-tree-root { padding-left: 2px !important; }
+.wb-tree li { position: relative; white-space: nowrap; line-height: 16px; }
+
+/* --- Тумблеры «+ / −» --- */
+.wb-toggle {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    line-height: 10px;
+    text-align: center;
+    border: 1px solid #999;
+    background: #f0f0f0;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: bold;
+    margin-right: 3px;
+    user-select: none;
+    -webkit-user-select: none;
+    vertical-align: middle;
+    color: #333;
+    box-sizing: border-box;
+}
+.wb-toggle:hover { background: #e0eefb; border-color: #1e88e5; }
+.wb-toggle.wb-leaf { visibility: hidden; }
+
+/* --- Подписи узлов --- */
+.wb-tree-label {
+    display: inline-block;
+    padding: 1px 4px;
+    cursor: pointer;
+    border-radius: 2px;
+    white-space: nowrap;
+    font-family: Consolas, monospace;
+    font-size: 11px;
+    user-select: none;
+    -webkit-user-select: none;
+    vertical-align: middle;
+}
+.wb-tree-label:hover,
+.wb-tree-label.wb-hover { background: #e3f2fd; }
+.wb-tree-label.wb-selected { background: #1e88e5; color: #fff; }
+.wb-tree-label.wb-invisible { color: #888; font-style: italic; }
+.wb-tree-label.wb-invisible.wb-selected { color: #fff; }
+
+/* --- Подписи категорий и компонентов в палитре --- */
+.wb-cat-label {
+    font-weight: 600;
+    color: #333;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+}
+.wb-comp-label {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 11px;
+}
+.wb-comp-label.wb-active { background: #1e88e5; color: #fff; }
+
+/* --- Drag & Drop --- */
+.wb-tree-label.wb-dragging { opacity: 0.4; }
+.wb-tree-label.wb-drop-before { box-shadow: inset 0 2px 0 0 #1e88e5; }
+.wb-tree-label.wb-drop-after  { box-shadow: inset 0 -2px 0 0 #1e88e5; }
+.wb-tree-label.wb-drop-inside {
+    background: #c8e6ff !important;
+    outline: 1px dashed #1e88e5;
+    outline-offset: -1px;
+}
+.wb-tree-label.wb-drop-forbidden { cursor: not-allowed; }
+
+#wb-domtree.wb-drop-mode .wb-tree-label { cursor: copy; }
+
+/* --- Иконки компонентов в палитре --- */
+.wb-palette-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+    margin-right: 4px;
+}

@@ -17,8 +17,18 @@
         })();
     </script>
 
-    <!-- CSS -->
-    <link rel="stylesheet" href="css/app_ide.css">
+    <!-- CSS (загружается по модулям в правильном порядке) -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/tree.css">
+    <link rel="stylesheet" href="css/project.css">
+    <link rel="stylesheet" href="css/inspector.css">
+    <link rel="stylesheet" href="css/url-field.css">
+    <link rel="stylesheet" href="css/file-picker.css">
+    <link rel="stylesheet" href="css/code-editor.css">
+    <link rel="stylesheet" href="css/code-view.css">
+    <link rel="stylesheet" href="css/d3-preview.css">
+
+    <!-- Библиотеки и тема -->
     <link rel="stylesheet" href="lib/highlight/styles/dark.css" id="wb-hljs-theme">
     <link rel="stylesheet" href="lib/miniui/themes/default/miniui.css">
     <link rel="stylesheet" href="lib/miniui/themes/icons.css">
@@ -28,8 +38,7 @@
     <script src="lib/jquery-1.6.2.min.js"></script>
     <script src="lib/miniui/miniui.js"></script>
 
-    <!-- JSZip — для экспорта / импорта ZIP. Должен лежать в lib/jszip.min.js -->
-    <script src="lib/jszip.min.js"></script>
+    <!-- JSZip загружается лениво из ide/zip-utils.js (CDN). -->
 </head>
 <body>
 
@@ -522,10 +531,12 @@
 <script src="Component/m2/CustomFilter/CustomFilter.js"></script>
 <script src="Component/m2/Sort/Sort.js"></script>
 <script src="Component/m2/SortItem/SortItem.js"></script>
+
 <!-- =========================================================
      Bootstrap app
      ========================================================= -->
 <script src="ide/app.js"></script>
+<script src="ide/project-file-picker.js"></script>
 
 </body>
 </html>

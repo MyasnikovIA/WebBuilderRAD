@@ -5,12 +5,8 @@
      D3 Base         — базовые атрибуты контрола D3 (см. BaseCtrl.inc)
      Button          — специфичные атрибуты кнопки (см. ButtonCtrl.inc)
 
-   Все on*** живут во вкладке Events — редактор открывает код.
-   Стили (.ctrl_button, .primary, .ctrl_disable, .onlyicon) — во вкладке Styles.
-
-   Превью использует:
-     images/icon.png         — иконка палитры (16×16)
-     css/preview.css         — стиль платформенной кнопки */
+   Поле `icon` имеет тип FILE — можно выбрать картинку из проекта
+   или ввести URL вручную. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
@@ -70,9 +66,7 @@
             return wrap;
         },
 
-        /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
             { type: 'separator', caption: 'HTML attributes' },
             { name: 'id',       caption: 'Id',       type: 'string', attr: true },
             { name: 'class',    caption: 'Class',    type: 'string', attr: true },
@@ -80,31 +74,27 @@
             { name: 'title',    caption: 'Title',    type: 'string', attr: true },
             { name: 'tabindex', caption: 'TabIndex', type: 'number', attr: true },
 
-            /* --- D3 Base --- */
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name',     caption: 'Name',     type: 'string',  attr: true },
             { name: 'enabled',  caption: 'Enabled',  type: 'boolean', attr: true, default: true },
             { name: 'visible',  caption: 'Visible',  type: 'boolean', attr: true, default: true },
             { name: 'hint',     caption: 'Hint',     type: 'string',  attr: true },
 
-            /* --- Button --- */
             { type: 'separator', caption: 'Button' },
             { name: 'caption',    caption: 'Caption',    type: 'string',  attr: true },
             { name: 'type',       caption: 'Type',       type: 'enum',    attr: true,
                 values: ['', 'primary', 'micro'] },
             { name: 'width',      caption: 'Width',      type: 'string',  attr: true },
             { name: 'height',     caption: 'Height',     type: 'string',  attr: true },
-            { name: 'icon',       caption: 'Icon',       type: 'string',  attr: true },
+            { name: 'icon',       caption: 'Icon (файл проекта или URL)', type: 'FILE', attr: true },
             { name: 'background', caption: 'Background', type: 'string',  attr: true },
             { name: 'popupmenu',  caption: 'PopupMenu',  type: 'string',  attr: true },
             { name: 'onlyicon',   caption: 'OnlyIcon',   type: 'boolean', attr: true },
             { name: 'nominwidth', caption: 'NoMinWidth', type: 'boolean', attr: true }
         ],
 
-        /* ---------------- Events ---------------- */
         events: CS.EVENT_FIELDS.slice(),
 
-        /* ---------------- Styles ---------------- */
         styles: CS.STYLE_FIELDS.slice()
     });
 

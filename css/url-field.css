@@ -1,0 +1,104 @@
+/* ============================================================
+   URL-поля в Inspector: input + [миниатюра] + кнопка выбора файла.
+   Плюс автодополнение (datalist) для string/number-полей.
+
+   Все цвета — через CSS-переменные темы (см. css/theme.css).
+
+   ВАЖНО: flex: 1 1 0% + width: 0 гарантированно сжимает input,
+   чтобы кнопка «…» всегда была на одной строке с ним — независимо
+   от базового правила `.wb-row-value input[type="text"] { width:100% }`.
+   ============================================================ */
+
+.wb-row-value > .wb-file {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 3px !important;
+}
+
+.wb-file {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    gap: 3px;
+}
+
+.wb-file > input[type="text"] {
+    flex: 1 1 0% !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 22px !important;
+    padding: 2px 4px !important;
+    font-size: 11px !important;
+    font-family: inherit !important;
+    line-height: 16px !important;
+    box-sizing: border-box !important;
+    border: 1px solid var(--wb-input-border, #b0b0b0) !important;
+    background: var(--wb-input-bg, #fff) !important;
+    color: var(--wb-text, #222) !important;
+    border-radius: 2px !important;
+}
+.wb-file > input[type="text"]:focus {
+    border-color: var(--wb-input-focus, #1e88e5) !important;
+    outline: none !important;
+}
+
+.wb-file-thumb {
+    flex: 0 0 auto !important;
+    width: 22px !important;
+    height: 22px !important;
+    object-fit: contain !important;
+    border: 1px solid var(--wb-input-border, #b0b0b0) !important;
+    background: var(--wb-input-bg, #fff) !important;
+    box-sizing: border-box !important;
+    border-radius: 2px !important;
+}
+
+.wb-file-btn {
+    flex: 0 0 auto !important;
+    width: 22px !important;
+    height: 22px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-family: 'Segoe UI', Tahoma, sans-serif !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+    font-weight: bold !important;
+    color: var(--wb-text, #333) !important;
+    background: var(--wb-input-bg, #fafafa) !important;
+    border: 1px solid var(--wb-input-border, #b0b0b0) !important;
+    border-radius: 3px !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
+    display: inline-block !important;
+}
+.wb-file-btn:hover  { background: var(--wb-hover-bg, #e0eefb) !important; }
+.wb-file-btn:active { background: var(--wb-selected-bg, #cce4f7) !important; }
+
+/* --- datalist-подсказки — обёртка вокруг input (string, number) --- */
+.wb-suggest {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+.wb-suggest > input {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 2px 4px !important;
+    font-size: 11px !important;
+    font-family: inherit !important;
+    box-sizing: border-box !important;
+    border: 1px solid var(--wb-input-border, #b0b0b0) !important;
+    background: var(--wb-input-bg, #fff) !important;
+    color: var(--wb-text, #222) !important;
+    border-radius: 2px !important;
+}
+.wb-suggest > input:focus {
+    border-color: var(--wb-input-focus, #1e88e5) !important;
+    outline: none !important;
+}

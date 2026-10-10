@@ -10,16 +10,8 @@
      4. Вставляет результат в родителя через SetInnerText.
      5. Накапливает sysinfo (описание вложенной формы) в родителе.
 
-   Атрибуты:
-     name — идентификатор контрола (используется в sysinfo).
-     path — путь к подключаемой форме без расширения .frm.
-            Пример: 'Test/Fetch/Statistic/m2/add'.
-            Обязателен (иначе компонент ничего не делает).
-
-   Дети игнорируются — содержимое приходит из подключённой формы.
-
-   В IDE: в canvas отображается placeholder — блок «SubForm: <path>»
-   с подсказкой, что содержимое подгружается из указанной формы. */
+   Поле path имеет тип FILE: файл выбирается из текущего проекта
+   или вводится вручную (например, 'Test/Fetch/Statistic/m2/add'). */
 (function (global) {
     'use strict';
     var D3 = global.D3;
@@ -57,13 +49,12 @@
             if (w) wrap.style.width = w;
             if (h) wrap.style.minHeight = h;
 
-            /* Заголовок с иконкой */
             var header = doc.createElement('div');
             header.className = 'd3-preview-subform-header';
 
             var icon = doc.createElement('span');
             icon.className = 'd3-preview-subform-icon';
-            icon.textContent = '\u21B3'; /* ↳ */
+            icon.textContent = '\u21B3';
             header.appendChild(icon);
 
             var title = doc.createElement('span');
@@ -73,7 +64,6 @@
 
             wrap.appendChild(header);
 
-            /* Путь */
             var pathEl = doc.createElement('div');
             pathEl.className = 'd3-preview-subform-path';
             if (path) {
@@ -85,7 +75,6 @@
             }
             wrap.appendChild(pathEl);
 
-            /* Плейсхолдер «содержимое подгружается» */
             var placeholder = doc.createElement('div');
             placeholder.className = 'd3-preview-subform-placeholder';
             placeholder.textContent = 'содержимое подгружается из формы';
@@ -94,15 +83,12 @@
             return wrap;
         },
 
-        /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
             { type: 'separator', caption: 'HTML attributes' },
             { name: 'id',    caption: 'Id',    type: 'string', attr: true },
             { name: 'class', caption: 'Class', type: 'string', attr: true },
             { name: 'style', caption: 'Style', type: 'string', attr: true },
 
-            /* --- D3 Base --- */
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name',    caption: 'Name',    type: 'string',  attr: true },
             { name: 'enabled', caption: 'Enabled', type: 'boolean', attr: true },
@@ -111,23 +97,20 @@
             { name: 'width',   caption: 'Width',   type: 'string',  attr: true },
             { name: 'height',  caption: 'Height',  type: 'string',  attr: true },
 
-            /* --- SubForm --- */
             { type: 'separator', caption: 'SubForm' },
             {
                 name: 'path',
-                caption: 'Path (форма без .frm)',
-                type: 'string',
+                caption: 'Path (.frm — файл проекта)',
+                type: 'FILE',
                 attr: true
             }
         ],
 
-        /* ---------------- Events ---------------- */
         events: [
             { name: 'onclick',    caption: 'OnClick',    type: 'code' },
             { name: 'ondblclick', caption: 'OnDblClick', type: 'code' }
         ],
 
-        /* ---------------- Styles ---------------- */
         styles: CS.STYLE_FIELDS.slice()
     });
 

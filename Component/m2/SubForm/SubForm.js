@@ -1,4 +1,7 @@
-/* M2 SubForm — <component cmptype="SubForm">. */
+/* M2 SubForm — <component cmptype="SubForm">.
+
+   Поле path имеет тип FILE — файл .frm выбирается из текущего проекта
+   или вводится вручную. */
 (function (global) {
     'use strict';
     var M2 = global.M2;
@@ -45,7 +48,7 @@
             { name: 'height',  caption: 'Height',  type: 'string',  attr: true },
 
             { type: 'separator', caption: 'SubForm' },
-            { name: 'path', caption: 'Path (.frm)', type: 'string', attr: true }
+            { name: 'path', caption: 'Path (.frm — файл проекта)', type: 'FILE', attr: true }
         ],
 
         events: CS.EVENT_FIELDS.slice(),

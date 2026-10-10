@@ -1,4 +1,7 @@
-/* M2 Image — <component cmptype="Image">. */
+/* M2 Image — <component cmptype="Image">.
+
+   Поле src имеет тип FILE — картинка выбирается из текущего проекта
+   или вводится как URL вручную. */
 (function (global) {
     'use strict';
     var M2 = global.M2;
@@ -61,7 +64,7 @@
             { name: 'height',  caption: 'Height',  type: 'string',  attr: true },
 
             { type: 'separator', caption: 'Image' },
-            { name: 'src',   caption: 'Src',   type: 'string',  attr: true },
+            { name: 'src',   caption: 'Src (файл проекта или URL)', type: 'FILE', attr: true },
             { name: 'lob',   caption: 'LOB',   type: 'boolean', attr: true },
             { name: 'mtype', caption: 'MIME',  type: 'string',  attr: true }
         ],

@@ -1,4 +1,4 @@
-/* DomTree, Palette, Inspector. */
+/* DomTree, Palette, Inspector + встроенный ProjectFilePicker. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -50,8 +50,57 @@
     };
 
     /* ============================================================
-       Извлечение JS-функций из D3 cmpScript / M2 component[cmptype="Script"]
-       / inline <script> формы.
+       Имена полей, которые трактуются как «ссылка на файл/ресурс»:
+       к ним автоматически добавляется кнопка выбора файла из проекта.
+       Отключить автодетект: { name: 'data', type: 'string', filePicker: false }
+       ============================================================ */
+    var FILE_LIKE_NAMES = {
+        'src': 1, 'href': 1, 'action': 1, 'srcset': 1, 'poster': 1,
+        'icon': 1, 'path': 1, 'module': 1, 'url': 1, 'link': 1, 'file': 1,
+        'formaction': 1, 'cite': 1, 'longdesc': 1, 'usemap': 1, 'codebase': 1,
+        'manifest': 1, 'ping': 1, 'download': 1, 'profile': 1, 'archive': 1,
+        'classid': 1, 'background': 1, 'img': 1, 'image': 1,
+        'content': 1, 'logo': 1
+    };
+
+    var IMAGE_LIKE_NAMES = {
+        'src': 1, 'poster': 1, 'icon': 1, 'logo': 1, 'img': 1, 'image': 1
+    };
+
+    function isFileField(f) {
+        if (!f) return false;
+        if (f.filePicker === false) return false;
+        if (f.type === 'FILE') return true;
+        if (f.type === 'image') return true;
+        if (f.type === 'string' || !f.type) {
+            var n = String(f.name || '').toLowerCase();
+            if (FILE_LIKE_NAMES[n]) return true;
+        }
+        return false;
+    }
+
+    function isImageField(f) {
+        if (!f) return false;
+        if (f.type === 'image') return true;
+        var n = String(f.name || '').toLowerCase();
+        return !!IMAGE_LIKE_NAMES[n];
+    }
+
+    function resolvePreviewSrc(value) {
+        if (!value) return '';
+        var v = String(value);
+        if (/^data:/i.test(v)) return v;
+        if (/^https?:\/\//i.test(v)) return v;
+        var pm = global.IDE && global.IDE.projectManager;
+        if (pm && pm.current && pm.current.files) {
+            var f = pm.current.files[v];
+            if (f && f.content) return f.content;
+        }
+        return '';
+    }
+
+    /* ============================================================
+       Извлечение JS-функций из cmpScript / component[cmptype="Script"]
        ============================================================ */
 
     function parseArgsList(raw) {
@@ -65,9 +114,7 @@
         var out = args.slice();
         if (out.length > 0) {
             var first = out[0];
-            if (first === 'dom' || /^_this/i.test(first)) {
-                out[0] = 'this';
-            }
+            if (first === 'dom' || /^_this/i.test(first)) out[0] = 'this';
         }
         return name + '(' + out.join(', ') + ');';
     }
@@ -102,23 +149,15 @@
             if (!name || seen[name]) return;
             seen[name] = 1;
             var args = parseArgsList(argsRaw);
-            out.push({
-                name: name,
-                args: args,
-                call: buildCallSignature(name, args)
-            });
+            out.push({ name: name, args: args, call: buildCallSignature(name, args) });
         }
 
         var reAssign = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*=\s*function\s*\(([^)]*)\)/g;
         var m;
-        while ((m = reAssign.exec(combined)) !== null) {
-            add(m[1], m[2]);
-        }
+        while ((m = reAssign.exec(combined)) !== null) add(m[1], m[2]);
 
         var reFunc = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g;
-        while ((m = reFunc.exec(combined)) !== null) {
-            add(m[1], m[2]);
-        }
+        while ((m = reFunc.exec(combined)) !== null) add(m[1], m[2]);
 
         out.sort(function (a, b) {
             var pa = eventNamePriority(a.name);
@@ -153,7 +192,6 @@
         var esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         var re1 = new RegExp('\\b' + esc + '\\s*=\\s*function');
         if (re1.test(code)) return true;
-
         var lastSeg = String(name).split('.').pop();
         if (lastSeg && lastSeg !== name) {
             var escLast = lastSeg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -201,9 +239,7 @@
         });
         bus.on('canvas:changed',   function () { self.rebuild(); });
         bus.on('canvas:refreshed', function (e) {
-            if (!e || e.collapseTree !== false) {
-                self._collapseAll = true;
-            }
+            if (!e || e.collapseTree !== false) self._collapseAll = true;
             self.rebuild();
         });
         bus.on('selection:changed',function (e) { self.highlight(e.element); });
@@ -246,12 +282,8 @@
         function walk(el, path, isRoot) {
             if (!el || el.nodeType !== 1) return;
             var kids = collectTreeKids(el);
-            if (kids.length > 0 && !isRoot) {
-                self._collapsed[path] = true;
-            }
-            for (var j = 0; j < kids.length; j++) {
-                walk(kids[j], path + '.' + j, false);
-            }
+            if (kids.length > 0 && !isRoot) self._collapsed[path] = true;
+            for (var j = 0; j < kids.length; j++) walk(kids[j], path + '.' + j, false);
         }
         walk(root, 'r', true);
     };
@@ -278,7 +310,6 @@
 
         $root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-
         this._build(startEl, ul, 'r');
         $root.append(ul);
 
@@ -312,7 +343,6 @@
         var isHidden = (el.tagName && ['CMPACTION','CMPDATASET','CMPSCRIPT','CMPMASK','CMPBROKER','CMPTAGITEM'].indexOf(el.tagName) >= 0);
 
         var nid = this._nid(el);
-
         var kids = collectTreeKids(el);
         var hasKids = kids.length > 0;
         var collapsed = !!this._collapsed[collKey];
@@ -350,7 +380,6 @@
         });
 
         label.bind('mouseenter', function () { label.addClass('wb-hover'); });
-
         label.bind('mousemove', function (e) {
             if (!self.canvas || !self.canvas.pending) return;
             if (self._dragEl) return;
@@ -359,7 +388,6 @@
             self._clearIndicators();
             label.addClass('wb-drop-' + zone);
         });
-
         label.bind('mouseleave', function () {
             label.removeClass('wb-hover');
             label.removeClass('wb-drop-before wb-drop-after wb-drop-inside');
@@ -551,21 +579,13 @@
             if (isRoot) {
                 if (self.canvas && !self.canvas.designMode) self.canvas.select(el);
                 var native = e.originalEvent || e;
-                bus.emit('contextmenu:root', {
-                    x: native.clientX,
-                    y: native.clientY,
-                    rootType: rootType
-                });
+                bus.emit('contextmenu:root', { x: native.clientX, y: native.clientY, rootType: rootType });
                 return false;
             }
 
             if (self.canvas && !self.canvas.designMode) self.canvas.select(el);
             var native2 = e.originalEvent || e;
-            bus.emit('contextmenu:tree', {
-                x: native2.clientX,
-                y: native2.clientY,
-                element: el
-            });
+            bus.emit('contextmenu:tree', { x: native2.clientX, y: native2.clientY, element: el });
             return false;
         });
     };
@@ -726,7 +746,6 @@
         var self = this;
         this.root.empty();
         var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-
         var tree = ComponentRegistry.categoryTree();
 
         if (this._collapseAllOnRender) {
@@ -744,13 +763,11 @@
         for (var k = 0; k < tree.length; k++) {
             ul.append(self._renderTopCategory(tree[k]));
         }
-
         this.root.append(ul);
     };
 
     Palette.prototype._renderTopCategory = function (node) {
         var self = this;
-
         var visibleDirect = node.components.filter(function (c) { return !c.hidden; });
         var visibleSubs = [];
         for (var i = 0; i < node.subcategories.length; i++) {
@@ -772,13 +789,8 @@
         li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(node.name));
 
         var cul = $('<ul></ul>');
-
-        for (var d = 0; d < visibleDirect.length; d++) {
-            cul.append(self._renderComponentLi(visibleDirect[d]));
-        }
-        for (var s = 0; s < visibleSubs.length; s++) {
-            cul.append(self._renderSubCategoryLi(node.name, visibleSubs[s]));
-        }
+        for (var d = 0; d < visibleDirect.length; d++) cul.append(self._renderComponentLi(visibleDirect[d]));
+        for (var s = 0; s < visibleSubs.length; s++) cul.append(self._renderSubCategoryLi(node.name, visibleSubs[s]));
 
         if (collapsed) cul.hide();
         li.append(cul);
@@ -797,7 +809,6 @@
     Palette.prototype._renderSubCategoryLi = function (parentName, sub) {
         var self = this;
         var li = $('<li></li>');
-
         var catId = 'cat_' + parentName + '/' + sub.name;
         var collapsed = !!this._collapsed[catId];
 
@@ -904,6 +915,180 @@
     };
 
     /* ============================================================
+       ProjectFilePicker — встроенный модуль выбора файла из проекта.
+       Открывает модальное окно с деревом файлов текущего проекта.
+       Пользователь может кликнуть по файлу (или ввести путь вручную
+       в поле внизу) и подтвердить выбор.
+       ============================================================ */
+    var ProjectFilePicker = {
+        open: function (opts) {
+            opts = opts || {};
+            var pm = global.IDE && global.IDE.projectManager;
+            if (!pm || !pm.current) {
+                alert('Проект не выбран. Выберите проект в панели Project.');
+                return;
+            }
+            var project = pm.current;
+
+            var host = document.createElement('div');
+            host.className = 'wb-filepicker';
+            host.style.cssText =
+                'display:flex;flex-direction:column;height:100%;gap:4px;';
+
+            var filterInput = document.createElement('input');
+            filterInput.type = 'text';
+            filterInput.placeholder = 'filter…';
+            filterInput.className = 'wb-filepicker-filter';
+            host.appendChild(filterInput);
+
+            var treeBox = document.createElement('div');
+            treeBox.className = 'wb-filepicker-tree';
+            host.appendChild(treeBox);
+
+            var rootUl = document.createElement('ul');
+            rootUl.className = 'wb-ptree wb-ptree-root';
+            treeBox.appendChild(rootUl);
+
+            var pathInput = document.createElement('input');
+            pathInput.type = 'text';
+            pathInput.className = 'wb-filepicker-path';
+            pathInput.placeholder = 'путь или выберите файл в списке';
+            pathInput.value = opts.value || '';
+            host.appendChild(pathInput);
+
+            function buildNode(prefix, parentUl) {
+                var files = project.files || {};
+                var searchPrefix = prefix ? prefix + '/' : '';
+                var folders = {};
+                var fileList = [];
+
+                for (var p in files) {
+                    if (!files.hasOwnProperty(p)) continue;
+                    if (p === '.keep' || /(^|\/)\.keep$/.test(p)) continue;
+                    if (searchPrefix && p.indexOf(searchPrefix) !== 0) continue;
+
+                    var rest = prefix ? p.substring(searchPrefix.length) : p;
+                    if (!rest) continue;
+                    var slash = rest.indexOf('/');
+                    if (slash < 0) fileList.push(rest);
+                    else folders[rest.substring(0, slash)] = true;
+                }
+
+                var folderNames = Object.keys(folders).sort();
+                var fileNames = fileList.sort();
+
+                for (var i = 0; i < folderNames.length; i++) {
+                    var fname = folderNames[i];
+                    var fpath = prefix ? prefix + '/' + fname : fname;
+
+                    var li = document.createElement('li');
+                    var toggle = document.createElement('span');
+                    toggle.className = 'wb-toggle';
+                    toggle.textContent = '−';
+                    li.appendChild(toggle);
+
+                    var lbl = document.createElement('span');
+                    lbl.className = 'wb-tree-label wb-ptree-folder';
+                    lbl.textContent = fname;
+                    lbl.setAttribute('data-path', fpath);
+                    lbl.setAttribute('data-type', 'folder');
+                    li.appendChild(lbl);
+
+                    var ul = document.createElement('ul');
+                    buildNode(fpath, ul);
+                    li.appendChild(ul);
+
+                    (function (ul, toggle) {
+                        toggle.addEventListener('click', function (e) {
+                            e.stopPropagation();
+                            if (ul.style.display === 'none') {
+                                ul.style.display = '';
+                                toggle.textContent = '−';
+                            } else {
+                                ul.style.display = 'none';
+                                toggle.textContent = '+';
+                            }
+                        }, false);
+                    })(ul, toggle);
+
+                    parentUl.appendChild(li);
+                }
+
+                for (var j = 0; j < fileNames.length; j++) {
+                    var name = fileNames[j];
+                    var path = prefix ? prefix + '/' + name : name;
+
+                    var li2 = document.createElement('li');
+                    var t = document.createElement('span');
+                    t.className = 'wb-toggle wb-leaf';
+                    li2.appendChild(t);
+
+                    var lbl2 = document.createElement('span');
+                    lbl2.className = 'wb-tree-label wb-ptree-file';
+                    lbl2.textContent = name;
+                    lbl2.setAttribute('data-path', path);
+                    lbl2.setAttribute('data-type', 'file');
+                    lbl2.setAttribute('title', path);
+                    li2.appendChild(lbl2);
+                    parentUl.appendChild(li2);
+                }
+            }
+            buildNode('', rootUl);
+
+            function findLabel(t) {
+                while (t && t !== treeBox) {
+                    if (t.classList && t.classList.contains('wb-tree-label')) return t;
+                    t = t.parentNode;
+                }
+                return null;
+            }
+
+            treeBox.addEventListener('click', function (e) {
+                var lbl = findLabel(e.target);
+                if (!lbl) return;
+                var all = treeBox.querySelectorAll('.wb-tree-label');
+                for (var i = 0; i < all.length; i++) all[i].classList.remove('wb-selected');
+                lbl.classList.add('wb-selected');
+                if (lbl.getAttribute('data-type') === 'file') {
+                    pathInput.value = lbl.getAttribute('data-path');
+                }
+            }, false);
+
+            treeBox.addEventListener('dblclick', function (e) {
+                var lbl = findLabel(e.target);
+                if (!lbl) return;
+                if (lbl.getAttribute('data-type') !== 'file') return;
+                pathInput.value = lbl.getAttribute('data-path');
+                global.Modal.ok();
+            }, false);
+
+            filterInput.addEventListener('input', function () {
+                var q = (filterInput.value || '').toLowerCase();
+                var labels = treeBox.querySelectorAll('.wb-tree-label');
+                for (var i = 0; i < labels.length; i++) {
+                    var lbl = labels[i];
+                    var match = !q || lbl.textContent.toLowerCase().indexOf(q) >= 0;
+                    var li = lbl.parentNode;
+                    if (li) li.style.display = match ? '' : 'none';
+                }
+                var uls = treeBox.querySelectorAll('ul');
+                for (var j = 0; j < uls.length; j++) uls[j].style.display = '';
+            }, false);
+
+            global.Modal.open({
+                title: 'Select Project File',
+                content: host,
+                onOk: function () {
+                    var v = pathInput.value || '';
+                    if (opts.onPick) opts.onPick(v);
+                }
+            });
+
+            setTimeout(function () { filterInput.focus(); }, 50);
+        }
+    };
+
+    /* ============================================================
        Inspector
        ============================================================ */
     function Inspector(rootEl) {
@@ -965,8 +1150,7 @@
             if (f.get) return f.get(el);
 
             if (f.name === 'class' || f.name === 'className') {
-                var raw = f.attr ? (el.getAttribute('class') || '')
-                    : (el.className || '');
+                var raw = f.attr ? (el.getAttribute('class') || '') : (el.className || '');
                 return stripServiceClasses(raw);
             }
 
@@ -1104,6 +1288,86 @@
         return row;
     };
 
+    Inspector.prototype._attachSuggest = function (inputNode, suggestList) {
+        if (!suggestList || !suggestList.length) return inputNode;
+        var listId = 'wb-sug-' + Math.floor(Math.random() * 1e9);
+        var dl = document.createElement('datalist');
+        dl.id = listId;
+        for (var i = 0; i < suggestList.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = String(suggestList[i]);
+            dl.appendChild(opt);
+        }
+        inputNode.setAttribute('list', listId);
+
+        var wrap = document.createElement('div');
+        wrap.className = 'wb-suggest';
+        wrap.appendChild(inputNode);
+        wrap.appendChild(dl);
+        return wrap;
+    };
+
+    /* -------- input + [миниатюра] + кнопка выбора файла -------- */
+    Inspector.prototype._buildFileRow = function (f, val, commit) {
+        var withThumb = isImageField(f);
+
+        var wrap = document.createElement('div');
+        wrap.className = 'wb-file';
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = (val == null ? '' : val);
+        wrap.appendChild(input);
+
+        var thumb = null;
+        if (withThumb) {
+            thumb = document.createElement('img');
+            thumb.className = 'wb-file-thumb';
+            thumb.alt = '';
+            wrap.appendChild(thumb);
+        }
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'wb-file-btn';
+        btn.title = 'Выбрать файл из проекта';
+        btn.textContent = '…';
+        wrap.appendChild(btn);
+
+        function refreshThumb() {
+            if (!thumb) return;
+            var src = resolvePreviewSrc(input.value);
+            if (src) {
+                thumb.src = src;
+                thumb.style.display = '';
+            } else {
+                thumb.removeAttribute('src');
+                thumb.style.display = 'none';
+            }
+        }
+        refreshThumb();
+
+        input.addEventListener('change', function () {
+            commit(input.value);
+            refreshThumb();
+        }, false);
+
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            ProjectFilePicker.open({
+                value: input.value || '',
+                onPick: function (path) {
+                    input.value = path;
+                    commit(path);
+                    refreshThumb();
+                }
+            });
+        }, false);
+
+        return wrap;
+    };
+
     /* -------- Редактор поля инспектора -------- */
     Inspector.prototype._editor = function (tab, f) {
         var self = this, t = f.type || 'string', val = self._get(tab, f);
@@ -1148,7 +1412,8 @@
             var ni = $('<input type="number" class="wb-length-num">').val(isNaN(num) ? '' : num);
             var us = $('<select class="wb-length-unit">' +
                 '<option>px</option><option>%</option><option>em</option>' +
-                '<option>rem</option><option>pt</option><option>auto</option>' +
+                '<option>rem</option><option>pt</option><option>vh</option>' +
+                '<option>vw</option><option>auto</option>' +
                 '</select>').val(unit);
             var upd = function () {
                 if (us.val() === 'auto') commit('auto');
@@ -1164,48 +1429,25 @@
         if (t === 'number') {
             var nn = $('<input type="number">').val(val === '' ? '' : val);
             nn.change(function () { commit(nn.val()); });
+            if (f.suggest && f.suggest.length) {
+                return $(self._attachSuggest(nn[0], f.suggest));
+            }
             return nn;
         }
 
-        /* ---------- FILE ---------- *
-           input + кнопка «…» — открывает модальный навигатор
-           по файлам текущего проекта. Значение — относительный путь. */
-        if (t === 'FILE') {
-            var fw = $('<div class="wb-file"></div>');
-            var fInp = $('<input type="text">').val(val == null ? '' : val);
-            var fBtn = $('<button type="button" class="wb-file-btn" title="Выбрать файл из проекта">…</button>');
-            fInp.change(function () { commit(fInp.val()); });
-            fBtn.click(function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!global.ProjectFilePicker) {
-                    alert('Модуль ProjectFilePicker не подключён.');
-                    return;
-                }
-                global.ProjectFilePicker.open({
-                    value: fInp.val() || '',
-                    onPick: function (path) {
-                        fInp.val(path);
-                        commit(path);
-                    }
-                });
-            });
-            fw.append(fInp).append(fBtn);
-            return fw;
+        /* ---------- FILE / image / URL-имена ---------- */
+        if (isFileField(f)) {
+            return $(self._buildFileRow(f, val, commit));
         }
 
-        /* ---------- text (многострочный) ---------- *
-           По двойному клику открывается CodeEditor в модальном окне. */
+        /* ---------- text (многострочный) ---------- */
         if (t === 'text') {
             var ta = $('<textarea rows="3" style="width:100%;box-sizing:border-box;' +
                 'font-family:inherit;font-size:11px;border:1px solid #c0c0c0;"></textarea>')
                 .val(val || '');
             ta.change(function () { commit(ta.val()); });
             ta.dblclick(function () {
-                var editor = new CodeEditor({
-                    value: ta.val() || '',
-                    language: 'plaintext'
-                });
+                var editor = new CodeEditor({ value: ta.val() || '', language: 'plaintext' });
                 Modal.open({
                     title: (f.caption || f.name) + ' — Edit',
                     content: editor.el,
@@ -1220,30 +1462,12 @@
             return ta;
         }
 
-        /* ---------- image ---------- */
-        if (t === 'image') {
-            var iw = $('<div style="display:flex;width:100%;gap:4px;align-items:center;"></div>');
-            var iInp = $('<input type="text">').val(val == null ? '' : val);
-            var iBtn = $('<button type="button" class="wb-code-btn">…</button>');
-            iInp.change(function () { commit(iInp.val()); });
-            iBtn.click(function () {
-                var v = prompt('Image URL:', iInp.val() || '');
-                if (v === null) return;
-                iInp.val(v);
-                commit(v);
-            });
-            iw.append(iInp).append(iBtn);
-            return iw;
-        }
-
         /* ---------- images ---------- */
         if (t === 'images') {
             var mBtn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             mBtn.click(function () {
                 var current = self._get(tab, f) || {};
-                global.D3.openImagesEditor(current, function (newMap) {
-                    commit(newMap);
-                });
+                global.D3.openImagesEditor(current, function (newMap) { commit(newMap); });
             });
             return mBtn;
         }
@@ -1253,9 +1477,7 @@
             return self._buildEventEditor(f, val, commit);
         }
 
-        /* ---------- code (обычный) ---------- *
-           Кнопка Edit… — открывает CodeEditor в модальном окне.
-           Также по двойному клику на кнопке. */
+        /* ---------- code (обычный) ---------- */
         if (t === 'code') {
             var btn = $('<button type="button" class="wb-code-btn">Edit…</button>');
             btn.click(function () {
@@ -1280,11 +1502,8 @@
             btn2.click(function () {
                 var current = self._get(tab, f);
                 var lang = 'xml';
-                if (typeof f.language === 'function') {
-                    lang = f.language(self.element) || 'xml';
-                } else if (typeof f.language === 'string') {
-                    lang = f.language;
-                }
+                if (typeof f.language === 'function') lang = f.language(self.element) || 'xml';
+                else if (typeof f.language === 'string') lang = f.language;
                 var editor = new CodeEditor({ value: current, language: lang });
                 Modal.open({
                     title: f.caption || f.name,
@@ -1296,29 +1515,12 @@
             return btn2;
         }
 
-        /* ---------- string (по умолчанию) ---------- *
-           Если задан массив suggest — добавляем datalist
-           для автодополнения. */
+        /* ---------- string (по умолчанию) ---------- */
         var inp = $('<input type="text">').val(val == null ? '' : val);
         inp.change(function () { commit(inp.val()); });
 
         if (f.suggest && f.suggest.length) {
-            var listId = 'wb-sug-' + Math.floor(Math.random() * 1e9);
-            var dl = document.createElement('datalist');
-            dl.id = listId;
-            for (var si = 0; si < f.suggest.length; si++) {
-                var opt = document.createElement('option');
-                opt.value = String(f.suggest[si]);
-                dl.appendChild(opt);
-            }
-            inp.attr('list', listId);
-            inp[0].setAttribute('list', listId);
-
-            var wrapNode = document.createElement('div');
-            wrapNode.className = 'wb-suggest';
-            wrapNode.appendChild(inp[0]);
-            wrapNode.appendChild(dl);
-            return $(wrapNode);
+            return $(self._attachSuggest(inp[0], f.suggest));
         }
 
         return inp;
@@ -1331,9 +1533,7 @@
         var self = this;
         var evRow = $('<div class="wb-event-row"></div>');
 
-        var evInp = $('<input type="text" class="wb-event-input">')
-            .val(val == null ? '' : val);
-
+        var evInp = $('<input type="text" class="wb-event-input">').val(val == null ? '' : val);
         var evSel = $('<select class="wb-event-select" title="Выбрать функцию формы"></select>');
         evSel.append($('<option></option>').val('').text('⋯'));
 
@@ -1413,9 +1613,7 @@
     function findOrCreateScriptContainer(doc, canvas, isM2) {
         if (isM2) {
             var m2Script = doc.querySelector('component[cmptype="Script"]');
-            if (m2Script) {
-                return { node: m2Script, isFormFunc: true, created: false };
-            }
+            if (m2Script) return { node: m2Script, isFormFunc: true, created: false };
             var el = doc.createElement('component');
             el.setAttribute('cmptype', 'Script');
             el.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
@@ -1427,9 +1625,7 @@
             return { node: el, isFormFunc: true, created: true };
         }
         var cmpScript = doc.querySelector('cmpscript');
-        if (cmpScript) {
-            return { node: cmpScript, isFormFunc: true, created: false };
-        }
+        if (cmpScript) return { node: cmpScript, isFormFunc: true, created: false };
         var el2 = doc.createElement('cmpscript');
         el2.setAttribute('data-wb-tag', 'cmpScript');
         el2.appendChild(doc.createTextNode('<![CDATA[\n]]>'));
@@ -1450,12 +1646,9 @@
         if (!doc) return null;
 
         var isM2 = isM2Element(el);
-
         var camelEvent = eventNameToCamel(f.name);
         var ctrlName = '';
-        if (el.getAttribute) {
-            ctrlName = el.getAttribute('name') || el.getAttribute('id') || '';
-        }
+        if (el.getAttribute) ctrlName = el.getAttribute('name') || el.getAttribute('id') || '';
         var funcName = 'on' + camelEvent + ctrlName;
 
         var container = findOrCreateScriptContainer(doc, canvas, isM2);
@@ -1463,7 +1656,6 @@
 
         var scriptNode   = container.node;
         var createdScript = container.created;
-
         var isFormFunc = container.isFormFunc;
         var funcPath = (isFormFunc ? 'Form.' : '') + funcName;
 
@@ -1496,7 +1688,6 @@
         }
 
         var existingCode = scriptNode.textContent || '';
-
         if (isFunctionDeclared(existingCode, callName)) {
             return { signature: callSig, name: callName };
         }
@@ -1516,9 +1707,7 @@
         innerBody = innerBody.replace(/\s+$/, '') + '\n\n' + funcBody + '\n';
         textNode.nodeValue = '<![CDATA[' + innerBody + ']]>';
 
-        if (createdScript && canvas._reobserve) {
-            canvas._reobserve();
-        }
+        if (createdScript && canvas._reobserve) canvas._reobserve();
 
         return { signature: callSig, name: callName };
     };
@@ -1526,4 +1715,6 @@
     global.DomTree   = DomTree;
     global.Palette   = Palette;
     global.Inspector = Inspector;
+    global.ProjectFilePicker = ProjectFilePicker;
+
 })(window, jQuery);

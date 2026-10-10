@@ -1,0 +1,169 @@
+/* ============================================================
+   Object Inspector — вкладки, строки, редакторы полей, events.
+   ============================================================ */
+
+/* --- Вкладки Properties / Styles / Events --- */
+.wb-inspector-tabs {
+    display: flex;
+    background: #e0e0e0;
+    border-bottom: 1px solid #c0c0c0;
+    flex: 0 0 auto;
+}
+.wb-itab {
+    flex: 1;
+    text-align: center;
+    padding: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    border-right: 1px solid #c0c0c0;
+    user-select: none;
+}
+.wb-itab:last-child { border-right: 0; }
+.wb-itab.wb-active { background: #fff; font-weight: 600; color: #1e88e5; }
+
+.wb-inspector-body { flex: 1; overflow: auto; background: #fff; min-height: 0; }
+.wb-itab-pane { padding: 2px; }
+
+/* --- Строки инспектора --- */
+.wb-row {
+    display: flex;
+    border-bottom: 1px solid #eee;
+    min-height: 22px;
+    align-items: center;
+}
+.wb-row-name {
+    flex: 0 0 45%;
+    padding: 3px 6px;
+    background: #f7f7f7;
+    border-right: 1px solid #eee;
+    font-size: 11px;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    align-self: stretch;
+    box-sizing: border-box;
+}
+.wb-row-value {
+    flex: 1;
+    padding: 2px 4px;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.wb-row-value input[type="text"],
+.wb-row-value input[type="number"],
+.wb-row-value select {
+    width: 100%;
+    padding: 2px 4px;
+    font-size: 11px;
+    border: 1px solid #c0c0c0;
+    font-family: inherit;
+    background: #fff;
+    box-sizing: border-box;
+}
+.wb-row-value input[type="checkbox"] { margin: 0; }
+.wb-row-value input[type="color"] {
+    width: 30px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid #c0c0c0;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+/* --- Color field --- */
+.wb-color { display: flex; width: 100%; }
+.wb-color-text { flex: 1; margin-left: 4px; }
+
+/* --- Length field (число + единица) --- */
+.wb-length { display: flex; width: 100%; align-items: center; }
+.wb-length-num {
+    flex: 1 1 auto;
+    width: 100px;
+    min-width: 100px;
+    padding: 2px 4px;
+    font-size: 11px;
+    border: 1px solid #c0c0c0;
+    background: #fff;
+    box-sizing: border-box;
+}
+.wb-length-unit {
+    width: 60px;
+    margin-left: 4px;
+    padding: 2px 2px;
+    font-size: 11px;
+    border: 1px solid #c0c0c0;
+    background: #fff;
+    box-sizing: border-box;
+}
+
+/* --- Кнопка «Edit…» для code-полей --- */
+.wb-code-btn {
+    padding: 2px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid #b0b0b0;
+    background: #fafafa;
+}
+.wb-code-btn:hover { background: #e0eefb; }
+
+/* --- Разделители групп свойств --- */
+.wb-row-separator {
+    padding: 4px 8px;
+    background: #e8e8e8;
+    font-weight: 600;
+    font-size: 11px;
+    color: #555;
+    border-bottom: 1px solid #d0d0d0;
+    border-top: 1px solid #f0f0f0;
+    user-select: none;
+}
+.wb-row-separator:first-child { border-top: 0; }
+
+/* --- Кнопка удаления значения --- */
+.wb-row-del {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    padding: 0;
+    margin: 0 0 0 2px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    color: #c62828;
+    background: #ffffff;
+    border: 1px solid #c0c0c0;
+    border-radius: 2px;
+    cursor: pointer;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+}
+.wb-row-del:hover {
+    background: #ffebee;
+    border-color: #c62828;
+    color: #b71c1c;
+}
+.wb-row-del:active { background: #ffcdd2; }
+
+/* --- Events: input + выпадающий список функций формы --- */
+.wb-event-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+}
+.wb-event-row .wb-event-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.wb-event-row .wb-event-select {
+    flex: 0 0 auto;
+    max-width: 45%;
+    margin-left: 2px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11px;
+}

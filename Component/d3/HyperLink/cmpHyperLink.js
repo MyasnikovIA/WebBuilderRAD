@@ -11,17 +11,11 @@
 
    Поведение по клику:
      1. Если задан href — стандартный переход (клиент ничего не делает).
-     2. Если задан unit и target="_blank" — переход на ?unit=…&id=…
-     3. Иначе — D3Api.openFormByUnit(…) с передачей comp_vars,
-        comp_request, append_filter, is_view, newthread, onclose.
+     2. Если задан unit и target="_blank" — переход на ?unit=…&id=….
+     3. Иначе — D3Api.openFormByUnit(…).
 
-   Значение:
-     - value / keyvalue — id записи (обычно из keyvaluecontrol).
-     - keyvaluecontrol — имя контрола-источника id.
-     - emptyvalue="true" — разрешить открытие без id.
-
-   В IDE: input-подобный элемент <span class="d3-preview-hyperlink">
-   с текстом caption, подсвечен как ссылка. */
+   Поле href имеет тип FILE: можно выбрать файл из текущего проекта
+   или ввести путь / URL вручную. */
 (function (global) {
     'use strict';
     var D3 = global.D3;
@@ -78,9 +72,7 @@
             return wrap;
         },
 
-        /* ---------------- Properties ---------------- */
         properties: [
-            /* --- HTML --- */
             { type: 'separator', caption: 'HTML attributes' },
             { name: 'id',     caption: 'Id',     type: 'string', attr: true },
             { name: 'class',  caption: 'Class',  type: 'string', attr: true },
@@ -89,7 +81,6 @@
             { name: 'target', caption: 'Target', type: 'enum',   attr: true,
                 values: ['', '_self', '_blank', '_parent', '_top'] },
 
-            /* --- D3 Base --- */
             { type: 'separator', caption: 'D3 Base' },
             { name: 'name',    caption: 'Name',    type: 'string',  attr: true },
             {
@@ -103,16 +94,15 @@
             { name: 'width',   caption: 'Width',   type: 'string',  attr: true },
             { name: 'height',  caption: 'Height',  type: 'string',  attr: true },
 
-            /* --- HyperLink --- */
             { type: 'separator', caption: 'HyperLink' },
             {
                 name: 'caption', caption: 'Caption', type: 'string', attr: true,
                 get: function (el) { return getCaption(el); },
                 set: function (el, v) { setCaption(el, v); }
             },
-            { name: 'href',      caption: 'Href',      type: 'string',  attr: true },
+            /* href — файл проекта или URL. */
+            { name: 'href', caption: 'Href (файл проекта или URL)', type: 'FILE', attr: true },
 
-            /* --- Открытие формы (unit) --- */
             { type: 'separator', caption: 'Открытие формы' },
             { name: 'unit',        caption: 'Unit',        type: 'string',  attr: true },
             { name: 'composition', caption: 'Composition', type: 'string',  attr: true },
@@ -122,18 +112,15 @@
             { name: 'emptyvalue',  caption: 'Empty Value', type: 'boolean', attr: true },
             { name: 'keyvaluecontrol', caption: 'KeyValue Control', type: 'string', attr: true },
 
-            /* --- Параметры формы --- */
             { type: 'separator', caption: 'Параметры открываемой формы' },
             { name: 'comp_vars',     caption: 'Comp Vars',     type: 'code', attr: true },
             { name: 'comp_request',  caption: 'Comp Request',  type: 'code', attr: true },
             { name: 'append_filter', caption: 'Append Filter', type: 'code', attr: true },
 
-            /* --- Handlers --- */
             { type: 'separator', caption: 'Handlers' },
             { name: 'onclose', caption: 'OnClose', type: 'code', attr: true }
         ],
 
-        /* ---------------- Events ---------------- */
         events: [
             { name: 'onclick',     caption: 'OnClick',     type: 'code' },
             { name: 'onfocus',     caption: 'OnFocus',     type: 'code' },
@@ -146,7 +133,6 @@
             { name: 'onkeyup',     caption: 'OnKeyUp',     type: 'code' }
         ],
 
-        /* ---------------- Styles ---------------- */
         styles: CS.STYLE_FIELDS.slice()
     });
 

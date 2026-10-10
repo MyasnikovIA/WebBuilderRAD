@@ -1,0 +1,100 @@
+/* ============================================================
+   ProjectFilePicker — модальное окно выбора файла из проекта.
+   Все цвета — через CSS-переменные темы (см. css/theme.css).
+   ============================================================ */
+
+.wb-filepicker {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    gap: 4px;
+    background: var(--wb-panel-bg, #fff);
+    color: var(--wb-text, #222);
+}
+
+/* --- Верхний фильтр --- */
+.wb-filepicker-filter {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--wb-input-border, #b0b0b0);
+    background: var(--wb-input-bg, #fff);
+    color: var(--wb-text, #222);
+    border-radius: 2px;
+}
+.wb-filepicker-filter:focus {
+    border-color: var(--wb-input-focus, #1e88e5);
+    outline: none;
+}
+.wb-filepicker-filter::placeholder {
+    color: var(--wb-text-muted, #999);
+}
+
+/* --- Дерево файлов --- */
+.wb-filepicker-tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid var(--wb-border, #c0c0c0);
+    background: var(--wb-panel-bg, #fff);
+    color: var(--wb-text, #222);
+}
+
+/* Узлы дерева внутри окна наследуют тему. */
+.wb-filepicker-tree .wb-ptree,
+.wb-filepicker-tree .wb-ptree-root {
+    background: transparent;
+    color: var(--wb-text, #222);
+}
+.wb-filepicker-tree .wb-tree-label {
+    color: var(--wb-text, #222);
+}
+.wb-filepicker-tree .wb-ptree-folder {
+    color: #7e57c2;
+    font-weight: 600;
+}
+.wb-filepicker-tree .wb-ptree-file {
+    color: var(--wb-text, #222);
+}
+.wb-filepicker-tree .wb-tree-label:hover {
+    background: var(--wb-hover-bg, #e8f0f8);
+}
+.wb-filepicker-tree .wb-tree-label.wb-selected {
+    background: var(--wb-accent, #1e88e5) !important;
+    color: #fff !important;
+}
+
+/* --- Нижняя строка пути --- */
+.wb-filepicker-path {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-family: Consolas, 'Courier New', monospace;
+    border: 1px solid var(--wb-input-border, #b0b0b0);
+    background: var(--wb-input-bg, #fff);
+    color: var(--wb-text, #222);
+    border-radius: 2px;
+}
+.wb-filepicker-path:focus {
+    border-color: var(--wb-input-focus, #1e88e5);
+    outline: none;
+}
+.wb-filepicker-path::placeholder {
+    color: var(--wb-text-muted, #999);
+}
+
+/* --- Тумблеры «+ / −» --- */
+.wb-filepicker-tree .wb-toggle {
+    background: var(--wb-input-bg, #f0f0f0);
+    color: var(--wb-text, #333);
+    border: 1px solid var(--wb-border-strong, #999);
+}
+.wb-filepicker-tree .wb-toggle:hover {
+    background: var(--wb-hover-bg, #e0eefb);
+    border-color: var(--wb-accent, #1e88e5);
+}

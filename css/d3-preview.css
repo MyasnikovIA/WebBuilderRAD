@@ -1,0 +1,62 @@
+/* ============================================================
+   D3 preview styles — только для редактора, в save не попадают.
+   ============================================================ */
+
+.d3-preview {
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    font-size: 12px;
+}
+.d3-preview-form {
+    display: block;
+    border: 1px dashed #7986cb;
+    padding: 4px 6px;
+    margin: 4px 0;
+    border-radius: 4px;
+    background: rgba(121,134,203,0.05);
+}
+.d3-preview-form-cap { font-weight: 600; color: #3f51b5; margin-bottom: 4px; }
+.d3-preview-form-body { color: #999; font-style: italic; }
+
+.d3-preview-subform {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #ede7f6;
+    color: #5e35b1;
+    border: 1px dashed #b39ddb;
+    border-radius: 3px;
+}
+.d3-preview-button {
+    padding: 4px 12px;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    background: #f5f7f9;
+    cursor: pointer;
+    font-size: 12px;
+}
+.d3-preview-edit input,
+.d3-preview-combo select,
+.d3-preview-unitedit input {
+    padding: 3px 6px;
+    border: 1px solid #b0b0b0;
+    border-radius: 3px;
+    font-size: 12px;
+    background: #fff;
+}
+.d3-preview-unitedit input { background: #f7f7f7; }
+.d3-preview-link { color: #1e88e5; text-decoration: underline; cursor: pointer; }
+.d3-preview-dependences {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #fff3e0;
+    color: #e65100;
+    font-size: 10px;
+    border-radius: 3px;
+    border: 1px dotted #ffb74d;
+}
+.d3-preview-comboitem {
+    display: inline-block;
+    padding: 1px 6px;
+    color: #555;
+    font-size: 11px;
+}

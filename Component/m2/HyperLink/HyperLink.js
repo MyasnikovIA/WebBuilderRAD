@@ -1,4 +1,7 @@
-/* M2 HyperLink — <component cmptype="HyperLink">. */
+/* M2 HyperLink — <component cmptype="HyperLink">.
+
+   Поле href имеет тип FILE — можно выбрать файл из текущего проекта
+   или ввести URL вручную. */
 (function (global) {
     'use strict';
     var M2 = global.M2;
@@ -48,7 +51,7 @@
 
             { type: 'separator', caption: 'HyperLink' },
             { name: 'caption', caption: 'Caption', type: 'string', attr: true },
-            { name: 'href',    caption: 'Href',    type: 'string', attr: true },
+            { name: 'href',    caption: 'Href (файл проекта или URL)', type: 'FILE', attr: true },
             { name: 'unit',    caption: 'Unit',    type: 'string', attr: true }
         ],
 
