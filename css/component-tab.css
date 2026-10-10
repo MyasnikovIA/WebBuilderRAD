@@ -33,35 +33,54 @@
 .wb-comp-toolbar { flex:0 0 auto; padding:4px 6px; background:var(--wb-panel-head-bg,#e0e0e0); border-top:1px solid var(--wb-border,#c0c0c0); display:flex; gap:6px; align-items:center; }
 .wb-comp-status { font-size:11px; color:#2e7d32; margin-left:6px; }
 
-/* Component Properties */
-.wb-comp-props-box { background:var(--wb-panel-bg,#fff); overflow:auto; padding:6px; }
-.wb-comp-props { display:flex; flex-direction:column; gap:6px; height:100%; }
+/* Component Properties + Component Events */
+.wb-comp-props-box,
+.wb-comp-events-box { background:var(--wb-panel-bg,#fff); overflow:auto; padding:6px; }
+
+.wb-comp-props, .wb-comp-events { display:flex; flex-direction:column; gap:6px; height:100%; }
 .wb-comp-props-head { display:flex; gap:8px; align-items:center; }
 .wb-comp-props-hint { font-size:11px; color:#777; font-style:italic; }
-.wb-comp-props-table { width:100%; border-collapse:collapse; font-size:11px; }
-.wb-comp-props-table th {
+
+.wb-comp-props-table,
+.wb-comp-events-table { width:100%; border-collapse:collapse; font-size:11px; }
+.wb-comp-props-table th,
+.wb-comp-events-table th {
     background:var(--wb-panel-head-bg,#e8e8e8); color:var(--wb-text,#333);
     padding:3px 4px; border:1px solid var(--wb-border,#d0d0d0);
     text-align:left; font-weight:600; white-space:nowrap;
 }
-.wb-comp-props-table td {
+.wb-comp-props-table td,
+.wb-comp-events-table td {
     border:1px solid var(--wb-border,#e0e0e0); padding:2px;
     vertical-align:middle;
 }
 .wb-comp-props-table input[type="text"],
-.wb-comp-props-table select {
+.wb-comp-props-table select,
+.wb-comp-events-table input[type="text"] {
     width:100%; box-sizing:border-box; padding:2px 4px;
     font-size:11px; font-family:inherit;
     border:1px solid var(--wb-input-border,#c0c0c0);
     background:var(--wb-input-bg,#fff); color:var(--wb-text,#222);
 }
-.wb-comp-props-table .wb-row-del {
+.wb-comp-props-table .wb-row-del,
+.wb-comp-events-table .wb-row-del {
     width:20px; height:20px; line-height:18px; padding:0; margin:0 auto;
     display:block; font-weight:bold; color:#c62828;
     background:#fff; border:1px solid #c0c0c0; border-radius:2px; cursor:pointer;
 }
-.wb-comp-props-table .wb-row-del:hover { background:#ffebee; border-color:#c62828; }
-.wb-comp-prop-add { padding:3px 10px; font-size:12px; cursor:pointer; }
+.wb-comp-props-table .wb-row-del:hover,
+.wb-comp-events-table .wb-row-del:hover { background:#ffebee; border-color:#c62828; }
+.wb-comp-prop-add, .wb-comp-event-add { padding:3px 10px; font-size:12px; cursor:pointer; }
+
+/* Курсор на поле функции — приглашает двойной клик. */
+.wb-cp-onchange, .wb-ce-handler {
+    font-family:'Consolas','Courier New',monospace !important;
+    color:#0d47a1 !important;
+    cursor:pointer;
+}
+.wb-cp-onchange:hover, .wb-ce-handler:hover {
+    background:#e3f2fd !important;
+}
 
 /* Превью-контент пользовательского компонента на сцене (editor-only). */
 .wb-user-comp-preview { display: contents; }

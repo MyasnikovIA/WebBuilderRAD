@@ -1,26 +1,42 @@
 /* ComponentStorage — CRUD пользовательской палитры компонентов в LocalStorage.
 
    Модель:
-     { version:3, folders:{…}, components:{…} }
+     { version:4, folders:{…}, components:{…} }
 
-   Правила вложенности (nesting):
-     nestingMode:  'all' | 'list' | 'none'
-     nestingRules: [ { kind:'tag'|'cmptype', value:'…' } ]
+   Поля компонента:
+     id, name, cmptype, tagName, icon, description,
+     html, js, css, previewIdeHtml,
+     jsLibs, cssLibs,
+     customProperties: [
+       { name, caption, type, values, unit,
+         fieldType, fieldUrl, fieldPredefined,
+         onChangeFunc }                       ← JS-функция, вызываемая при изменении
+     ],
+     customEvents: [
+       { name, caption, handlerFunc }         ← пользовательские события + их обработчик
+     ],
+     nestingMode, nestingRules,
+     folderId
 
-   Сервисные узлы компонента (не видны в дереве и cleanHtml, но работают):
-     <link   data-wb-user-comp-asset="<id>">
-     <style  data-wb-user-comp-style="<id>">
-     <script data-wb-user-comp-script="<id>">
-     <script src="…" data-wb-user-comp-asset="<id>">
+   Runtime: каждый экземпляр компонента получает объект el._wbComponent,
+   который также регистрируется в window.WbComponent. Доступ:
+     var c = WbComponent.get('my.component');   // по cmptype
+     var c = WbComponent.get('cmp_xxx');        // по id
+     var c = WbComponent.get(el);               // по DOM-элементу
 
-   Preview-контент компонента (PreViewIDE(html)) вставляется через
-   _renderPreview как отдельный узел с data-wb-preview="1" — он
-   виден только в редакторе и не сериализуется. */
+   Инстанс предоставляет:
+     c.get(name) / c.set(name, value) — доступ к атрибуту-свойству
+     c.<propertyName>                 — accessor (get/set через атрибут)
+     c.on(event, handler)             — подписка на событие
+     c.off(event, handler)
+     c.emit(event, data)              — вызвать событие
+     c.el                             — корневой элемент
+*/
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
 
-    function emptyModel() { return { version: 3, folders: {}, components: {} }; }
+    function emptyModel() { return { version: 4, folders: {}, components: {} }; }
 
     function readAll() {
         try {
@@ -30,7 +46,7 @@
             if (!o || typeof o !== 'object') return emptyModel();
             if (!o.folders) o.folders = {};
             if (!o.components) o.components = {};
-            o.version = 3;
+            o.version = 4;
             return o;
         } catch (e) { return emptyModel(); }
     }
@@ -53,7 +69,17 @@
             unit:            p.unit || '',
             fieldType:       p.fieldType || 'none',
             fieldUrl:        p.fieldUrl || '',
-            fieldPredefined: p.fieldPredefined || ''
+            fieldPredefined: p.fieldPredefined || '',
+            onChangeFunc:    p.onChangeFunc || ''
+        };
+    }
+
+    function normalizeEvent(e) {
+        e = e || {};
+        return {
+            name:        e.name || '',
+            caption:     e.caption || e.name || '',
+            handlerFunc: e.handlerFunc || ''
         };
     }
 
@@ -65,15 +91,23 @@
 
     function normalizeComponent(src) {
         src = src || {};
+
         var props = Array.isArray(src.customProperties) ? src.customProperties : [];
-        var out = [];
-        for (var i = 0; i < props.length; i++) out.push(normalizeProp(props[i]));
+        var outProps = [];
+        for (var i = 0; i < props.length; i++) outProps.push(normalizeProp(props[i]));
+
+        var evs = Array.isArray(src.customEvents) ? src.customEvents : [];
+        var outEvs = [];
+        for (var k = 0; k < evs.length; k++) {
+            var ev = normalizeEvent(evs[k]);
+            if (ev.name) outEvs.push(ev);
+        }
 
         var rules = Array.isArray(src.nestingRules) ? src.nestingRules : [];
-        var nrules = [];
-        for (var j = 0; j < rules.length; j++) {
-            var r = normalizeRule(rules[j]);
-            if (r.value) nrules.push(r);
+        var outRules = [];
+        for (var r = 0; r < rules.length; r++) {
+            var nr = normalizeRule(rules[r]);
+            if (nr.value) outRules.push(nr);
         }
 
         var mode = src.nestingMode;
@@ -92,10 +126,11 @@
             previewIdeHtml: src.previewIdeHtml || '',
             jsLibs:         Array.isArray(src.jsLibs)  ? src.jsLibs  : [],
             cssLibs:        Array.isArray(src.cssLibs) ? src.cssLibs : [],
-            customProperties: out,
-            nestingMode:    mode,
-            nestingRules:   nrules,
-            folderId:       src.folderId || ''
+            customProperties: outProps,
+            customEvents:     outEvs,
+            nestingMode:      mode,
+            nestingRules:     outRules,
+            folderId:         src.folderId || ''
         };
     }
 
@@ -132,6 +167,180 @@
         }
         return out;
     }
+
+    /* ---------- Runtime-бутстрап ----------
+       Вставляется один раз на документ. Определяет window.WbComponent,
+       сканирует DOM и вешает инстансы на все [data-wb-user-comp].
+       Наблюдает за DOM — подхватывает позже добавленные компоненты. */
+    var BOOTSTRAP_CODE = [
+        '(function(g){',
+        'if (g.WbComponent && g.WbComponent._bootstrapped) return;',
+
+        'var WbComponent = {',
+        '    _bootstrapped: true,',
+        '    _registry: {},',
+        '    _byCmptype: {},',
+        '    _register: function(i){ this._registry[i.id]=i; if(i.cmptype) this._byCmptype[i.cmptype]=i; },',
+        '    _unregister: function(i){ delete this._registry[i.id]; if(i.cmptype && this._byCmptype[i.cmptype]===i) delete this._byCmptype[i.cmptype]; },',
+        '    get: function(k){',
+        '        if(!k) return null;',
+        '        if(typeof k==="string") return this._registry[k] || this._byCmptype[k] || null;',
+        '        if(k.nodeType===1) return k._wbComponent || null;',
+        '        return null;',
+        '    },',
+        '    all: function(ct){',
+        '        var out=[],k;',
+        '        if(!ct){ for(k in this._registry) if(this._registry.hasOwnProperty(k)) out.push(this._registry[k]); return out; }',
+        '        for(k in this._registry) if(this._registry[k].cmptype===ct) out.push(this._registry[k]);',
+        '        return out;',
+        '    }',
+        '};',
+        'g.WbComponent = WbComponent;',
+
+        'function resolveFn(name){',
+        '    if(!name) return null;',
+        '    var parts = String(name).split("."), obj = g;',
+        '    for(var i=0;i<parts.length;i++){ if(!obj) return null; obj = obj[parts[i]]; }',
+        '    return typeof obj==="function" ? obj : null;',
+        '}',
+
+        'function attach(el, c){',
+        '    if(el._wbComponent) return el._wbComponent;',
+        '    var instance = {',
+        '        id: c.id,',
+        '        cmptype: c.cmptype,',
+        '        name: c.name,',
+        '        el: el,',
+        '        _handlers: {},',
+        '        get: function(name){ return el.getAttribute(name) || ""; },',
+        '        set: function(name, v){ el.setAttribute(name, v); },',
+        '        on: function(name, h){ (this._handlers[name]=this._handlers[name]||[]).push(h); return this; },',
+        '        off: function(name, h){ var l=this._handlers[name]; if(!l) return this; var i=l.indexOf(h); if(i>=0) l.splice(i,1); return this; },',
+        '        emit: function(name, data){',
+        '            var l = this._handlers[name] || [];',
+        '            for(var i=0;i<l.length;i++){',
+        '                try { l[i]({ type: name, data: data, component: this, el: el }); }',
+        '                catch(e){ console.error("[WbComponent]", name, e); }',
+        '            }',
+        '            try {',
+        '                var ce = new CustomEvent("wb-component-event", { detail: { name: name, data: data } });',
+        '                el.dispatchEvent(ce);',
+        '            } catch(e){}',
+        '        }',
+        '    };',
+
+        /* Свойства-аксессоры */
+        '    var props = c.customProperties || [];',
+        '    for(var i=0;i<props.length;i++){',
+        '        (function(p){',
+        '            try {',
+        '                Object.defineProperty(instance, p.name, {',
+        '                    get: function(){ return el.getAttribute(p.name) || ""; },',
+        '                    set: function(v){ el.setAttribute(p.name, v); },',
+        '                    enumerable: true,',
+        '                    configurable: true',
+        '                });',
+        '            } catch(e){}',
+        '        })(props[i]);',
+        '    }',
+
+        /* MutationObserver — onChange для свойств */
+        '    if(g.MutationObserver){',
+        '        var mo = new g.MutationObserver(function(muts){',
+        '            for(var m=0;m<muts.length;m++){',
+        '                var mu = muts[m];',
+        '                if(mu.type !== "attributes") continue;',
+        '                var pn = mu.attributeName;',
+        '                var pdef = null;',
+        '                for(var k=0;k<props.length;k++) if(props[k].name===pn){ pdef=props[k]; break; }',
+        '                if(!pdef || !pdef.onChangeFunc) continue;',
+        '                var fn = resolveFn(pdef.onChangeFunc);',
+        '                if(!fn) continue;',
+        '                try {',
+        '                    fn.call(instance, {',
+        '                        name: pn,',
+        '                        value: el.getAttribute(pn),',
+        '                        oldValue: mu.oldValue,',
+        '                        component: instance,',
+        '                        el: el',
+        '                    });',
+        '                } catch(e){ console.error("[WbComponent] onChange", pdef.onChangeFunc, e); }',
+        '            }',
+        '        });',
+        '        mo.observe(el, { attributes: true, attributeOldValue: true });',
+        '        instance._observer = mo;',
+        '    }',
+
+        /* Custom events — вешаем слушатели на корневой элемент */
+        '    var evs = c.customEvents || [];',
+        '    for(var j=0;j<evs.length;j++){',
+        '        (function(ev){',
+        '            if(!ev.handlerFunc) return;',
+        '            el.addEventListener(ev.name, function(e){',
+        '                var fn = resolveFn(ev.handlerFunc);',
+        '                if(!fn) return;',
+        '                try {',
+        '                    fn.call(instance, {',
+        '                        type: ev.name,',
+        '                        originalEvent: e,',
+        '                        component: instance,',
+        '                        el: el,',
+        '                        data: e && e.detail',
+        '                    });',
+        '                } catch(ex){ console.error("[WbComponent] on", ev.handlerFunc, ex); }',
+        '            }, false);',
+        '        })(evs[j]);',
+        '    }',
+
+        '    el._wbComponent = instance;',
+        '    WbComponent._register(instance);',
+        '    return instance;',
+        '}',
+
+        'function loadPalette(){',
+        '    try { var raw = g.localStorage.getItem("wb.userPalette"); return raw ? JSON.parse(raw) : null; }',
+        '    catch(e){ return null; }',
+        '}',
+
+        'function init(){',
+        '    var model = loadPalette();',
+        '    if(!model || !model.components) return;',
+        '    var comps = model.components;',
+        '    var els = document.querySelectorAll("[data-wb-user-comp]");',
+        '    for(var i=0;i<els.length;i++){',
+        '        var el = els[i];',
+        '        var cid = el.getAttribute("data-wb-user-comp");',
+        '        var c = comps[cid];',
+        '        if(!c) continue;',
+        '        try { attach(el, c); } catch(e){ console.error("[WbComponent] attach", cid, e); }',
+        '    }',
+        '}',
+
+        'WbComponent._attach = attach;',
+        'WbComponent._init = init;',
+        'WbComponent.loadPalette = loadPalette;',
+
+        'if(document.readyState === "loading"){',
+        '    document.addEventListener("DOMContentLoaded", init, false);',
+        '} else {',
+        '    init();',
+        '}',
+
+        /* Ре-скан при добавлении узлов */
+        'if(g.MutationObserver){',
+        '    var bodyObs = new g.MutationObserver(function(muts){',
+        '        for(var i=0;i<muts.length;i++){',
+        '            if(muts[i].addedNodes && muts[i].addedNodes.length){',
+        '                setTimeout(init, 0);',
+        '                return;',
+        '            }',
+        '        }',
+        '    });',
+        '    try { bodyObs.observe(document.documentElement, { childList: true, subtree: true }); } catch(e){}',
+        '}',
+
+        '})(window);'
+    ].join('\n');
 
     var ComponentStorage = {
         read: function () { return readAll(); },
@@ -216,7 +425,7 @@
             if (!model || typeof model !== 'object') return false;
             if (!model.folders) model.folders = {};
             if (!model.components) model.components = {};
-            model.version = 3;
+            model.version = 4;
             return writeAll(model);
         },
 
@@ -276,9 +485,7 @@
             });
         },
 
-        /* ---------- Проверка правил вложенности ----------
-           uc — компонент; childTag, childCmptype — характеристики вставляемого.
-           Возвращает true, если вложение разрешено. */
+        /* ---------- Проверка правил вложенности ---------- */
         canNest: function (uc, childTag, childCmptype) {
             if (!uc) return true;
             var mode = uc.nestingMode || 'all';
@@ -301,7 +508,6 @@
             return true;
         },
 
-        /* Найти ближайший родительский user-component. */
         findUserCompAncestor: function (el, stopAt) {
             var cur = el;
             while (cur && cur !== stopAt) {
@@ -311,10 +517,25 @@
             return null;
         },
 
-        /* ---------- Инъекция служебных CSS/JS в элемент компонента ---------- */
+        /* ---------- Runtime-бутстрап ---------- */
+        ensureRuntimeBootstrap: function (doc) {
+            if (!doc) return;
+            if (doc.querySelector('script[data-wb-user-comp-bootstrap="1"]')) return;
+            var sc = doc.createElement('script');
+            sc.setAttribute('data-wb-user-comp-bootstrap', '1');
+            sc.textContent = BOOTSTRAP_CODE;
+            var head = doc.head || doc.documentElement;
+            if (head) head.insertBefore(sc, head.firstChild);
+        },
+
+        /* ---------- Инъекция служебных CSS/JS в элемент ---------- */
         injectAssets: function (el, c, doc) {
             if (!el || !c || !doc) return;
 
+            /* Сначала — runtime-бутстрап. */
+            this.ensureRuntimeBootstrap(doc);
+
+            /* Удаляем старые сервисные узлы. */
             var toRemove = [];
             for (var i = 0; i < el.children.length; i++) {
                 var ch = el.children[i];
@@ -329,6 +550,7 @@
                 if (toRemove[j].parentNode) toRemove[j].parentNode.removeChild(toRemove[j]);
             }
 
+            /* CSS-ресурсы. */
             if (c.cssLibs && c.cssLibs.length) {
                 for (var k = 0; k < c.cssLibs.length; k++) {
                     var lib = c.cssLibs[k];
@@ -350,12 +572,14 @@
                 st.textContent = c.css;
                 el.insertBefore(st, el.firstChild);
             }
+            /* Встроенный JS. */
             if (c.js) {
                 var sc2 = doc.createElement('script');
                 sc2.setAttribute('data-wb-user-comp-script', c.id);
                 sc2.textContent = c.js;
                 el.appendChild(sc2);
             }
+            /* JS-ресурсы. */
             if (c.jsLibs && c.jsLibs.length) {
                 for (var m = 0; m < c.jsLibs.length; m++) {
                     var jlib = c.jsLibs[m];
@@ -399,16 +623,11 @@
                 userComponent: c,
                 locked: true,
 
-                /* Правила вложенности — пробрасываем на def, чтобы
-                   canvas-insert / dom-tree могли быстро их читать. */
                 nestingMode:  c.nestingMode  || 'all',
                 nestingRules: c.nestingRules || [],
 
                 iconUrl: c.icon || '',
 
-                /* Создание корневого элемента.
-                   Preview-контент НЕ добавляем здесь — его вставит
-                   Canvas._renderPreview через def.preview(). */
                 create: function (doc) {
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
@@ -417,9 +636,6 @@
                     return el;
                 },
 
-                /* Preview-хук: возвращает узел с PreViewIDE(html).
-                   Canvas отметит его data-wb-preview="1" — это
-                   editor-only содержимое, не попадает в cleanHtml. */
                 preview: function (el, doc) {
                     global.ComponentStorage.injectAssets(el, c, doc);
                     var content = c.previewIdeHtml || c.html || '';

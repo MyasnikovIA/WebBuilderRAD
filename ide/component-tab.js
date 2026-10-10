@@ -1,6 +1,13 @@
 /* ComponentTab — вкладка "Root: component".
-   Подвкладки: JS / CSS / PreViewIDE(html) / Component Properties.
-   В форме — правила вложенности (nestingMode + nestingRules). */
+
+   Подвкладки: JS / CSS / PreViewIDE(html) / Component Properties / Component Events.
+
+   В Component Properties и Component Events для каждого поля задаётся
+   имя JS-функции (onChangeFunc / handlerFunc). Двойной клик по полю:
+     • пусто  → генерируется имя + шаблон функции, пишется в поле;
+     • задано → ищется в JS-коде; если нет — генерируется и дописывается;
+     • редактор переключается на подвкладку JS, курсор ставится
+       в начало тела функции (после открывающей {). */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -33,6 +40,14 @@
         { id: 'none', caption: 'Запрещено (самозакрывающийся)' }
     ];
 
+    function capitalize(s) {
+        s = String(s || '');
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    function safeIdent(s) {
+        return String(s || '').replace(/[^A-Za-z0-9_$]/g, '');
+    }
+
     function ComponentTab(paneEl) {
         this.pane = $(paneEl);
         this.active = false;
@@ -53,7 +68,6 @@
         form.append(self._libsField('jsLibs',  'JS-ресурсы'));
         form.append(self._libsField('cssLibs', 'CSS-ресурсы'));
 
-        /* ---------- Nesting mode ---------- */
         var nestingRow = self._selectField(
             'nestingMode',
             'Разрешить вложения',
@@ -62,7 +76,6 @@
         );
         form.append(nestingRow);
 
-        /* ---------- Nesting rules ---------- */
         var rulesRow = $(
             '<div class="wb-row wb-comp-nesting-row" style="display:none;">' +
             '<div class="wb-row-name">Разрешённые вложения</div>' +
@@ -82,6 +95,7 @@
             '<div class="wb-comp-subtab" data-sub="css">CSS</div>' +
             '<div class="wb-comp-subtab" data-sub="preview">PreViewIDE(html)</div>' +
             '<div class="wb-comp-subtab" data-sub="props">Component Properties</div>' +
+            '<div class="wb-comp-subtab" data-sub="events">Component Events</div>' +
             '</div>'
         );
         wrap.append(subTabs);
@@ -91,6 +105,7 @@
         var cssBox  = $('<div class="wb-comp-editor-box" data-sub="css" style="display:none;"></div>');
         var prevBox = $('<div class="wb-comp-editor-box" data-sub="preview" style="display:none;"></div>');
         var propBox = $('<div class="wb-comp-editor-box wb-comp-props-box" data-sub="props" style="display:none;"></div>');
+        var evtBox  = $('<div class="wb-comp-editor-box wb-comp-events-box" data-sub="events" style="display:none;"></div>');
 
         this.jsEditor      = new global.CodeEditor({ value: '', language: 'javascript' });
         this.cssEditor     = new global.CodeEditor({ value: '', language: 'css' });
@@ -100,8 +115,9 @@
         cssBox.append(this.cssEditor.el);
         prevBox.append(this.previewEditor.el);
         propBox.append(self._buildPropsTable());
+        evtBox.append(self._buildEventsTable());
 
-        editors.append(jsBox).append(cssBox).append(prevBox).append(propBox);
+        editors.append(jsBox).append(cssBox).append(prevBox).append(propBox).append(evtBox);
         wrap.append(editors);
 
         var toolbar = $('<div class="wb-comp-toolbar"></div>');
@@ -113,13 +129,11 @@
 
         this.pane.empty().append(wrap);
         this.statusEl = status;
+        this._subTabs = subTabs;
+        this._editors = editors;
 
         subTabs.find('.wb-comp-subtab').click(function () {
-            subTabs.find('.wb-comp-subtab').removeClass('wb-active');
-            $(this).addClass('wb-active');
-            var sub = $(this).attr('data-sub');
-            editors.find('.wb-comp-editor-box').hide();
-            editors.find('.wb-comp-editor-box[data-sub="' + sub + '"]').show();
+            self._activateSubTab($(this).attr('data-sub'));
         });
 
         newBtn.click(function () { self.newComponent(); });
@@ -137,14 +151,14 @@
             js:  form.find('.wb-comp-libs[data-kind="js"]'),
             css: form.find('.wb-comp-libs[data-kind="css"]')
         };
-        this._propsTbody   = propBox.find('.wb-comp-props-tbody');
-        this._nestingRow   = rulesRow;
-        this._nestingList  = rulesRow.find('.wb-comp-nesting-rules');
-        this._nestingAdd   = rulesRow.find('.wb-comp-nesting-add');
+        this._propsTbody  = propBox.find('.wb-comp-props-tbody');
+        this._eventsTbody = evtBox.find('.wb-comp-events-tbody');
+        this._nestingRow  = rulesRow;
+        this._nestingList = rulesRow.find('.wb-comp-nesting-rules');
+        this._nestingAdd  = rulesRow.find('.wb-comp-nesting-add');
 
         this._nestingAdd.click(function () { self._addNestingRuleRow(); });
 
-        /* Показываем/скрываем список правил. */
         var syncNestingUI = function () {
             var mode = self._form.nestingMode.val();
             rulesRow.toggle(mode === 'list');
@@ -153,6 +167,13 @@
         this._syncNestingUI = syncNestingUI;
 
         this.newComponent();
+    };
+
+    ComponentTab.prototype._activateSubTab = function (name) {
+        this._subTabs.find('.wb-comp-subtab').removeClass('wb-active');
+        this._subTabs.find('.wb-comp-subtab[data-sub="' + name + '"]').addClass('wb-active');
+        this._editors.find('.wb-comp-editor-box').hide();
+        this._editors.find('.wb-comp-editor-box[data-sub="' + name + '"]').show();
     };
 
     /* ---------- вспомогательные конструкторы полей ---------- */
@@ -305,8 +326,8 @@
         var head = $(
             '<div class="wb-comp-props-head">' +
             '<button type="button" class="wb-code-btn wb-comp-prop-add">+ Свойство</button>' +
-            '<span class="wb-comp-props-hint">Пользовательские свойства компонента. ' +
-            'Имя — имя HTML-атрибута, которое появится в инспекторе.</span>' +
+            '<span class="wb-comp-props-hint">Двойной клик по полю «JS onChange» — переход ' +
+            'в JS и создание/навигация по функции.</span>' +
             '</div>'
         );
         box.append(head);
@@ -316,12 +337,13 @@
             '<thead><tr>' +
             '<th>Имя</th>' +
             '<th>Заголовок</th>' +
-            '<th>Тип значения</th>' +
-            '<th>Варианты (enum, через запятую)</th>' +
+            '<th>Тип</th>' +
+            '<th>Варианты (enum)</th>' +
             '<th>Ед. изм.</th>' +
-            '<th>Тип редактора</th>' +
+            '<th>Редактор</th>' +
             '<th>URL редактора</th>' +
             '<th>Просмотрщик</th>' +
+            '<th title="JS-функция, вызываемая при изменении свойства">JS onChange</th>' +
             '<th></th>' +
             '</tr></thead>' +
             '<tbody class="wb-comp-props-tbody"></tbody>' +
@@ -334,6 +356,7 @@
 
     ComponentTab.prototype._addPropRow = function (data) {
         data = data || {};
+        var self = this;
         var tr = $('<tr class="wb-comp-prop-row"></tr>');
 
         tr.append($('<td></td>').append($('<input type="text" class="wb-cp-name">').val(data.name || '')));
@@ -379,6 +402,31 @@
         var pdTd = $('<td></td>').append(pdSel);
         tr.append(pdTd);
 
+        /* --- JS onChange function field --- */
+        var funcInp = $('<input type="text" class="wb-cp-onchange">')
+            .val(data.onChangeFunc || '')
+            .attr('placeholder', 'onColorChange');
+        var funcTd = $('<td></td>').append(funcInp);
+        tr.append(funcTd);
+
+        funcInp.dblclick(function () {
+            var name = funcInp.val();
+            if (!name) {
+                var cName = safeIdent(self._form.name.val() || 'Component');
+                var pName = safeIdent(tr.find('.wb-cp-name').val() || 'Property');
+                name = 'on' + capitalize(cName) + capitalize(pName) + 'Change';
+                funcInp.val(name);
+            }
+            var template = 'function ' + name + '(ctx) {\n' +
+                '    // ctx.name        — имя свойства\n' +
+                '    // ctx.value       — новое значение\n' +
+                '    // ctx.oldValue    — предыдущее значение\n' +
+                '    // ctx.component   — экземпляр компонента\n' +
+                '    // ctx.el          — корневой DOM-элемент компонента\n' +
+                '\n    \n}';
+            self._gotoOrCreateFunction(name, template);
+        });
+
         var delTd = $('<td></td>');
         var del = $('<button type="button" class="wb-row-del" title="Удалить">×</button>');
         del.click(function () { tr.remove(); });
@@ -410,7 +458,8 @@
                 unit:            tr.find('.wb-cp-unit').val() || '',
                 fieldType:       tr.find('.wb-cp-fieldtype').val() || 'none',
                 fieldUrl:        tr.find('.wb-cp-fieldurl').val() || '',
-                fieldPredefined: tr.find('.wb-cp-fieldpredefined').val() || ''
+                fieldPredefined: tr.find('.wb-cp-fieldpredefined').val() || '',
+                onChangeFunc:    tr.find('.wb-cp-onchange').val() || ''
             });
         });
         return out;
@@ -420,6 +469,139 @@
         this._propsTbody.empty();
         arr = arr || [];
         for (var i = 0; i < arr.length; i++) this._addPropRow(arr[i]);
+    };
+
+    /* ---------- Component Events ---------- */
+    ComponentTab.prototype._buildEventsTable = function () {
+        var self = this;
+
+        var box = $('<div class="wb-comp-events"></div>');
+        var head = $(
+            '<div class="wb-comp-props-head">' +
+            '<button type="button" class="wb-code-btn wb-comp-event-add">+ Событие</button>' +
+            '<span class="wb-comp-props-hint">Двойной клик по полю «Handler» — переход ' +
+            'в JS и создание/навигация по функции.</span>' +
+            '</div>'
+        );
+        box.append(head);
+
+        var table = $(
+            '<table class="wb-comp-events-table">' +
+            '<thead><tr>' +
+            '<th>Имя события</th>' +
+            '<th>Заголовок</th>' +
+            '<th>Обработчик (JS)</th>' +
+            '<th></th>' +
+            '</tr></thead>' +
+            '<tbody class="wb-comp-events-tbody"></tbody>' +
+            '</table>'
+        );
+        box.append(table);
+        head.find('.wb-comp-event-add').click(function () { self._addEventRow(); });
+        return box;
+    };
+
+    ComponentTab.prototype._addEventRow = function (data) {
+        data = data || {};
+        var self = this;
+        var tr = $('<tr class="wb-comp-event-row"></tr>');
+
+        tr.append($('<td></td>').append(
+            $('<input type="text" class="wb-ce-name">')
+                .val(data.name || '')
+                .attr('placeholder', 'myEvent')
+        ));
+        tr.append($('<td></td>').append(
+            $('<input type="text" class="wb-ce-caption">')
+                .val(data.caption || '')
+                .attr('placeholder', 'Моё событие')
+        ));
+
+        var funcInp = $('<input type="text" class="wb-ce-handler">')
+            .val(data.handlerFunc || '')
+            .attr('placeholder', 'onMyEventHandler');
+        tr.append($('<td></td>').append(funcInp));
+
+        funcInp.dblclick(function () {
+            var name = funcInp.val();
+            if (!name) {
+                var cName = safeIdent(self._form.name.val() || 'Component');
+                var eName = safeIdent(tr.find('.wb-ce-name').val() || 'Event');
+                name = 'on' + capitalize(cName) + capitalize(eName);
+                funcInp.val(name);
+            }
+            var template = 'function ' + name + '(ctx) {\n' +
+                '    // ctx.type           — имя события\n' +
+                '    // ctx.originalEvent  — оригинальное DOM-событие\n' +
+                '    // ctx.data           — detail из CustomEvent\n' +
+                '    // ctx.component      — экземпляр компонента\n' +
+                '    // ctx.el             — корневой DOM-элемент компонента\n' +
+                '\n    \n}';
+            self._gotoOrCreateFunction(name, template);
+        });
+
+        var delTd = $('<td></td>');
+        var del = $('<button type="button" class="wb-row-del" title="Удалить">×</button>');
+        del.click(function () { tr.remove(); });
+        delTd.append(del);
+        tr.append(delTd);
+
+        this._eventsTbody.append(tr);
+    };
+
+    ComponentTab.prototype._collectEvents = function () {
+        var out = [];
+        this._eventsTbody.find('.wb-comp-event-row').each(function () {
+            var tr = $(this);
+            var name = tr.find('.wb-ce-name').val();
+            if (!name) return;
+            out.push({
+                name:        name,
+                caption:     tr.find('.wb-ce-caption').val() || name,
+                handlerFunc: tr.find('.wb-ce-handler').val() || ''
+            });
+        });
+        return out;
+    };
+
+    ComponentTab.prototype._setEvents = function (arr) {
+        this._eventsTbody.empty();
+        arr = arr || [];
+        for (var i = 0; i < arr.length; i++) this._addEventRow(arr[i]);
+    };
+
+    /* ---------- Навигация к функции в JS ---------- */
+    ComponentTab.prototype._gotoOrCreateFunction = function (funcName, template) {
+        this._activateSubTab('js');
+
+        var code = this.jsEditor.getValue() || '';
+        var esc = String(funcName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        /* Ищем объявление: `function name(` либо `name = function`. */
+        var declRe = new RegExp(
+            '(?:\\bfunction\\s+' + esc + '\\s*\\(|\\b' + esc + '\\s*=\\s*function\\s*\\()'
+        );
+        var exists = declRe.test(code);
+
+        if (!exists) {
+            var tpl = template || ('function ' + funcName + '(ctx) {\n    // TODO\n}');
+            if (code && !/\n\s*$/.test(code)) code += '\n';
+            code += '\n' + tpl + '\n';
+            this.jsEditor.setValue(code);
+        }
+
+        /* Ищем начало тела функции: позиция после `{`. */
+        var m = new RegExp(
+            '(?:function\\s+' + esc + '\\s*\\([^)]*\\)\\s*\\{' +
+            '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)'
+        ).exec(code);
+
+        if (m) {
+            var pos = m.index + m[0].length;
+            this.jsEditor.ta.focus();
+            this.jsEditor.ta.setSelectionRange(pos, pos);
+            this.jsEditor.revealOffset(pos);
+        }
     };
 
     /* ---------- Форма ---------- */
@@ -433,6 +615,7 @@
         this._setLibs('js', []);
         this._setLibs('css', []);
         this._setProps([]);
+        this._setEvents([]);
         this._setNestingRules([]);
         if (this._syncNestingUI) this._syncNestingUI();
 
@@ -455,6 +638,7 @@
             css:         this.cssEditor.getValue(),
             previewIdeHtml: this.previewEditor.getValue(),
             customProperties: this._collectProps(),
+            customEvents:     this._collectEvents(),
             nestingMode:  this._form.nestingMode.val() || 'all',
             nestingRules: this._collectNestingRules()
         };
@@ -499,6 +683,7 @@
         this._setLibs('js',  c.jsLibs || []);
         this._setLibs('css', c.cssLibs || []);
         this._setProps(c.customProperties || []);
+        this._setEvents(c.customEvents || []);
         this._setNestingRules(c.nestingRules || []);
         if (this._syncNestingUI) this._syncNestingUI();
 
