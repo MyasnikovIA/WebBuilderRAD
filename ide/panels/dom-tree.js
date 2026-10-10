@@ -13,6 +13,16 @@
 
     var _idCounter = 0;
 
+    /* Служебный узел пользовательского компонента?
+       Не показываем в дереве — работает как фон. */
+    function isUserCompServiceNode(el) {
+        if (!el || el.nodeType !== 1) return false;
+        if (!el.getAttribute) return false;
+        return el.getAttribute('data-wb-user-comp-asset') != null
+            || el.getAttribute('data-wb-user-comp-style') != null
+            || el.getAttribute('data-wb-user-comp-script') != null;
+    }
+
     function collectTreeKids(el) {
         var kids = [];
         for (var i = 0; i < el.children.length; i++) {
@@ -20,6 +30,7 @@
             if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
             if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
             if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
+            if (isUserCompServiceNode(c)) continue;
             if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
             if (c.tagName && (c.tagName.toLowerCase() === 'wb-images'
                 || c.tagName.toLowerCase() === 'wb-image')) continue;
@@ -129,6 +140,7 @@
         if (el.getAttribute && el.getAttribute('data-wb-ide') === '1') return;
         if (el.getAttribute && el.getAttribute('data-wb-preview') === '1') return;
         if (el.getAttribute && el.getAttribute('data-wb-comp-asset') === '1') return;
+        if (isUserCompServiceNode(el)) return;
         if (el.tagName && el.tagName.toLowerCase() === 'wb-cdata') return;
         if (el.tagName && (el.tagName.toLowerCase() === 'wb-images'
             || el.tagName.toLowerCase() === 'wb-image')) return;
@@ -232,6 +244,17 @@
             if (m2name) extra += ' name="' + m2name + '"';
             if (m2cap)  extra += ' caption="' + m2cap + '"';
             return tag + extra;
+        }
+
+        /* Пользовательский компонент — показываем имя из палитры. */
+        var ucompId = el.getAttribute && el.getAttribute('data-wb-user-comp');
+        if (ucompId && global.ComponentStorage) {
+            var uc = global.ComponentStorage.getComponent(ucompId);
+            if (uc) {
+                var ct = el.getAttribute('cmptype') || uc.cmptype || '';
+                return tag + (ct ? ' cmptype="' + ct + '"' : '') +
+                    '  /* ' + (uc.name || ucompId) + ' */';
+            }
         }
 
         if (tag === 'meta') {

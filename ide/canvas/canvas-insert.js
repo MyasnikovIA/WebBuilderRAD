@@ -160,7 +160,7 @@
         var doc = this.getDoc();
         var node;
         try { node = def.preview(el, doc); } catch (e) { node = null; }
-        if (!node) return;
+        if (!node) return;   /* side-effects (например injectAssets) уже сработали */
 
         if (typeof node === 'string') {
             var tmp = doc.createElement('div');
@@ -172,8 +172,6 @@
         node.setAttribute('data-wb-preview', '1');
         el.appendChild(node);
 
-        /* Preview-узел может содержать img/iframe с относительным путём —
-           сразу подменяем на blob/data URL. */
         if (global.ProjectResolver) {
             try { global.ProjectResolver.applyTree(node); } catch (e) {}
         }
@@ -203,6 +201,35 @@
 
     Canvas.prototype._place = function (def, target) {
         this.insertComponent(def, target, 'inside');
+    };
+
+    /* Пройти по дереву и «освежить» все компоненты.
+       Расширено: user-компоненты тоже получают preview-хук
+       (который переинжектит свои CSS/JS), а их сервисные узлы
+       не обходятся. */
+    Canvas.prototype._renderAllPreviews = function (root) {
+        if (!root || root.nodeType !== 1) return;
+
+        var isComponent = root.getAttribute && (
+            root.getAttribute('data-wb-tag') ||
+            root.getAttribute('cmptype') ||
+            root.getAttribute('data-wb-user-comp')
+        );
+        if (isComponent) {
+            this._renderPreview(root);
+        }
+
+        var kids = root.children;
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i];
+            if (!c.getAttribute) continue;
+            if (c.getAttribute('data-wb-preview') === '1') continue;
+            if (c.getAttribute('data-wb-ide') === '1') continue;
+            if (c.getAttribute('data-wb-user-comp-asset') != null) continue;
+            if (c.getAttribute('data-wb-user-comp-style') != null) continue;
+            if (c.getAttribute('data-wb-user-comp-script') != null) continue;
+            this._renderAllPreviews(c);
+        }
     };
 
 })(window);

@@ -3,14 +3,15 @@
    Модель:
      { version:2, folders:{…}, components:{…} }
 
-   Поля компонента:
-     id, name, cmptype, tagName, icon, description,
-     html, js, css, previewIdeHtml,
-     jsLibs, cssLibs,
-     customProperties:[
-       { name, caption, type, values, unit, fieldType, fieldUrl, fieldPredefined }
-     ],
-     folderId
+   Служебные узлы компонента (не видны в дереве и cleanHtml, но работают):
+     <link data-wb-user-comp-asset="<id>">   — внешние/проектные CSS
+     <style data-wb-user-comp-style="<id>">  — встроенный CSS
+     <script data-wb-user-comp-script="<id>"> — встроенный JS
+     <script src=… data-wb-user-comp-asset="<id>"> — внешние/проектные JS
+
+   Эти узлы пересоздаются автоматически:
+     • при вставке компонента из палитры (create);
+     • при загрузке HTML в canvas (preview → injectAssets).
 
    Уникальность: по cmptype (если не задан — по name). */
 (function (global) {
@@ -87,39 +88,26 @@
             _user:   true
         };
 
-        /* enum → values[] */
         if (p.type === 'enum' && p.values) {
             out.values = String(p.values).split(',').map(function (s) { return s.trim(); })
                 .filter(function (s) { return s !== ''; });
         }
-
-        /* length → suggest по единице измерения */
         if (p.type === 'length' && p.unit) {
             out.suggest = [p.unit];
         }
-
-        /* FIELD TYPE — как открывать редактор/просмотр значения */
         if (p.fieldType === 'url' && p.fieldUrl) {
             out.type = 'custom-editor-url';
             out.editorUrl = p.fieldUrl;
         } else if (p.fieldType === 'predefined' && p.fieldPredefined) {
             switch (p.fieldPredefined) {
-                case 'text':
-                    out.type = 'text'; break;
-                case 'code-editor-xml':
-                    out.type = 'code-editor'; out.language = 'xml'; break;
-                case 'code-editor-js':
-                    out.type = 'code-editor'; out.language = 'javascript'; break;
-                case 'code-editor-css':
-                    out.type = 'code-editor'; out.language = 'css'; break;
-                case 'code-editor-json':
-                    out.type = 'code-editor'; out.language = 'json'; break;
-                case 'code-editor-sql':
-                    out.type = 'code-editor'; out.language = 'sql'; break;
-                case 'image-preview':
-                    out.type = 'FILE'; break;
-                case 'file-picker':
-                    out.type = 'FILE'; break;
+                case 'text':              out.type = 'text'; break;
+                case 'code-editor-xml':   out.type = 'code-editor'; out.language = 'xml'; break;
+                case 'code-editor-js':    out.type = 'code-editor'; out.language = 'javascript'; break;
+                case 'code-editor-css':   out.type = 'code-editor'; out.language = 'css'; break;
+                case 'code-editor-json':  out.type = 'code-editor'; out.language = 'json'; break;
+                case 'code-editor-sql':   out.type = 'code-editor'; out.language = 'sql'; break;
+                case 'image-preview':     out.type = 'FILE'; break;
+                case 'file-picker':       out.type = 'FILE'; break;
             }
         }
         return out;
@@ -166,7 +154,6 @@
         },
         getComponent: function (id) { return readAll().components[id] || null; },
 
-        /* Поиск компонента по cmptype (уникальный ключ). */
         findByCmptype: function (ct) {
             if (!ct) return null;
             var list = this.listComponents();
@@ -179,7 +166,6 @@
         createComponent: function (def) {
             var m = readAll();
             var c = normalizeComponent(def);
-            /* Уникальность: если cmptype уже занят — перезаписываем. */
             if (c.cmptype) {
                 var existing = this.findByCmptype(c.cmptype);
                 if (existing) {
@@ -214,8 +200,7 @@
             return writeAll(model);
         },
 
-        /* ---------- merge с контролем уникальности по cmptype ----------
-           Возвращает Promise<{ imported, overwritten, skipped }>. */
+        /* ---------- merge с контролем уникальности по cmptype ---------- */
         mergeWithConfirmation: function (model) {
             var self = this;
             return new Promise(function (resolve) {
@@ -226,7 +211,6 @@
                 var m = readAll();
                 var stats = { imported: 0, overwritten: 0, skipped: 0 };
 
-                /* Папки — сначала создаём с маппингом id. */
                 var map = {};
                 var folders = model.folders || {};
                 for (var fk in folders) {
@@ -248,7 +232,6 @@
                     var c = normalizeComponent(comps[ck]);
                     c.folderId = c.folderId && map[c.folderId] ? map[c.folderId] : (c.folderId || '');
 
-                    /* Контроль уникальности по cmptype. */
                     var dup = c.cmptype ? self.findByCmptype(c.cmptype) : null;
                     if (dup) {
                         var ok = global.confirm(
@@ -263,7 +246,6 @@
                             stats.skipped++;
                         }
                     } else {
-                        /* Если id уже занят — создаём новый. */
                         if (m.components[c.id]) c.id = uid('cmp');
                         m.components[c.id] = c;
                         stats.imported++;
@@ -275,12 +257,80 @@
             });
         },
 
+        /* ---------- Инъекция служебных CSS/JS в элемент компонента ----------
+           Идемпотентна: удаляет старые сервисные узлы и добавляет новые.
+           CSS-узлы (link, style) вставляются в начало,
+           JS-узлы (script) — в конец, чтобы они не ломали разметку. */
+        injectAssets: function (el, c, doc) {
+            if (!el || !c || !doc) return;
+
+            /* Удаляем старые сервисные узлы. */
+            var toRemove = [];
+            for (var i = 0; i < el.children.length; i++) {
+                var ch = el.children[i];
+                if (!ch.getAttribute) continue;
+                if (ch.getAttribute('data-wb-user-comp-asset') != null ||
+                    ch.getAttribute('data-wb-user-comp-style') != null ||
+                    ch.getAttribute('data-wb-user-comp-script') != null) {
+                    toRemove.push(ch);
+                }
+            }
+            for (var j = 0; j < toRemove.length; j++) {
+                if (toRemove[j].parentNode) toRemove[j].parentNode.removeChild(toRemove[j]);
+            }
+
+            /* CSS-ресурсы (внешние или файлы проекта). */
+            if (c.cssLibs && c.cssLibs.length) {
+                for (var k = 0; k < c.cssLibs.length; k++) {
+                    var lib = c.cssLibs[k];
+                    var href = lib.value;
+                    if (lib.type === 'project' && global.ProjectResolver) {
+                        try { href = global.ProjectResolver.resolve(lib.value); } catch (e) {}
+                    }
+                    if (!href) continue;
+                    var link = doc.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = href;
+                    link.setAttribute('data-wb-user-comp-asset', c.id);
+                    el.insertBefore(link, el.firstChild);
+                }
+            }
+            /* Встроенный CSS. */
+            if (c.css) {
+                var st = doc.createElement('style');
+                st.setAttribute('data-wb-user-comp-style', c.id);
+                st.textContent = c.css;
+                el.insertBefore(st, el.firstChild);
+            }
+            /* Встроенный JS. */
+            if (c.js) {
+                var sc2 = doc.createElement('script');
+                sc2.setAttribute('data-wb-user-comp-script', c.id);
+                sc2.textContent = c.js;
+                el.appendChild(sc2);
+            }
+            /* JS-ресурсы (внешние или файлы проекта). */
+            if (c.jsLibs && c.jsLibs.length) {
+                for (var m = 0; m < c.jsLibs.length; m++) {
+                    var jlib = c.jsLibs[m];
+                    var src = jlib.value;
+                    if (jlib.type === 'project' && global.ProjectResolver) {
+                        try { src = global.ProjectResolver.resolve(jlib.value); } catch (e) {}
+                    }
+                    if (!src) continue;
+                    var sc = doc.createElement('script');
+                    sc.src = src;
+                    sc.setAttribute('data-wb-user-comp-asset', c.id);
+                    el.appendChild(sc);
+                }
+            }
+        },
+
         /* ---------- построение def для ComponentRegistry ---------- */
         toDef: function (c) {
             if (!c) return null;
             var tagName = (c.tagName || 'div').toLowerCase();
 
-            /* Схема Inspector — из пользовательских свойств. */
             var props = [
                 { type: 'separator', caption: 'Component (Tool Palette)' },
                 { name: 'data-wb-user-comp', caption: 'Component ID', type: 'string', attr: true, readOnly: true },
@@ -302,66 +352,34 @@
                 subCategory: 'User Palette',
                 userComponent: c,
                 locked: true,
-                preview: null,
+                preview: null,   /* будет переопределён ниже */
+
                 iconUrl: c.icon || '',
+
                 create: function (doc) {
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
                     if (c.cmptype) el.setAttribute('cmptype', c.cmptype);
 
-                    /* CSS-ресурсы. */
-                    if (c.cssLibs && c.cssLibs.length) {
-                        for (var i = 0; i < c.cssLibs.length; i++) {
-                            var lib = c.cssLibs[i];
-                            var href = lib.value;
-                            if (lib.type === 'project' && global.ProjectResolver) {
-                                try { href = global.ProjectResolver.resolve(lib.value); } catch (e) {}
-                            }
-                            if (!href) continue;
-                            var link = doc.createElement('link');
-                            link.rel = 'stylesheet';
-                            link.href = href;
-                            link.setAttribute('data-wb-user-comp-asset', c.id);
-                            el.appendChild(link);
-                        }
-                    }
-                    if (c.css) {
-                        var st = doc.createElement('style');
-                        st.setAttribute('data-wb-user-comp-style', c.id);
-                        st.textContent = c.css;
-                        el.appendChild(st);
-                    }
-
-                    /* Разметка — PreViewIDE(html). */
+                    /* PreViewIDE(html) — видимый контент. */
                     var html = c.previewIdeHtml || c.html || '';
-                    var holder = doc.createElement('div');
-                    holder.setAttribute('data-wb-user-comp-content', '1');
-                    holder.innerHTML = html;
-                    el.appendChild(holder);
+                    if (html) el.innerHTML = html;
 
-                    /* JS-ресурсы. */
-                    if (c.jsLibs && c.jsLibs.length) {
-                        for (var j = 0; j < c.jsLibs.length; j++) {
-                            var jlib = c.jsLibs[j];
-                            var src = jlib.value;
-                            if (jlib.type === 'project' && global.ProjectResolver) {
-                                try { src = global.ProjectResolver.resolve(jlib.value); } catch (e) {}
-                            }
-                            if (!src) continue;
-                            var sc = doc.createElement('script');
-                            sc.src = src;
-                            sc.setAttribute('data-wb-user-comp-asset', c.id);
-                            el.appendChild(sc);
-                        }
-                    }
-                    if (c.js) {
-                        var sc2 = doc.createElement('script');
-                        sc2.setAttribute('data-wb-user-comp-script', c.id);
-                        sc2.textContent = c.js;
-                        el.appendChild(sc2);
-                    }
+                    /* Сервисные CSS/JS. */
+                    global.ComponentStorage.injectAssets(el, c, doc);
+
                     return el;
                 },
+
+                /* Preview-хук: вызывается canvas._renderPreview.
+                   Используется для реинъекции сервисных узлов после
+                   cleanHtml → loadHtml. Возвращает null — визуальный
+                   preview-узел не нужен. */
+                preview: function (el, doc) {
+                    global.ComponentStorage.injectAssets(el, c, doc);
+                    return null;
+                },
+
                 schema: {
                     properties: props,
                     styles: [],
@@ -370,7 +388,6 @@
             };
         },
 
-        /* Публичные хелперы (для ComponentTab). */
         buildCustomInspectorField: buildCustomInspectorField
     };
 

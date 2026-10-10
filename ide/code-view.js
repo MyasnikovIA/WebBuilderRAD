@@ -13,6 +13,39 @@
     'use strict';
     var bus = global.EventBus;
 
+    /* ------------------------------------------------------------------
+       Финальная фильтрация сервисных узлов пользовательских компонентов.
+
+       Мы не показываем в редакторе кода:
+         <style  data-wb-user-comp-style="…">…</style>
+         <script data-wb-user-comp-script="…">…</script>
+         <script data-wb-user-comp-asset="…">…</script>   (src=…)
+         <link   data-wb-user-comp-asset="…" …>
+
+       Эти узлы продолжают работать на сцене (они присутствуют в DOM),
+       фильтруется только их текстовое представление в редакторе. */
+    function stripUserCompServiceNodes(html) {
+        if (!html) return html;
+
+        /* <style data-wb-user-comp-style="…">…</style> */
+        html = html.replace(
+            /<style\b[^>]*\bdata-wb-user-comp-style\b[^>]*>[\s\S]*?<\/style>/gi,
+            ''
+        );
+        /* <script data-wb-user-comp-script="…">…</script> и
+           <script src="…" data-wb-user-comp-asset="…">…</script> */
+        html = html.replace(
+            /<script\b[^>]*\bdata-wb-user-comp-(?:script|asset)\b[^>]*>[\s\S]*?<\/script>/gi,
+            ''
+        );
+        /* <link … data-wb-user-comp-asset="…"> (void) */
+        html = html.replace(
+            /<link\b[^>]*\bdata-wb-user-comp-asset\b[^>]*\/?>/gi,
+            ''
+        );
+        return html;
+    }
+
     function CodeView(paneEl) {
         this.pane = $(paneEl);
         this.editor = null;
@@ -119,10 +152,15 @@
         if (tab.length && !tab.hasClass('wb-active')) tab.click();
     };
 
+    /* ------------------------------------------------------------------
+       refresh — перечитать canvas и обновить редактор.
+       Финальная фильтрация сервисных узлов пользовательских компонентов
+       применяется здесь — гарантированно, независимо от cleanHtml(). */
     CodeView.prototype.refresh = function () {
         if (!this.canvas) return;
         var pos = this.editor.ta.selectionStart;
         var html = this.canvas.cleanHtml();
+        html = stripUserCompServiceNodes(html);
         this.editor.setValue(html);
         if (pos != null && pos <= html.length) {
             this.editor.ta.setSelectionRange(pos, pos);
@@ -205,13 +243,7 @@
         }
     };
 
-    /* Построить индекс: [ {element, start, end, light} ].
-       - light: false → точное совпадение (полная сериализация найдена);
-       - light: true  → fallback по открывающему тегу (элемент изменён
-                        пользователем, полная сериализация не совпадает).
-
-       Устойчиво к несохранённым правкам: при idx < 0 не прерывает обход,
-       а ищет только открывающий тег в тексте. */
+    /* Построить индекс: [ {element, start, end, light} ]. */
     CodeView.prototype._buildElementIndex = function () {
         this._elemIndex = [];
         if (!this.canvas) return;
@@ -229,14 +261,15 @@
                 if (el.getAttribute('data-wb-ide') === '1') return true;
                 if (el.getAttribute('data-wb-preview') === '1') return true;
                 if (el.getAttribute('data-wb-comp-asset') === '1') return true;
+                if (el.getAttribute('data-wb-user-comp-asset') != null) return true;
+                if (el.getAttribute('data-wb-user-comp-style') != null) return true;
+                if (el.getAttribute('data-wb-user-comp-script') != null) return true;
             }
             var t = el.tagName.toLowerCase();
             if (t === 'wb-cdata' || t === 'wb-images' || t === 'wb-image') return true;
             return false;
         }
 
-        /* Fallback: искать в тексте только открывающий тег. Использует
-           tagName (или data-wb-tag) и ключевые атрибуты. */
         function findOpenTag(code, el, from) {
             var xmlTag = (el.getAttribute && el.getAttribute('data-wb-tag')) || el.tagName;
             var attrsToMatch = [];
@@ -289,7 +322,6 @@
                 elStart = idx;
                 elEnd = idx + cleanSnip.length;
             } else {
-                /* Fallback: узел изменён пользователем — ищем открывающий тег. */
                 var openIdx = findOpenTag(code, el, searchFrom);
                 if (openIdx >= 0) {
                     elStart = openIdx;
@@ -307,9 +339,6 @@
                 });
             }
 
-            /* ВАЖНО: обходим детей в любом случае, даже если сам узел
-               не найден в тексте (изменён пользователем). Иначе при
-               правке внутри cmpScript не будут найдены его соседи. */
             var newSearch = (elStart >= 0) ? elStart : searchFrom;
             var kids = el.children;
             for (var i = 0; i < kids.length; i++) {
@@ -322,10 +351,6 @@
         walk(root, 0, 0);
     };
 
-    /* Найти элемент под курсором.
-       1) Сначала пробуем точное совпадение (light: false) — по границам.
-       2) Иначе — fallback: ищем ближайший открывающий тег слева от
-          курсора (light: true). */
     CodeView.prototype._elementAtOffset = function (offset) {
         var idx = this._elemIndex;
         if (!idx || !idx.length) return null;
@@ -345,7 +370,6 @@
         }
         if (precise) return precise;
 
-        /* Fallback: последний открывающий тег, начинающийся не позже курсора. */
         var best = null;
         var bestStart = -1;
         for (var j = 0; j < idx.length; j++) {
