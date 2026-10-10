@@ -9,13 +9,9 @@
          - на папку   → внутрь папки;
          - на файл    → в родительскую папку файла;
          - на пустое  → в корень проекта.
-     • мультивыделение сохраняется при drag: тащатся все выделенные элементы.
-
-   Служебные поля:
-     this._selectedPaths    — { path: true } — выделенные пути;
-     this._lastClickedPath  — для Shift-диапазона;
-     this._dragPaths        — массив путей в текущем drag;
-     this._dragging         — bool.
+     • мультивыделение сохраняется при drag: тащатся все выделенные элементы;
+     • автообновление ссылок во всех текстовых файлах проекта
+       при перемещении (см. _applyReferenceUpdates).
 
    ВАЖНО: обработчики навешиваются через НАТИВНЫЕ addEventListener.
    MiniUI патчит jQuery.fn.on/.delegate и ломает их в 1.6.2. */
@@ -24,7 +20,7 @@
     var bus = global.EventBus;
 
     /* ------------------------------------------------------------------
-       Хелперы
+       Хелперы (пути)
        ------------------------------------------------------------------ */
 
     function parentOf(path) {
@@ -79,6 +75,106 @@
     }
 
     /* ------------------------------------------------------------------
+       Замена путей в тексте (граничная защита)
+
+       Заменяет 'from' на 'to', но только там, где слева и справа
+       стоят НЕ path-символы. Это исключает замену подстрок:
+         a/foo.txt не матчится внутри a/foo.txt.bak
+         a/foo.txt не матчится внутри x/a/foo.txt
+         a/foo.txt не матчится внутри a/foo.txt-more
+       При этом корректно матчится:
+         href="a/foo.txt"   (после — кавычка)
+         url(a/foo.txt)     (после — скобка)
+         a/foo.txt#anchor   (после — #)
+         a/foo.txt          (после — конец строки)
+         a/foo.txt.         (после — точка + конец/пробел/кавычка)
+       ------------------------------------------------------------------ */
+
+    function isPathChar(ch) {
+        if (!ch) return false;
+        var code = ch.charCodeAt(0);
+
+        /* ASCII */
+        if (code < 128) {
+            if (code >= 48 && code <= 57) return true;   /* 0-9 */
+            if (code >= 65 && code <= 90) return true;   /* A-Z */
+            if (code >= 97 && code <= 122) return true;  /* a-z */
+            return ch === '_' || ch === '-' || ch === '.' ||
+                ch === '/' || ch === '\\';
+        }
+
+        /* Unicode spaces — границы. */
+        if (ch === '\u00A0' || ch === '\u2000' || ch === '\u2001' ||
+            ch === '\u2002' || ch === '\u2003' || ch === '\u2009' ||
+            ch === '\u202F' || ch === '\u205F' || ch === '\u3000' ||
+            ch === '\u2028' || ch === '\u2029') {
+            return false;
+        }
+
+        /* Латинский расширенный, греческий, кириллица, CJK, Hiragana/Katakana, Hangul. */
+        if (code >= 0x0100 && code <= 0x024F) return true;
+        if (code >= 0x0370 && code <= 0x03FF) return true;
+        if (code >= 0x0400 && code <= 0x04FF) return true;
+        if (code >= 0x3040 && code <= 0x30FF) return true;
+        if (code >= 0x4E00 && code <= 0x9FFF) return true;
+        if (code >= 0xAC00 && code <= 0xD7AF) return true;
+
+        /* Прочее — консервативно считаем границей. */
+        return false;
+    }
+
+    function replacePathInText(text, from, to) {
+        if (!text || !from || from === to) return text;
+        if (text.indexOf(from) < 0) return text;
+
+        var out = '';
+        var idx = 0;
+        var fromLen = from.length;
+        var textLen = text.length;
+
+        while (idx < textLen) {
+            var found = text.indexOf(from, idx);
+            if (found < 0) {
+                out += text.substring(idx);
+                break;
+            }
+
+            /* Граница слева. */
+            var beforeCh = found > 0 ? text.charAt(found - 1) : '';
+            var beforeOk = !beforeCh || !isPathChar(beforeCh);
+
+            /* Граница справа. */
+            var afterIdx = found + fromLen;
+            var afterCh = afterIdx < textLen ? text.charAt(afterIdx) : '';
+            var afterOk = true;
+
+            if (afterCh) {
+                if (isPathChar(afterCh)) {
+                    /* Точка: разрешаем, если за ней НЕ идёт path-символ.
+                       a/foo.txt. → OK (конец предложения)
+                       a/foo.txt.bak → reject */
+                    if (afterCh === '.') {
+                        var nxt = afterIdx + 1 < textLen ? text.charAt(afterIdx + 1) : '';
+                        afterOk = !nxt || !isPathChar(nxt) || (!/[A-Za-z0-9_\-]/.test(nxt) && !(nxt.charCodeAt(0) > 127));
+                    } else {
+                        afterOk = false;
+                    }
+                }
+            }
+
+            if (beforeOk && afterOk) {
+                out += text.substring(idx, found) + to;
+                idx = afterIdx;
+            } else {
+                out += text.substring(idx, found + 1);
+                idx = found + 1;
+            }
+        }
+
+        return out;
+    }
+
+    /* ------------------------------------------------------------------
        Конструктор
        ------------------------------------------------------------------ */
 
@@ -116,10 +212,6 @@
         this.rebuild();
     };
 
-    /* ------------------------------------------------------------------
-       Публичный доступ к выделению
-       ------------------------------------------------------------------ */
-
     ProjectTree.prototype.getSelection = function () {
         var out = [];
         for (var k in this._selectedPaths) {
@@ -139,7 +231,6 @@
             return;
         }
 
-        /* Удаляем несуществующие пути из выделения. */
         var files = this.project.files || {};
         var newSel = {};
         for (var k in this._selectedPaths) {
@@ -175,8 +266,7 @@
                 if (rest === '.keep') continue;
                 fileList.push(rest);
             } else {
-                /* Признак папки. Файл folder/.keep тоже сюда попадает,
-                   и это правильно: он создаёт папку folder. */
+                /* folder/.keep тоже создаёт папку folder. */
                 folders[rest.substring(0, slash)] = true;
             }
         }
@@ -283,7 +373,6 @@
         this._syncSelectionUI();
     };
 
-    /* DFS-обход видимых узлов — в порядке отображения. */
     ProjectTree.prototype._flattenVisiblePaths = function () {
         var out = [];
         var rootNode = this.rootNode;
@@ -334,9 +423,6 @@
             return null;
         }
 
-        /* Безопасный поиск узла по data-path — итерацией,
-           без CSS-селекторов. Работает с русскими буквами, пробелами,
-           кавычками и любыми Unicode-символами. */
         function findLabelByPath(path) {
             var labels = rootNode.querySelectorAll('.wb-tree-label');
             for (var i = 0; i < labels.length; i++) {
@@ -345,7 +431,6 @@
             return null;
         }
 
-        /* ---------- Click / multi-select ---------- */
         rootNode.addEventListener('click', function (e) {
             var lbl = findLabel(e.target);
             if (!lbl) {
@@ -380,7 +465,6 @@
             });
         }, false);
 
-        /* ---------- Double-click: открыть / редактировать ---------- */
         rootNode.addEventListener('dblclick', function (e) {
             var lbl = findLabel(e.target);
             if (!lbl) return;
@@ -391,7 +475,6 @@
             self._openFile(path);
         }, false);
 
-        /* ---------- Context menu ---------- */
         rootNode.addEventListener('contextmenu', function (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -401,7 +484,6 @@
             if (lbl) {
                 var path = lbl.getAttribute('data-path');
                 var type = lbl.getAttribute('data-type');
-                /* Если кликнули по невыделенному — выделяем только его. */
                 if (!self._selectedPaths[path]) {
                     self._selectedPaths = {};
                     self._selectedPaths[path] = true;
@@ -425,7 +507,6 @@
             return false;
         }, false);
 
-        /* ---------- Drag start ---------- */
         rootNode.addEventListener('dragstart', function (e) {
             var lbl = findLabel(e.target);
             if (!lbl) return;
@@ -433,7 +514,6 @@
             var path = lbl.getAttribute('data-path');
             if (!path) return;
 
-            /* Если тащим не выделенный — выделяем только его. */
             if (!self._selectedPaths[path]) {
                 self._selectedPaths = {};
                 self._selectedPaths[path] = true;
@@ -452,7 +532,6 @@
                 e.dataTransfer.setData('application/x-wb-project-path', self._dragPaths[0]);
             } catch (ex) {}
 
-            /* Подсветка источника. */
             for (var i = 0; i < self._dragPaths.length; i++) {
                 var el = findLabelByPath(self._dragPaths[i]);
                 if (el) el.classList.add('wb-dragging');
@@ -463,7 +542,6 @@
             self._endDrag();
         }, false);
 
-        /* ---------- Dragover ---------- */
         rootNode.addEventListener('dragover', function (e) {
             if (!self._dragging) return;
 
@@ -498,7 +576,6 @@
             if (e.target === rootNode) rootNode.classList.remove('wb-drop-root');
         }, false);
 
-        /* ---------- Drop ---------- */
         rootNode.addEventListener('drop', function (e) {
             if (!self._dragging) return;
 
@@ -543,14 +620,10 @@
         for (var i = 0; i < paths.length; i++) {
             var src = paths[i];
 
-            /* Нельзя на самого себя. */
             if (src === targetPath) return false;
-
-            /* Нельзя тащить папку в своего потомка. */
             if (targetType === 'folder' &&
                 targetPath.indexOf(src + '/') === 0) return false;
 
-            /* Хотя бы один источник реально меняет папку. */
             if (parentOf(src) !== targetFolder) {
                 return true;
             }
@@ -582,8 +655,7 @@
         }
         if (!valid.length) return;
 
-        /* 2) Убираем вложенные — если папка выделена,
-              файлы внутри неё отдельно не двигаем. */
+        /* 2) Убираем вложенные. */
         valid.sort(function (a, b) { return a.length - b.length; });
         var filtered = [];
         for (var i = 0; i < valid.length; i++) {
@@ -608,7 +680,6 @@
             if (isFolder) {
                 var newFolder = targetFolder ? targetFolder + '/' + baseName : baseName;
 
-                /* Конфликт: целевая папка уже существует. */
                 var hasConflict = false;
                 for (var p in files) {
                     if (!files.hasOwnProperty(p)) continue;
@@ -641,7 +712,7 @@
         moves = moves.filter(function (m) { return m.from !== m.to; });
         if (!moves.length) return;
 
-        /* 5) Применяем. */
+        /* 5) Применяем к files map. */
         for (var i = 0; i < moves.length; i++) {
             var m = moves[i];
             if (!files[m.from]) continue;
@@ -659,11 +730,91 @@
             }
         }
 
-        /* 7) Сохраняем и уведомляем. */
+        /* 7) Автообновление ссылок во всех текстовых файлах проекта. */
+        this._applyReferenceUpdates(moves, project);
+
+        /* 8) Сохраняем и уведомляем. */
         pm.save();
         this._selectedPaths = {};
         this._lastClickedPath = null;
         bus.emit('project:changed', { project: project });
+    };
+
+    /* ------------------------------------------------------------------
+       Автообновление путей во всех текстовых файлах проекта
+
+       Для каждой пары {from → to} сканируем содержимое каждого
+       текстового файла и заменяем вхождения from на to с граничной
+       защитой. Работает в HTML, CSS, JS, JSON, TXT, .frm, .php и пр.
+       ------------------------------------------------------------------ */
+
+    ProjectTree.prototype._applyReferenceUpdates = function (moves, project) {
+        if (!moves || !moves.length || !project) return 0;
+        var files = project.files || {};
+
+        /* Готовим пары {from, to}, дедуплицируем по from. */
+        var seen = {};
+        var pairs = [];
+        for (var i = 0; i < moves.length; i++) {
+            var m = moves[i];
+            if (!m || !m.from || !m.to) continue;
+            if (m.from === m.to) continue;
+            if (seen[m.from]) continue;
+            seen[m.from] = true;
+            pairs.push({ from: m.from, to: m.to });
+        }
+        if (!pairs.length) return 0;
+
+        /* Длинные пути обрабатываем первыми — защита от частичных
+           наложений, если оба файла имеют общий префикс. */
+        pairs.sort(function (a, b) { return b.from.length - a.from.length; });
+
+        var changedFiles = {};
+        var totalSubstitutions = 0;
+
+        for (var path in files) {
+            if (!files.hasOwnProperty(path)) continue;
+            var f = files[path];
+            if (!f || f.kind !== 'text') continue;
+            var src = f.content || '';
+            if (!src) continue;
+
+            var newSrc = src;
+            for (var k = 0; k < pairs.length; k++) {
+                var before = newSrc;
+                newSrc = replacePathInText(newSrc, pairs[k].from, pairs[k].to);
+                if (newSrc !== before) totalSubstitutions++;
+            }
+
+            if (newSrc !== src) {
+                f.content = newSrc;
+                changedFiles[path] = true;
+            }
+        }
+
+        /* Если редактируемый в canvas файл был обновлён —
+           перезагружаем canvas, чтобы его автосейв не перетёр правки. */
+        var pm = global.IDE && global.IDE.projectManager;
+        if (pm && pm.editing && changedFiles[pm.editing.path]) {
+            var canvas = global.IDE && global.IDE._canvas;
+            if (canvas && canvas.loadHtml) {
+                try {
+                    canvas.loadHtml(files[pm.editing.path].content);
+                    try {
+                        pm.editing.initialClean = canvas.cleanHtml();
+                    } catch (e) {}
+                } catch (e) {}
+            }
+        }
+
+        /* Диагностика в консоль — удобно при отладке. */
+        if (totalSubstitutions > 0 && global.console && console.info) {
+            console.info('[ProjectTree] updated references in ' +
+                Object.keys(changedFiles).length + ' file(s), ' +
+                totalSubstitutions + ' substitution(s)');
+        }
+
+        return totalSubstitutions;
     };
 
     /* ------------------------------------------------------------------
