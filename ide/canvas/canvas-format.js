@@ -13,6 +13,21 @@
     var CDATA_CONTAINERS = Canvas.CDATA_CONTAINERS;
     var XML_SELF_CLOSE = Canvas.XML_SELF_CLOSE;
 
+    /* Служебный узел пользовательского компонента?
+       (не показываем в дереве, не сериализуем). */
+    function isUserCompServiceNode(el) {
+        if (!el || el.nodeType !== 1) return false;
+        if (!el.getAttribute) return false;
+        return el.getAttribute('data-wb-user-comp-asset') != null
+            || el.getAttribute('data-wb-user-comp-style') != null
+            || el.getAttribute('data-wb-user-comp-script') != null;
+    }
+
+    /* Является ли элемент корнем пользовательского компонента. */
+    function isUserCompRoot(el) {
+        return !!(el && el.getAttribute && el.getAttribute('data-wb-user-comp'));
+    }
+
     Canvas.prototype._formatTagName = function (el) {
         var custom = el.getAttribute && el.getAttribute('data-wb-tag');
         if (custom) return custom;
@@ -26,6 +41,7 @@
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
                 if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
+                if (isUserCompServiceNode(c)) continue;
                 return true;
             }
             if (c.nodeType === 3 && c.nodeValue && c.nodeValue.trim() !== '') return true;
@@ -50,6 +66,11 @@
             if (name === 'data-wb-preview') continue;
             if (name === 'data-wb-root') continue;
             if (name === 'data-wb-comp-asset') continue;
+
+            if (name === 'data-wb-user-comp-asset') continue;
+            if (name === 'data-wb-user-comp-style') continue;
+            if (name === 'data-wb-user-comp-script') continue;
+            if (name === 'data-wb-user-comp-content') continue;
 
             if (name === 'cmptype') {
                 if (hasWbTag) continue;
@@ -102,6 +123,10 @@
                 child.parentNode.removeChild(child);
                 continue;
             }
+            if (isUserCompServiceNode(child)) {
+                child.parentNode.removeChild(child);
+                continue;
+            }
             this._stripServiceClasses(child);
             if (child.hasAttribute && child.hasAttribute('data-cmptype')) {
                 child.removeAttribute('data-cmptype');
@@ -128,6 +153,7 @@
                 if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
                 if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
                 if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
+                if (isUserCompServiceNode(c)) continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') {
                     var cv = c.textContent || '';
                     var cm = cv.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
@@ -139,11 +165,7 @@
                 var t = c.nodeValue || '';
                 if (t.trim() === '') continue;
                 var m = t.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-                if (m) {
-                    cdata = m[1];
-                } else {
-                    childCmp.push(c);
-                }
+                if (m) { cdata = m[1]; } else { childCmp.push(c); }
             } else if (c.nodeType === 8) {
                 childCmp.push(c);
             }
@@ -228,8 +250,11 @@
             return pad + '<' + tagName + attrs + '/>\n';
         }
 
+        var isUserComp = isUserCompRoot(node);
         var cmptypeAttr = node.getAttribute && node.getAttribute('cmptype');
-        var isM2 = !!cmptypeAttr && !node.getAttribute('data-wb-tag');
+
+        /* Пользовательский компонент НЕ идёт по ветке M2. */
+        var isM2 = !isUserComp && !!cmptypeAttr && !node.getAttribute('data-wb-tag');
 
         if (node.getAttribute && node.getAttribute('data-wb-tag')) {
             return this._formatCmpNode(node, level, tagName);
@@ -271,6 +296,7 @@
                 if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
                 if (c.tagName && c.tagName.toLowerCase() === 'wb-cdata') continue;
                 if (c.getAttribute && c.getAttribute('data-wb-comp-asset') === '1') continue;
+                if (isUserCompServiceNode(c)) continue;
                 children.push(c);
             } else if (c.nodeType === 3) {
                 if (c.nodeValue == null || c.nodeValue.trim() === '') continue;
@@ -279,6 +305,11 @@
             } else if (c.nodeType === 8) {
                 children.push(c);
             }
+        }
+
+        /* Пользовательский компонент без дочерних узлов — self-closing. */
+        if (isUserComp && children.length === 0) {
+            return pad + '<' + tagName + attrs + '/>\n';
         }
 
         if (children.length === 1 && children[0].nodeType === 3) {

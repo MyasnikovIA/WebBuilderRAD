@@ -70,6 +70,28 @@
         return null;
     };
 
+    /* Проверка правил вложенности user-компонента для вставляемого def.
+       Возвращает { ok:true } либо { ok:false, uc } (uc — сам компонент). */
+    Canvas.prototype._checkUserNesting = function (target, def) {
+        if (!global.ComponentStorage || !global.ComponentStorage.canNest) {
+            return { ok: true };
+        }
+        var ucEl = global.ComponentStorage.findUserCompAncestor(target, this.getHtml());
+        if (!ucEl) return { ok: true };
+
+        var ucId = ucEl.getAttribute('data-wb-user-comp');
+        var uc = global.ComponentStorage.getComponent(ucId);
+        if (!uc) return { ok: true };
+
+        var childTag     = (def && def.tagName) || '';
+        var childCmptype = (def && def.cmptype) || (def && def.userComponent && def.userComponent.cmptype) || '';
+
+        if (global.ComponentStorage.canNest(uc, childTag, childCmptype)) {
+            return { ok: true };
+        }
+        return { ok: false, uc: uc };
+    };
+
     Canvas.prototype.insertComponent = function (def, target, zone) {
         var doc  = this.getDoc();
         var html = this.getHtml();
@@ -83,6 +105,18 @@
                 this.select(existing);
                 return existing;
             }
+        }
+
+        /* ---------- Проверка правил вложенности ---------- */
+        var chk = this._checkUserNesting(target, def);
+        if (!chk.ok) {
+            var m = 'В компонент "' + chk.uc.name + '" запрещено вставлять вложения';
+            if (chk.uc.nestingMode === 'list') m += ' данного типа';
+            m += '.';
+            alert(m);
+            this.pending = null;
+            bus.emit('palette:placed');
+            return null;
         }
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
@@ -160,7 +194,7 @@
         var doc = this.getDoc();
         var node;
         try { node = def.preview(el, doc); } catch (e) { node = null; }
-        if (!node) return;   /* side-effects (например injectAssets) уже сработали */
+        if (!node) return;
 
         if (typeof node === 'string') {
             var tmp = doc.createElement('div');
@@ -204,16 +238,13 @@
     };
 
     /* Пройти по дереву и «освежить» все компоненты.
-       Расширено: user-компоненты тоже получают preview-хук
-       (который переинжектит свои CSS/JS), а их сервисные узлы
-       не обходятся. */
+       ПреViewIDE-контент, сервисные узлы не обходятся. */
     Canvas.prototype._renderAllPreviews = function (root) {
         if (!root || root.nodeType !== 1) return;
 
         var isComponent = root.getAttribute && (
             root.getAttribute('data-wb-tag') ||
-            root.getAttribute('cmptype') ||
-            root.getAttribute('data-wb-user-comp')
+            root.getAttribute('cmptype')
         );
         if (isComponent) {
             this._renderPreview(root);

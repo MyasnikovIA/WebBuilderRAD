@@ -1,10 +1,10 @@
 /* ComponentTab — вкладка "Root: component".
-   Подвкладки: JS / CSS / PreViewIDE(html) / Component Properties. */
+   Подвкладки: JS / CSS / PreViewIDE(html) / Component Properties.
+   В форме — правила вложенности (nestingMode + nestingRules). */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
 
-    /* Предопределённые редакторы/просмотрщики значений custom-полей. */
     var PREDEFINED_EDITORS = [
         { id: '',                   caption: '— не выбрано —' },
         { id: 'text',               caption: 'Текст (Plain Text)' },
@@ -27,6 +27,12 @@
         { id: 'text',    caption: 'text (textarea)' }
     ];
 
+    var NESTING_MODES = [
+        { id: 'all',  caption: 'Разрешено (любые элементы)' },
+        { id: 'list', caption: 'Только указанные' },
+        { id: 'none', caption: 'Запрещено (самозакрывающийся)' }
+    ];
+
     function ComponentTab(paneEl) {
         this.pane = $(paneEl);
         this.active = false;
@@ -46,6 +52,27 @@
         form.append(self._textarea('description', 'Описание компонента'));
         form.append(self._libsField('jsLibs',  'JS-ресурсы'));
         form.append(self._libsField('cssLibs', 'CSS-ресурсы'));
+
+        /* ---------- Nesting mode ---------- */
+        var nestingRow = self._selectField(
+            'nestingMode',
+            'Разрешить вложения',
+            NESTING_MODES,
+            'all'
+        );
+        form.append(nestingRow);
+
+        /* ---------- Nesting rules ---------- */
+        var rulesRow = $(
+            '<div class="wb-row wb-comp-nesting-row" style="display:none;">' +
+            '<div class="wb-row-name">Разрешённые вложения</div>' +
+            '<div class="wb-row-value wb-comp-nesting-value">' +
+            '<div class="wb-comp-nesting-rules"></div>' +
+            '<button type="button" class="wb-code-btn wb-comp-nesting-add">+</button>' +
+            '</div>' +
+            '</div>'
+        );
+        form.append(rulesRow);
 
         wrap.append(form);
 
@@ -72,8 +99,6 @@
         jsBox.append(this.jsEditor.el);
         cssBox.append(this.cssEditor.el);
         prevBox.append(this.previewEditor.el);
-
-        /* Properties-таблица. */
         propBox.append(self._buildPropsTable());
 
         editors.append(jsBox).append(cssBox).append(prevBox).append(propBox);
@@ -105,16 +130,32 @@
             icon:        form.find('[name="wbcomp-icon"]'),
             tagName:     form.find('[name="wbcomp-tagName"]'),
             cmptype:     form.find('[name="wbcomp-cmptype"]'),
-            description: form.find('[name="wbcomp-description"]')
+            description: form.find('[name="wbcomp-description"]'),
+            nestingMode: form.find('[name="wbcomp-nestingMode"]')
         };
         this._libs = {
             js:  form.find('.wb-comp-libs[data-kind="js"]'),
             css: form.find('.wb-comp-libs[data-kind="css"]')
         };
-        this._propsTbody = propBox.find('.wb-comp-props-tbody');
+        this._propsTbody   = propBox.find('.wb-comp-props-tbody');
+        this._nestingRow   = rulesRow;
+        this._nestingList  = rulesRow.find('.wb-comp-nesting-rules');
+        this._nestingAdd   = rulesRow.find('.wb-comp-nesting-add');
+
+        this._nestingAdd.click(function () { self._addNestingRuleRow(); });
+
+        /* Показываем/скрываем список правил. */
+        var syncNestingUI = function () {
+            var mode = self._form.nestingMode.val();
+            rulesRow.toggle(mode === 'list');
+        };
+        this._form.nestingMode.change(syncNestingUI);
+        this._syncNestingUI = syncNestingUI;
 
         this.newComponent();
     };
+
+    /* ---------- вспомогательные конструкторы полей ---------- */
 
     ComponentTab.prototype._field = function (name, label, type) {
         return $(
@@ -124,6 +165,22 @@
             '</div>'
         ).find('.wb-row-name').text(label).end()
             .find('input').attr('name', 'wbcomp-' + name).end();
+    };
+
+    ComponentTab.prototype._selectField = function (name, label, options, defVal) {
+        var row = $(
+            '<div class="wb-row">' +
+            '<div class="wb-row-name"></div>' +
+            '<div class="wb-row-value"><select></select></div>' +
+            '</div>'
+        );
+        row.find('.wb-row-name').text(label);
+        var sel = row.find('select').attr('name', 'wbcomp-' + name);
+        for (var i = 0; i < options.length; i++) {
+            sel.append($('<option></option>').val(options[i].id).text(options[i].caption));
+        }
+        if (defVal != null) sel.val(defVal);
+        return row;
     };
 
     ComponentTab.prototype._textarea = function (name, label) {
@@ -203,6 +260,43 @@
         for (var i = 0; i < arr.length; i++) this._addLib(list, kind, arr[i].value, arr[i].type);
     };
 
+    /* ---------- Nesting rules ---------- */
+
+    ComponentTab.prototype._addNestingRuleRow = function (data) {
+        data = data || {};
+        var row = $(
+            '<div class="wb-comp-nesting-rule">' +
+            '<select class="wb-cn-kind">' +
+            '<option value="tag">Тег</option>' +
+            '<option value="cmptype">cmptype</option>' +
+            '</select>' +
+            '<input type="text" class="wb-cn-value" placeholder="div / my.component">' +
+            '<button type="button" class="wb-row-del" title="Удалить">×</button>' +
+            '</div>'
+        );
+        row.find('.wb-cn-kind').val(data.kind === 'cmptype' ? 'cmptype' : 'tag');
+        row.find('.wb-cn-value').val(data.value || '');
+        row.find('.wb-row-del').click(function () { row.remove(); });
+        this._nestingList.append(row);
+    };
+
+    ComponentTab.prototype._collectNestingRules = function () {
+        var out = [];
+        this._nestingList.find('.wb-comp-nesting-rule').each(function () {
+            var kind = $(this).find('.wb-cn-kind').val() || 'tag';
+            var value = $(this).find('.wb-cn-value').val();
+            if (!value) return;
+            out.push({ kind: kind, value: String(value) });
+        });
+        return out;
+    };
+
+    ComponentTab.prototype._setNestingRules = function (arr) {
+        this._nestingList.empty();
+        arr = arr || [];
+        for (var i = 0; i < arr.length; i++) this._addNestingRuleRow(arr[i]);
+    };
+
     /* ---------- Properties ---------- */
     ComponentTab.prototype._buildPropsTable = function () {
         var self = this;
@@ -242,34 +336,23 @@
         data = data || {};
         var tr = $('<tr class="wb-comp-prop-row"></tr>');
 
-        /* Name */
-        tr.append($('<td></td>').append(
-            $('<input type="text" class="wb-cp-name">').val(data.name || '')
-        ));
-        /* Caption */
-        tr.append($('<td></td>').append(
-            $('<input type="text" class="wb-cp-caption">').val(data.caption || '')
-        ));
-        /* Type */
+        tr.append($('<td></td>').append($('<input type="text" class="wb-cp-name">').val(data.name || '')));
+        tr.append($('<td></td>').append($('<input type="text" class="wb-cp-caption">').val(data.caption || '')));
+
         var typeSel = $('<select class="wb-cp-type"></select>');
         for (var i = 0; i < PROPERTY_TYPES.length; i++) {
             typeSel.append($('<option></option>').val(PROPERTY_TYPES[i].id).text(PROPERTY_TYPES[i].caption));
         }
         typeSel.val(data.type || 'string');
         tr.append($('<td></td>').append(typeSel));
-        /* Values */
+
         tr.append($('<td></td>').append(
-            $('<input type="text" class="wb-cp-values">')
-                .val(data.values || '')
-                .attr('placeholder', 'a,b,c')
+            $('<input type="text" class="wb-cp-values">').val(data.values || '').attr('placeholder', 'a,b,c')
         ));
-        /* Unit */
         tr.append($('<td></td>').append(
-            $('<input type="text" class="wb-cp-unit">')
-                .val(data.unit || '')
-                .attr('placeholder', 'px')
+            $('<input type="text" class="wb-cp-unit">').val(data.unit || '').attr('placeholder', 'px')
         ));
-        /* FieldType */
+
         var ftSel = $(
             '<select class="wb-cp-fieldtype">' +
             '<option value="none">— нет —</option>' +
@@ -278,14 +361,14 @@
             '</select>'
         ).val(data.fieldType || 'none');
         tr.append($('<td></td>').append(ftSel));
-        /* FieldUrl */
+
         var urlTd = $('<td></td>');
         var urlInp = $('<input type="text" class="wb-cp-fieldurl">')
             .val(data.fieldUrl || '')
             .attr('placeholder', 'editor.html');
         urlTd.append(urlInp);
         tr.append(urlTd);
-        /* FieldPredefined */
+
         var pdSel = $('<select class="wb-cp-fieldpredefined"></select>');
         for (var j = 0; j < PREDEFINED_EDITORS.length; j++) {
             pdSel.append($('<option></option>')
@@ -293,19 +376,19 @@
                 .text(PREDEFINED_EDITORS[j].caption));
         }
         pdSel.val(data.fieldPredefined || '');
-        tr.append($('<td></td>').append(pdSel));
-        /* Delete */
+        var pdTd = $('<td></td>').append(pdSel);
+        tr.append(pdTd);
+
         var delTd = $('<td></td>');
         var del = $('<button type="button" class="wb-row-del" title="Удалить">×</button>');
         del.click(function () { tr.remove(); });
         delTd.append(del);
         tr.append(delTd);
 
-        /* Показываем нужное поле редактора в зависимости от FieldType. */
         function syncEditorCells() {
             var ft = ftSel.val();
             urlTd.toggle(ft === 'url');
-            pdSel.parent().toggle(ft === 'predefined');
+            pdTd.toggle(ft === 'predefined');
         }
         ftSel.change(syncEditorCells);
         syncEditorCells();
@@ -346,9 +429,13 @@
         this._form.tagName.val('div');
         this._form.cmptype.val('my.component');
         this._form.description.val('');
+        this._form.nestingMode.val('all');
         this._setLibs('js', []);
         this._setLibs('css', []);
         this._setProps([]);
+        this._setNestingRules([]);
+        if (this._syncNestingUI) this._syncNestingUI();
+
         this.jsEditor.setValue('// JS\n');
         this.cssEditor.setValue('/* CSS */\n');
         this.previewEditor.setValue('<div class="my-component">\n    My Component\n</div>');
@@ -367,7 +454,9 @@
             js:          this.jsEditor.getValue(),
             css:         this.cssEditor.getValue(),
             previewIdeHtml: this.previewEditor.getValue(),
-            customProperties: this._collectProps()
+            customProperties: this._collectProps(),
+            nestingMode:  this._form.nestingMode.val() || 'all',
+            nestingRules: this._collectNestingRules()
         };
     };
 
@@ -377,7 +466,6 @@
         if (!data.previewIdeHtml) { alert('PreViewIDE(html) пуст.'); return; }
         data.html = data.previewIdeHtml;
 
-        /* Уникальность по cmptype. */
         var dup = data.cmptype ? global.ComponentStorage.findByCmptype(data.cmptype) : null;
         if (dup) {
             var ok = confirm(
@@ -407,9 +495,13 @@
         this._form.tagName.val(c.tagName || 'div');
         this._form.cmptype.val(c.cmptype || '');
         this._form.description.val(c.description || '');
+        this._form.nestingMode.val(c.nestingMode || 'all');
         this._setLibs('js',  c.jsLibs || []);
         this._setLibs('css', c.cssLibs || []);
         this._setProps(c.customProperties || []);
+        this._setNestingRules(c.nestingRules || []);
+        if (this._syncNestingUI) this._syncNestingUI();
+
         this.jsEditor.setValue(c.js || '');
         this.cssEditor.setValue(c.css || '');
         this.previewEditor.setValue(c.previewIdeHtml || '');
@@ -419,6 +511,7 @@
 
     ComponentTab.PREDEFINED_EDITORS = PREDEFINED_EDITORS;
     ComponentTab.PROPERTY_TYPES     = PROPERTY_TYPES;
+    ComponentTab.NESTING_MODES      = NESTING_MODES;
 
     global.ComponentTab = ComponentTab;
 })(window, jQuery);

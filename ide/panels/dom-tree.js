@@ -1,6 +1,4 @@
-/* DomTree — дерево структуры страницы (левая верхняя панель).
-
-   Загружается после panels-utils.js. Экспортирует global.DomTree. */
+/* DomTree — дерево структуры страницы (левая верхняя панель). */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -13,8 +11,6 @@
 
     var _idCounter = 0;
 
-    /* Служебный узел пользовательского компонента?
-       Не показываем в дереве — работает как фон. */
     function isUserCompServiceNode(el) {
         if (!el || el.nodeType !== 1) return false;
         if (!el.getAttribute) return false;
@@ -246,13 +242,13 @@
             return tag + extra;
         }
 
-        /* Пользовательский компонент — показываем имя из палитры. */
         var ucompId = el.getAttribute && el.getAttribute('data-wb-user-comp');
         if (ucompId && global.ComponentStorage) {
             var uc = global.ComponentStorage.getComponent(ucompId);
             if (uc) {
                 var ct = el.getAttribute('cmptype') || uc.cmptype || '';
-                return tag + (ct ? ' cmptype="' + ct + '"' : '') +
+                var lock = (uc.nestingMode === 'none') ? ' \uD83D\uDD12' : '';
+                return tag + (ct ? ' cmptype="' + ct + '"' : '') + lock +
                     '  /* ' + (uc.name || ucompId) + ' */';
             }
         }
@@ -420,6 +416,24 @@
         });
     };
 
+    /* Проверка правил вложенности для DnD. */
+    DomTree.prototype._checkUserNesting = function (src, dst, zone) {
+        if (!global.ComponentStorage || !global.ComponentStorage.canNest) return true;
+        if (!this.canvas) return true;
+
+        var parentNode = (zone === 'inside') ? dst : dst.parentNode;
+        var ucEl = global.ComponentStorage.findUserCompAncestor(parentNode, this.canvas.getHtml());
+        if (!ucEl) return true;
+
+        var ucId = ucEl.getAttribute('data-wb-user-comp');
+        var uc = global.ComponentStorage.getComponent(ucId);
+        if (!uc) return true;
+
+        var childTag = src.tagName ? src.tagName.toLowerCase() : '';
+        var childCmptype = src.getAttribute ? (src.getAttribute('cmptype') || '') : '';
+        return global.ComponentStorage.canNest(uc, childTag, childCmptype);
+    };
+
     DomTree.prototype._installDnD = function () {
         var self = this;
         var $root = this._getRoot();
@@ -495,6 +509,9 @@
         var rootType = this.canvas.getRootType ? this.canvas.getRootType() : 'html';
         var rc = this.canvas.getRootContainer ? this.canvas.getRootContainer() : null;
         if (rootType !== 'html' && rc && src === rc) return false;
+
+        /* Правила вложенности user-компонента. */
+        if (!this._checkUserNesting(src, dst, zone)) return false;
 
         var srcTag = src.tagName.toLowerCase();
         var parentOnly = PARENT_ONLY[srcTag];

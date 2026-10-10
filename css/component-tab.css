@@ -4,7 +4,7 @@
 .wb-comp-form .wb-row { display:flex; border-bottom:1px solid #eee; align-items:center; }
 .wb-comp-form .wb-row-name { flex:0 0 220px; padding:4px 8px; background:var(--wb-panel-head-bg,#f7f7f7); border-right:1px solid #eee; font-size:11px; }
 .wb-comp-form .wb-row-value { flex:1; padding:3px 6px; display:flex; align-items:center; gap:4px; min-width:0; }
-.wb-comp-form input[type="text"], .wb-comp-form textarea { width:100%; box-sizing:border-box; padding:2px 4px; font-size:11px; border:1px solid var(--wb-input-border,#c0c0c0); background:var(--wb-input-bg,#fff); color:var(--wb-text,#222); font-family:inherit; }
+.wb-comp-form input[type="text"], .wb-comp-form textarea, .wb-comp-form select { width:100%; box-sizing:border-box; padding:2px 4px; font-size:11px; border:1px solid var(--wb-input-border,#c0c0c0); background:var(--wb-input-bg,#fff); color:var(--wb-text,#222); font-family:inherit; }
 .wb-comp-form textarea { resize:vertical; }
 .wb-comp-file-row .wb-file-btn { flex:0 0 auto; width:22px; height:22px; padding:0; cursor:pointer; border:1px solid var(--wb-input-border,#b0b0b0); border-radius:3px; background:var(--wb-input-bg,#fafafa); font-weight:bold; }
 
@@ -14,6 +14,15 @@
 .wb-comp-lib-value { flex:1; min-width:0; }
 .wb-comp-lib .wb-row-del { flex:0 0 auto; width:18px; height:18px; padding:0; font-weight:bold; color:#c62828; cursor:pointer; border:1px solid #c0c0c0; border-radius:2px; background:#fff; }
 .wb-comp-libs-row .wb-comp-lib-add { flex:0 0 auto; padding:2px 8px; font-size:12px; cursor:pointer; }
+
+/* ---------- Nesting rules ---------- */
+.wb-comp-nesting-value { display:flex; flex-direction:column; gap:3px; align-items:stretch; }
+.wb-comp-nesting-rules { display:flex; flex-direction:column; gap:2px; }
+.wb-comp-nesting-rule { display:flex; gap:3px; align-items:center; }
+.wb-comp-nesting-rule .wb-cn-kind  { flex:0 0 90px; }
+.wb-comp-nesting-rule .wb-cn-value { flex:1; min-width:0; }
+.wb-comp-nesting-rule .wb-row-del  { flex:0 0 auto; width:18px; height:18px; padding:0; font-weight:bold; color:#c62828; cursor:pointer; border:1px solid #c0c0c0; border-radius:2px; background:#fff; }
+.wb-comp-nesting-add { align-self:flex-start; padding:2px 8px; font-size:12px; cursor:pointer; }
 
 .wb-comp-subtabs { flex:0 0 auto; display:flex; background:var(--wb-panel-head-bg,#e0e0e0); border-bottom:1px solid var(--wb-border,#c0c0c0); }
 .wb-comp-subtab { padding:5px 14px; cursor:pointer; font-size:11px; border-right:1px solid var(--wb-border,#c0c0c0); user-select:none; }
@@ -53,3 +62,6 @@
 }
 .wb-comp-props-table .wb-row-del:hover { background:#ffebee; border-color:#c62828; }
 .wb-comp-prop-add { padding:3px 10px; font-size:12px; cursor:pointer; }
+
+/* Превью-контент пользовательского компонента на сцене (editor-only). */
+.wb-user-comp-preview { display: contents; }

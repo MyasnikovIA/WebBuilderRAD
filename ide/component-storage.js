@@ -1,24 +1,26 @@
 /* ComponentStorage — CRUD пользовательской палитры компонентов в LocalStorage.
 
    Модель:
-     { version:2, folders:{…}, components:{…} }
+     { version:3, folders:{…}, components:{…} }
 
-   Служебные узлы компонента (не видны в дереве и cleanHtml, но работают):
-     <link data-wb-user-comp-asset="<id>">   — внешние/проектные CSS
-     <style data-wb-user-comp-style="<id>">  — встроенный CSS
-     <script data-wb-user-comp-script="<id>"> — встроенный JS
-     <script src=… data-wb-user-comp-asset="<id>"> — внешние/проектные JS
+   Правила вложенности (nesting):
+     nestingMode:  'all' | 'list' | 'none'
+     nestingRules: [ { kind:'tag'|'cmptype', value:'…' } ]
 
-   Эти узлы пересоздаются автоматически:
-     • при вставке компонента из палитры (create);
-     • при загрузке HTML в canvas (preview → injectAssets).
+   Сервисные узлы компонента (не видны в дереве и cleanHtml, но работают):
+     <link   data-wb-user-comp-asset="<id>">
+     <style  data-wb-user-comp-style="<id>">
+     <script data-wb-user-comp-script="<id>">
+     <script src="…" data-wb-user-comp-asset="<id>">
 
-   Уникальность: по cmptype (если не задан — по name). */
+   Preview-контент компонента (PreViewIDE(html)) вставляется через
+   _renderPreview как отдельный узел с data-wb-preview="1" — он
+   виден только в редакторе и не сериализуется. */
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
 
-    function emptyModel() { return { version: 2, folders: {}, components: {} }; }
+    function emptyModel() { return { version: 3, folders: {}, components: {} }; }
 
     function readAll() {
         try {
@@ -28,7 +30,7 @@
             if (!o || typeof o !== 'object') return emptyModel();
             if (!o.folders) o.folders = {};
             if (!o.components) o.components = {};
-            o.version = 2;
+            o.version = 3;
             return o;
         } catch (e) { return emptyModel(); }
     }
@@ -55,11 +57,28 @@
         };
     }
 
+    function normalizeRule(r) {
+        r = r || {};
+        var kind = (r.kind === 'cmptype') ? 'cmptype' : 'tag';
+        return { kind: kind, value: r.value || '' };
+    }
+
     function normalizeComponent(src) {
         src = src || {};
         var props = Array.isArray(src.customProperties) ? src.customProperties : [];
         var out = [];
         for (var i = 0; i < props.length; i++) out.push(normalizeProp(props[i]));
+
+        var rules = Array.isArray(src.nestingRules) ? src.nestingRules : [];
+        var nrules = [];
+        for (var j = 0; j < rules.length; j++) {
+            var r = normalizeRule(rules[j]);
+            if (r.value) nrules.push(r);
+        }
+
+        var mode = src.nestingMode;
+        if (mode !== 'none' && mode !== 'list' && mode !== 'all') mode = 'all';
+
         return {
             id:             src.id || uid('cmp'),
             name:           src.name || 'Component',
@@ -74,6 +93,8 @@
             jsLibs:         Array.isArray(src.jsLibs)  ? src.jsLibs  : [],
             cssLibs:        Array.isArray(src.cssLibs) ? src.cssLibs : [],
             customProperties: out,
+            nestingMode:    mode,
+            nestingRules:   nrules,
             folderId:       src.folderId || ''
         };
     }
@@ -87,7 +108,6 @@
             type:    p.type || 'string',
             _user:   true
         };
-
         if (p.type === 'enum' && p.values) {
             out.values = String(p.values).split(',').map(function (s) { return s.trim(); })
                 .filter(function (s) { return s !== ''; });
@@ -196,11 +216,10 @@
             if (!model || typeof model !== 'object') return false;
             if (!model.folders) model.folders = {};
             if (!model.components) model.components = {};
-            model.version = 2;
+            model.version = 3;
             return writeAll(model);
         },
 
-        /* ---------- merge с контролем уникальности по cmptype ---------- */
         mergeWithConfirmation: function (model) {
             var self = this;
             return new Promise(function (resolve) {
@@ -257,14 +276,45 @@
             });
         },
 
-        /* ---------- Инъекция служебных CSS/JS в элемент компонента ----------
-           Идемпотентна: удаляет старые сервисные узлы и добавляет новые.
-           CSS-узлы (link, style) вставляются в начало,
-           JS-узлы (script) — в конец, чтобы они не ломали разметку. */
+        /* ---------- Проверка правил вложенности ----------
+           uc — компонент; childTag, childCmptype — характеристики вставляемого.
+           Возвращает true, если вложение разрешено. */
+        canNest: function (uc, childTag, childCmptype) {
+            if (!uc) return true;
+            var mode = uc.nestingMode || 'all';
+            if (mode === 'none') return false;
+            if (mode === 'all')  return true;
+            if (mode === 'list') {
+                var rules = uc.nestingRules || [];
+                var ct  = String(childCmptype || '').trim();
+                var tag = String(childTag || '').toLowerCase();
+                for (var i = 0; i < rules.length; i++) {
+                    var r = rules[i];
+                    if (!r || !r.value) continue;
+                    if (r.kind === 'tag' && tag &&
+                        String(r.value).toLowerCase() === tag) return true;
+                    if (r.kind === 'cmptype' && ct &&
+                        String(r.value) === ct) return true;
+                }
+                return false;
+            }
+            return true;
+        },
+
+        /* Найти ближайший родительский user-component. */
+        findUserCompAncestor: function (el, stopAt) {
+            var cur = el;
+            while (cur && cur !== stopAt) {
+                if (cur.getAttribute && cur.getAttribute('data-wb-user-comp')) return cur;
+                cur = cur.parentNode;
+            }
+            return null;
+        },
+
+        /* ---------- Инъекция служебных CSS/JS в элемент компонента ---------- */
         injectAssets: function (el, c, doc) {
             if (!el || !c || !doc) return;
 
-            /* Удаляем старые сервисные узлы. */
             var toRemove = [];
             for (var i = 0; i < el.children.length; i++) {
                 var ch = el.children[i];
@@ -279,7 +329,6 @@
                 if (toRemove[j].parentNode) toRemove[j].parentNode.removeChild(toRemove[j]);
             }
 
-            /* CSS-ресурсы (внешние или файлы проекта). */
             if (c.cssLibs && c.cssLibs.length) {
                 for (var k = 0; k < c.cssLibs.length; k++) {
                     var lib = c.cssLibs[k];
@@ -295,21 +344,18 @@
                     el.insertBefore(link, el.firstChild);
                 }
             }
-            /* Встроенный CSS. */
             if (c.css) {
                 var st = doc.createElement('style');
                 st.setAttribute('data-wb-user-comp-style', c.id);
                 st.textContent = c.css;
                 el.insertBefore(st, el.firstChild);
             }
-            /* Встроенный JS. */
             if (c.js) {
                 var sc2 = doc.createElement('script');
                 sc2.setAttribute('data-wb-user-comp-script', c.id);
                 sc2.textContent = c.js;
                 el.appendChild(sc2);
             }
-            /* JS-ресурсы (внешние или файлы проекта). */
             if (c.jsLibs && c.jsLibs.length) {
                 for (var m = 0; m < c.jsLibs.length; m++) {
                     var jlib = c.jsLibs[m];
@@ -333,7 +379,7 @@
 
             var props = [
                 { type: 'separator', caption: 'Component (Tool Palette)' },
-                { name: 'data-wb-user-comp', caption: 'Component ID', type: 'string', attr: true, readOnly: true },
+                { name: 'data-wb-user-comp', caption: 'Component ID',   type: 'string', attr: true, readOnly: true },
                 { name: 'cmptype',           caption: 'Component Type', type: 'string', attr: true }
             ];
             var userProps = c.customProperties || [];
@@ -352,32 +398,36 @@
                 subCategory: 'User Palette',
                 userComponent: c,
                 locked: true,
-                preview: null,   /* будет переопределён ниже */
+
+                /* Правила вложенности — пробрасываем на def, чтобы
+                   canvas-insert / dom-tree могли быстро их читать. */
+                nestingMode:  c.nestingMode  || 'all',
+                nestingRules: c.nestingRules || [],
 
                 iconUrl: c.icon || '',
 
+                /* Создание корневого элемента.
+                   Preview-контент НЕ добавляем здесь — его вставит
+                   Canvas._renderPreview через def.preview(). */
                 create: function (doc) {
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
                     if (c.cmptype) el.setAttribute('cmptype', c.cmptype);
-
-                    /* PreViewIDE(html) — видимый контент. */
-                    var html = c.previewIdeHtml || c.html || '';
-                    if (html) el.innerHTML = html;
-
-                    /* Сервисные CSS/JS. */
                     global.ComponentStorage.injectAssets(el, c, doc);
-
                     return el;
                 },
 
-                /* Preview-хук: вызывается canvas._renderPreview.
-                   Используется для реинъекции сервисных узлов после
-                   cleanHtml → loadHtml. Возвращает null — визуальный
-                   preview-узел не нужен. */
+                /* Preview-хук: возвращает узел с PreViewIDE(html).
+                   Canvas отметит его data-wb-preview="1" — это
+                   editor-only содержимое, не попадает в cleanHtml. */
                 preview: function (el, doc) {
                     global.ComponentStorage.injectAssets(el, c, doc);
-                    return null;
+                    var content = c.previewIdeHtml || c.html || '';
+                    if (!content) return null;
+                    var wrap = doc.createElement('div');
+                    wrap.className = 'wb-user-comp-preview';
+                    wrap.innerHTML = content;
+                    return wrap;
                 },
 
                 schema: {
