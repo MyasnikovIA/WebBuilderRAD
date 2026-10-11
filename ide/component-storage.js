@@ -1,42 +1,180 @@
-/* ComponentStorage — CRUD пользовательской палитры компонентов в LocalStorage.
+/* ComponentStorage — пользовательская палитра компонентов + генерация
+   фоновых библиотек core.js / <cmptype>.js / <cmptype>.css.
 
-   Модель:
-     { version:4, folders:{…}, components:{…} }
+   Модель палитры (localStorage 'wb.userPalette', version 5):
+     components['<id>'] = {
+       id, name, cmptype, tagName, icon, description,
+       previewIdeHtml,               — editor-only preview на сцене
+       js, css,                      — пользовательский код → lib/<cmptype>.{js,css}
+       jsLibs, cssLibs,              — внешние ресурсы
+       customProperties, customEvents,
+       nestingMode, nestingRules,
+       folderId
+     }
 
-   Поля компонента:
-     id, name, cmptype, tagName, icon, description,
-     html, js, css, previewIdeHtml,
-     jsLibs, cssLibs,
-     customProperties: [
-       { name, caption, type, values, unit,
-         fieldType, fieldUrl, fieldPredefined,
-         onChangeFunc }                       ← JS-функция, вызываемая при изменении
-     ],
-     customEvents: [
-       { name, caption, handlerFunc }         ← пользовательские события + их обработчик
-     ],
-     nestingMode, nestingRules,
-     folderId
-
-   Runtime: каждый экземпляр компонента получает объект el._wbComponent,
-   который также регистрируется в window.WbComponent. Доступ:
-     var c = WbComponent.get('my.component');   // по cmptype
-     var c = WbComponent.get('cmp_xxx');        // по id
-     var c = WbComponent.get(el);               // по DOM-элементу
-
-   Инстанс предоставляет:
-     c.get(name) / c.set(name, value) — доступ к атрибуту-свойству
-     c.<propertyName>                 — accessor (get/set через атрибут)
-     c.on(event, handler)             — подписка на событие
-     c.off(event, handler)
-     c.emit(event, data)              — вызвать событие
-     c.el                             — корневой элемент
-*/
+   В проекте (project.files) фоновые файлы помечаются `_system: 'wb-lib'`
+   и по пути начинаются на 'lib/wb-component/'. ProjectTree их не показывает. */
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
 
-    function emptyModel() { return { version: 4, folders: {}, components: {} }; }
+    var LIB_DIR = 'lib/wb-component/';
+    var CORE_FILE = LIB_DIR + 'core.js';
+
+    /* ------------------------------------------------------------------
+       Фоновый runtime (core.js). Вставляется в проект один раз.
+       Не содержит ничего про конкретные компоненты — только реестр,
+       attach-логику и observer. */
+    var CORE_LIBRARY_SOURCE = [
+        '/* WbComponent core — автогенерация. Не редактировать вручную. */',
+        '(function(g){',
+        'if (g.WbComponent && g.WbComponent._bootstrapped) return;',
+        'var WbComponent = {',
+        '    _bootstrapped: true,',
+        '    _defs: {},',
+        '    _registry: {},',
+        '    _byCmptype: {},',
+        '    _pending: [],',
+        '    register: function(def){',
+        '        if(!def || !def.cmptype) return;',
+        '        this._defs[def.cmptype] = def;',
+        '        for(var i=0;i<this._pending.length;i++){',
+        '            var p = this._pending[i];',
+        '            if(p.ct === def.cmptype){',
+        '                try { attach(p.el, def); } catch(e){ console.error("[WbComponent] attach", def.cmptype, e); }',
+        '                this._pending.splice(i,1); i--;',
+        '            }',
+        '        }',
+        '    },',
+        '    _register: function(i){ this._registry[i.id]=i; if(i.cmptype) this._byCmptype[i.cmptype]=i; },',
+        '    _unregister: function(i){ delete this._registry[i.id]; if(i.cmptype && this._byCmptype[i.cmptype]===i) delete this._byCmptype[i.cmptype]; },',
+        '    get: function(k){',
+        '        if(!k) return null;',
+        '        if(typeof k==="string") return this._registry[k] || this._byCmptype[k] || null;',
+        '        if(k.nodeType===1) return k._wbComponent || null;',
+        '        return null;',
+        '    },',
+        '    all: function(ct){',
+        '        var out=[],k;',
+        '        if(!ct){ for(k in this._registry) if(this._registry.hasOwnProperty(k)) out.push(this._registry[k]); return out; }',
+        '        for(k in this._registry) if(this._registry[k].cmptype===ct) out.push(this._registry[k]);',
+        '        return out;',
+        '    }',
+        '};',
+        'g.WbComponent = WbComponent;',
+        '',
+        'function resolveFn(name){',
+        '    if(!name) return null;',
+        '    var parts = String(name).split("."), obj = g;',
+        '    for(var i=0;i<parts.length;i++){ if(!obj) return null; obj = obj[parts[i]]; }',
+        '    return typeof obj==="function" ? obj : null;',
+        '}',
+        '',
+        'function attach(el, def){',
+        '    if(el._wbComponent) return el._wbComponent;',
+        '    var instance = {',
+        '        id: def.id, cmptype: def.cmptype, name: def.name, el: el,',
+        '        _handlers: {},',
+        '        get: function(name){ return el.getAttribute(name) || ""; },',
+        '        set: function(name, v){ el.setAttribute(name, v); },',
+        '        on: function(name, h){ (this._handlers[name]=this._handlers[name]||[]).push(h); return this; },',
+        '        off: function(name, h){ var l=this._handlers[name]; if(!l) return this; var i=l.indexOf(h); if(i>=0) l.splice(i,1); return this; },',
+        '        emit: function(name, data){',
+        '            var l = this._handlers[name] || [];',
+        '            for(var i=0;i<l.length;i++){',
+        '                try { l[i]({ type: name, data: data, component: this, el: el }); }',
+        '                catch(e){ console.error("[WbComponent]", name, e); }',
+        '            }',
+        '            try {',
+        '                var ce = new CustomEvent("wb-component-event", { detail: { name: name, data: data } });',
+        '                el.dispatchEvent(ce);',
+        '            } catch(e){}',
+        '        }',
+        '    };',
+        '    var props = def.customProperties || [];',
+        '    for(var i=0;i<props.length;i++){',
+        '        (function(p){',
+        '            try {',
+        '                Object.defineProperty(instance, p.name, {',
+        '                    get: function(){ return el.getAttribute(p.name) || ""; },',
+        '                    set: function(v){ el.setAttribute(p.name, v); },',
+        '                    enumerable: true, configurable: true',
+        '                });',
+        '            } catch(e){}',
+        '        })(props[i]);',
+        '    }',
+        '    if(g.MutationObserver){',
+        '        var mo = new g.MutationObserver(function(muts){',
+        '            for(var m=0;m<muts.length;m++){',
+        '                var mu = muts[m];',
+        '                if(mu.type !== "attributes") continue;',
+        '                var pn = mu.attributeName, pdef = null;',
+        '                for(var k=0;k<props.length;k++) if(props[k].name===pn){ pdef=props[k]; break; }',
+        '                if(!pdef || !pdef.onChangeFunc) continue;',
+        '                var fn = resolveFn(pdef.onChangeFunc);',
+        '                if(!fn) continue;',
+        '                try {',
+        '                    fn.call(instance, {',
+        '                        name: pn,',
+        '                        value: el.getAttribute(pn),',
+        '                        oldValue: mu.oldValue,',
+        '                        component: instance,',
+        '                        el: el',
+        '                    });',
+        '                } catch(e){ console.error("[WbComponent] onChange", pdef.onChangeFunc, e); }',
+        '            }',
+        '        });',
+        '        mo.observe(el, { attributes: true, attributeOldValue: true });',
+        '        instance._observer = mo;',
+        '    }',
+        '    var evs = def.customEvents || [];',
+        '    for(var j=0;j<evs.length;j++){',
+        '        (function(ev){',
+        '            if(!ev.handlerFunc) return;',
+        '            el.addEventListener(ev.name, function(e){',
+        '                var fn = resolveFn(ev.handlerFunc);',
+        '                if(!fn) return;',
+        '                try {',
+        '                    fn.call(instance, {',
+        '                        type: ev.name, originalEvent: e,',
+        '                        component: instance, el: el,',
+        '                        data: e && e.detail',
+        '                    });',
+        '                } catch(ex){ console.error("[WbComponent] on", ev.handlerFunc, ex); }',
+        '            }, false);',
+        '        })(evs[j]);',
+        '    }',
+        '    el._wbComponent = instance;',
+        '    WbComponent._register(instance);',
+        '    return instance;',
+        '}',
+        '',
+        'function init(){',
+        '    var els = document.querySelectorAll("[data-wb-user-comp]");',
+        '    for(var i=0;i<els.length;i++){',
+        '        var el = els[i];',
+        '        var ct = el.getAttribute("cmptype") || "";',
+        '        var def = WbComponent._defs[ct] || null;',
+        '        if(!def){ WbComponent._pending.push({ el: el, ct: ct }); continue; }',
+        '        try { attach(el, def); } catch(e){ console.error("[WbComponent] attach", ct, e); }',
+        '    }',
+        '}',
+        'WbComponent._attach = attach;',
+        'WbComponent._init = init;',
+        'if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, false);',
+        'else init();',
+        'if(g.MutationObserver){',
+        '    var bodyObs = new g.MutationObserver(function(muts){',
+        '        for(var i=0;i<muts.length;i++){',
+        '            if(muts[i].addedNodes && muts[i].addedNodes.length){ setTimeout(init, 0); return; }',
+        '        }',
+        '    });',
+        '    try { bodyObs.observe(document.documentElement, { childList: true, subtree: true }); } catch(e){}',
+        '}',
+        '})(window);'
+    ].join('\n');
+
+    function emptyModel() { return { version: 5, folders: {}, components: {} }; }
 
     function readAll() {
         try {
@@ -46,7 +184,7 @@
             if (!o || typeof o !== 'object') return emptyModel();
             if (!o.folders) o.folders = {};
             if (!o.components) o.components = {};
-            o.version = 4;
+            o.version = 5;
             return o;
         } catch (e) { return emptyModel(); }
     }
@@ -57,6 +195,9 @@
     function uid(p) {
         return (p || 'id') + '_' + Date.now().toString(36) + '_' +
             Math.random().toString(36).slice(2, 8);
+    }
+    function safeName(s) {
+        return String(s || 'component').replace(/[^A-Za-z0-9_.-]/g, '_');
     }
 
     function normalizeProp(p) {
@@ -73,46 +214,27 @@
             onChangeFunc:    p.onChangeFunc || ''
         };
     }
-
     function normalizeEvent(e) {
         e = e || {};
-        return {
-            name:        e.name || '',
-            caption:     e.caption || e.name || '',
-            handlerFunc: e.handlerFunc || ''
-        };
+        return { name: e.name || '', caption: e.caption || e.name || '', handlerFunc: e.handlerFunc || '' };
     }
-
     function normalizeRule(r) {
         r = r || {};
-        var kind = (r.kind === 'cmptype') ? 'cmptype' : 'tag';
-        return { kind: kind, value: r.value || '' };
+        return { kind: (r.kind === 'cmptype') ? 'cmptype' : 'tag', value: r.value || '' };
     }
-
     function normalizeComponent(src) {
         src = src || {};
-
         var props = Array.isArray(src.customProperties) ? src.customProperties : [];
         var outProps = [];
         for (var i = 0; i < props.length; i++) outProps.push(normalizeProp(props[i]));
-
         var evs = Array.isArray(src.customEvents) ? src.customEvents : [];
         var outEvs = [];
-        for (var k = 0; k < evs.length; k++) {
-            var ev = normalizeEvent(evs[k]);
-            if (ev.name) outEvs.push(ev);
-        }
-
+        for (var k = 0; k < evs.length; k++) { var ev = normalizeEvent(evs[k]); if (ev.name) outEvs.push(ev); }
         var rules = Array.isArray(src.nestingRules) ? src.nestingRules : [];
         var outRules = [];
-        for (var r = 0; r < rules.length; r++) {
-            var nr = normalizeRule(rules[r]);
-            if (nr.value) outRules.push(nr);
-        }
-
+        for (var r = 0; r < rules.length; r++) { var nr = normalizeRule(rules[r]); if (nr.value) outRules.push(nr); }
         var mode = src.nestingMode;
         if (mode !== 'none' && mode !== 'list' && mode !== 'all') mode = 'all';
-
         return {
             id:             src.id || uid('cmp'),
             name:           src.name || 'Component',
@@ -134,25 +256,18 @@
         };
     }
 
-    /* ---------- Трансляция user-property → inspector-field ---------- */
     function buildCustomInspectorField(p) {
         var out = {
-            name:    p.name,
-            caption: p.caption || p.name,
-            attr:    true,
-            type:    p.type || 'string',
-            _user:   true
+            name: p.name, caption: p.caption || p.name,
+            attr: true, type: p.type || 'string', _user: true
         };
         if (p.type === 'enum' && p.values) {
             out.values = String(p.values).split(',').map(function (s) { return s.trim(); })
                 .filter(function (s) { return s !== ''; });
         }
-        if (p.type === 'length' && p.unit) {
-            out.suggest = [p.unit];
-        }
+        if (p.type === 'length' && p.unit) out.suggest = [p.unit];
         if (p.fieldType === 'url' && p.fieldUrl) {
-            out.type = 'custom-editor-url';
-            out.editorUrl = p.fieldUrl;
+            out.type = 'custom-editor-url'; out.editorUrl = p.fieldUrl;
         } else if (p.fieldType === 'predefined' && p.fieldPredefined) {
             switch (p.fieldPredefined) {
                 case 'text':              out.type = 'text'; break;
@@ -168,184 +283,16 @@
         return out;
     }
 
-    /* ---------- Runtime-бутстрап ----------
-       Вставляется один раз на документ. Определяет window.WbComponent,
-       сканирует DOM и вешает инстансы на все [data-wb-user-comp].
-       Наблюдает за DOM — подхватывает позже добавленные компоненты. */
-    var BOOTSTRAP_CODE = [
-        '(function(g){',
-        'if (g.WbComponent && g.WbComponent._bootstrapped) return;',
-
-        'var WbComponent = {',
-        '    _bootstrapped: true,',
-        '    _registry: {},',
-        '    _byCmptype: {},',
-        '    _register: function(i){ this._registry[i.id]=i; if(i.cmptype) this._byCmptype[i.cmptype]=i; },',
-        '    _unregister: function(i){ delete this._registry[i.id]; if(i.cmptype && this._byCmptype[i.cmptype]===i) delete this._byCmptype[i.cmptype]; },',
-        '    get: function(k){',
-        '        if(!k) return null;',
-        '        if(typeof k==="string") return this._registry[k] || this._byCmptype[k] || null;',
-        '        if(k.nodeType===1) return k._wbComponent || null;',
-        '        return null;',
-        '    },',
-        '    all: function(ct){',
-        '        var out=[],k;',
-        '        if(!ct){ for(k in this._registry) if(this._registry.hasOwnProperty(k)) out.push(this._registry[k]); return out; }',
-        '        for(k in this._registry) if(this._registry[k].cmptype===ct) out.push(this._registry[k]);',
-        '        return out;',
-        '    }',
-        '};',
-        'g.WbComponent = WbComponent;',
-
-        'function resolveFn(name){',
-        '    if(!name) return null;',
-        '    var parts = String(name).split("."), obj = g;',
-        '    for(var i=0;i<parts.length;i++){ if(!obj) return null; obj = obj[parts[i]]; }',
-        '    return typeof obj==="function" ? obj : null;',
-        '}',
-
-        'function attach(el, c){',
-        '    if(el._wbComponent) return el._wbComponent;',
-        '    var instance = {',
-        '        id: c.id,',
-        '        cmptype: c.cmptype,',
-        '        name: c.name,',
-        '        el: el,',
-        '        _handlers: {},',
-        '        get: function(name){ return el.getAttribute(name) || ""; },',
-        '        set: function(name, v){ el.setAttribute(name, v); },',
-        '        on: function(name, h){ (this._handlers[name]=this._handlers[name]||[]).push(h); return this; },',
-        '        off: function(name, h){ var l=this._handlers[name]; if(!l) return this; var i=l.indexOf(h); if(i>=0) l.splice(i,1); return this; },',
-        '        emit: function(name, data){',
-        '            var l = this._handlers[name] || [];',
-        '            for(var i=0;i<l.length;i++){',
-        '                try { l[i]({ type: name, data: data, component: this, el: el }); }',
-        '                catch(e){ console.error("[WbComponent]", name, e); }',
-        '            }',
-        '            try {',
-        '                var ce = new CustomEvent("wb-component-event", { detail: { name: name, data: data } });',
-        '                el.dispatchEvent(ce);',
-        '            } catch(e){}',
-        '        }',
-        '    };',
-
-        /* Свойства-аксессоры */
-        '    var props = c.customProperties || [];',
-        '    for(var i=0;i<props.length;i++){',
-        '        (function(p){',
-        '            try {',
-        '                Object.defineProperty(instance, p.name, {',
-        '                    get: function(){ return el.getAttribute(p.name) || ""; },',
-        '                    set: function(v){ el.setAttribute(p.name, v); },',
-        '                    enumerable: true,',
-        '                    configurable: true',
-        '                });',
-        '            } catch(e){}',
-        '        })(props[i]);',
-        '    }',
-
-        /* MutationObserver — onChange для свойств */
-        '    if(g.MutationObserver){',
-        '        var mo = new g.MutationObserver(function(muts){',
-        '            for(var m=0;m<muts.length;m++){',
-        '                var mu = muts[m];',
-        '                if(mu.type !== "attributes") continue;',
-        '                var pn = mu.attributeName;',
-        '                var pdef = null;',
-        '                for(var k=0;k<props.length;k++) if(props[k].name===pn){ pdef=props[k]; break; }',
-        '                if(!pdef || !pdef.onChangeFunc) continue;',
-        '                var fn = resolveFn(pdef.onChangeFunc);',
-        '                if(!fn) continue;',
-        '                try {',
-        '                    fn.call(instance, {',
-        '                        name: pn,',
-        '                        value: el.getAttribute(pn),',
-        '                        oldValue: mu.oldValue,',
-        '                        component: instance,',
-        '                        el: el',
-        '                    });',
-        '                } catch(e){ console.error("[WbComponent] onChange", pdef.onChangeFunc, e); }',
-        '            }',
-        '        });',
-        '        mo.observe(el, { attributes: true, attributeOldValue: true });',
-        '        instance._observer = mo;',
-        '    }',
-
-        /* Custom events — вешаем слушатели на корневой элемент */
-        '    var evs = c.customEvents || [];',
-        '    for(var j=0;j<evs.length;j++){',
-        '        (function(ev){',
-        '            if(!ev.handlerFunc) return;',
-        '            el.addEventListener(ev.name, function(e){',
-        '                var fn = resolveFn(ev.handlerFunc);',
-        '                if(!fn) return;',
-        '                try {',
-        '                    fn.call(instance, {',
-        '                        type: ev.name,',
-        '                        originalEvent: e,',
-        '                        component: instance,',
-        '                        el: el,',
-        '                        data: e && e.detail',
-        '                    });',
-        '                } catch(ex){ console.error("[WbComponent] on", ev.handlerFunc, ex); }',
-        '            }, false);',
-        '        })(evs[j]);',
-        '    }',
-
-        '    el._wbComponent = instance;',
-        '    WbComponent._register(instance);',
-        '    return instance;',
-        '}',
-
-        'function loadPalette(){',
-        '    try { var raw = g.localStorage.getItem("wb.userPalette"); return raw ? JSON.parse(raw) : null; }',
-        '    catch(e){ return null; }',
-        '}',
-
-        'function init(){',
-        '    var model = loadPalette();',
-        '    if(!model || !model.components) return;',
-        '    var comps = model.components;',
-        '    var els = document.querySelectorAll("[data-wb-user-comp]");',
-        '    for(var i=0;i<els.length;i++){',
-        '        var el = els[i];',
-        '        var cid = el.getAttribute("data-wb-user-comp");',
-        '        var c = comps[cid];',
-        '        if(!c) continue;',
-        '        try { attach(el, c); } catch(e){ console.error("[WbComponent] attach", cid, e); }',
-        '    }',
-        '}',
-
-        'WbComponent._attach = attach;',
-        'WbComponent._init = init;',
-        'WbComponent.loadPalette = loadPalette;',
-
-        'if(document.readyState === "loading"){',
-        '    document.addEventListener("DOMContentLoaded", init, false);',
-        '} else {',
-        '    init();',
-        '}',
-
-        /* Ре-скан при добавлении узлов */
-        'if(g.MutationObserver){',
-        '    var bodyObs = new g.MutationObserver(function(muts){',
-        '        for(var i=0;i<muts.length;i++){',
-        '            if(muts[i].addedNodes && muts[i].addedNodes.length){',
-        '                setTimeout(init, 0);',
-        '                return;',
-        '            }',
-        '        }',
-        '    });',
-        '    try { bodyObs.observe(document.documentElement, { childList: true, subtree: true }); } catch(e){}',
-        '}',
-
-        '})(window);'
-    ].join('\n');
-
     var ComponentStorage = {
         read: function () { return readAll(); },
         save: function (m) { return writeAll(m); },
         uid: uid,
+        LIB_DIR: LIB_DIR,
+        CORE_FILE: CORE_FILE,
+        CORE_SOURCE: CORE_LIBRARY_SOURCE,
+        isLibPath: function (path) {
+            return String(path || '').indexOf(LIB_DIR) === 0;
+        },
 
         /* ---------- folders ---------- */
         listFolders: function () {
@@ -397,10 +344,7 @@
             var c = normalizeComponent(def);
             if (c.cmptype) {
                 var existing = this.findByCmptype(c.cmptype);
-                if (existing) {
-                    c.id = existing.id;
-                    c.folderId = c.folderId || existing.folderId;
-                }
+                if (existing) { c.id = existing.id; c.folderId = c.folderId || existing.folderId; }
             }
             m.components[c.id] = c;
             writeAll(m);
@@ -425,17 +369,14 @@
             if (!model || typeof model !== 'object') return false;
             if (!model.folders) model.folders = {};
             if (!model.components) model.components = {};
-            model.version = 4;
+            model.version = 5;
             return writeAll(model);
         },
 
         mergeWithConfirmation: function (model) {
             var self = this;
             return new Promise(function (resolve) {
-                if (!model || typeof model !== 'object') {
-                    resolve({ imported: 0, overwritten: 0, skipped: 0 });
-                    return;
-                }
+                if (!model || typeof model !== 'object') { resolve({ imported: 0, overwritten: 0, skipped: 0 }); return; }
                 var m = readAll();
                 var stats = { imported: 0, overwritten: 0, skipped: 0 };
 
@@ -464,28 +405,21 @@
                     if (dup) {
                         var ok = global.confirm(
                             'Компонент с cmptype="' + c.cmptype + '" уже существует (' +
-                            dup.name + ').\n\nПерезаписать его?'
-                        );
-                        if (ok) {
-                            c.id = dup.id;
-                            m.components[c.id] = c;
-                            stats.overwritten++;
-                        } else {
-                            stats.skipped++;
-                        }
+                            dup.name + ').\n\nПерезаписать его?');
+                        if (ok) { c.id = dup.id; m.components[c.id] = c; stats.overwritten++; }
+                        else    { stats.skipped++; }
                     } else {
                         if (m.components[c.id]) c.id = uid('cmp');
                         m.components[c.id] = c;
                         stats.imported++;
                     }
                 }
-
                 writeAll(m);
                 resolve(stats);
             });
         },
 
-        /* ---------- Проверка правил вложенности ---------- */
+        /* ---------- вложенность ---------- */
         canNest: function (uc, childTag, childCmptype) {
             if (!uc) return true;
             var mode = uc.nestingMode || 'all';
@@ -498,16 +432,13 @@
                 for (var i = 0; i < rules.length; i++) {
                     var r = rules[i];
                     if (!r || !r.value) continue;
-                    if (r.kind === 'tag' && tag &&
-                        String(r.value).toLowerCase() === tag) return true;
-                    if (r.kind === 'cmptype' && ct &&
-                        String(r.value) === ct) return true;
+                    if (r.kind === 'tag' && tag && String(r.value).toLowerCase() === tag) return true;
+                    if (r.kind === 'cmptype' && ct && String(r.value) === ct) return true;
                 }
                 return false;
             }
             return true;
         },
-
         findUserCompAncestor: function (el, stopAt) {
             var cur = el;
             while (cur && cur !== stopAt) {
@@ -517,86 +448,142 @@
             return null;
         },
 
-        /* ---------- Runtime-бутстрап ---------- */
-        ensureRuntimeBootstrap: function (doc) {
-            if (!doc) return;
-            if (doc.querySelector('script[data-wb-user-comp-bootstrap="1"]')) return;
-            var sc = doc.createElement('script');
-            sc.setAttribute('data-wb-user-comp-bootstrap', '1');
-            sc.textContent = BOOTSTRAP_CODE;
-            var head = doc.head || doc.documentElement;
-            if (head) head.insertBefore(sc, head.firstChild);
-        },
-
-        /* ---------- Инъекция служебных CSS/JS в элемент ---------- */
-        injectAssets: function (el, c, doc) {
-            if (!el || !c || !doc) return;
-
-            /* Сначала — runtime-бутстрап. */
-            this.ensureRuntimeBootstrap(doc);
-
-            /* Удаляем старые сервисные узлы. */
-            var toRemove = [];
-            for (var i = 0; i < el.children.length; i++) {
-                var ch = el.children[i];
-                if (!ch.getAttribute) continue;
-                if (ch.getAttribute('data-wb-user-comp-asset') != null ||
-                    ch.getAttribute('data-wb-user-comp-style') != null ||
-                    ch.getAttribute('data-wb-user-comp-script') != null) {
-                    toRemove.push(ch);
-                }
-            }
-            for (var j = 0; j < toRemove.length; j++) {
-                if (toRemove[j].parentNode) toRemove[j].parentNode.removeChild(toRemove[j]);
-            }
-
-            /* CSS-ресурсы. */
-            if (c.cssLibs && c.cssLibs.length) {
-                for (var k = 0; k < c.cssLibs.length; k++) {
-                    var lib = c.cssLibs[k];
-                    var href = lib.value;
-                    if (lib.type === 'project' && global.ProjectResolver) {
-                        try { href = global.ProjectResolver.resolve(lib.value); } catch (e) {}
-                    }
-                    if (!href) continue;
-                    var link = doc.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = href;
-                    link.setAttribute('data-wb-user-comp-asset', c.id);
-                    el.insertBefore(link, el.firstChild);
-                }
-            }
-            if (c.css) {
-                var st = doc.createElement('style');
-                st.setAttribute('data-wb-user-comp-style', c.id);
-                st.textContent = c.css;
-                el.insertBefore(st, el.firstChild);
-            }
-            /* Встроенный JS. */
+        /* ---------- Генерация per-cmptype .js ---------- */
+        _buildCmptypeJs: function (c) {
+            var def = {
+                id: c.id,
+                cmptype: c.cmptype,
+                name: c.name,
+                customProperties: c.customProperties || [],
+                customEvents:     c.customEvents     || []
+            };
+            var s = '';
+            s += '/* WbComponent: ' + c.name + ' (' + c.cmptype + ') — автогенерация. */\n';
+            s += '(function(g){\n';
+            s += '    var WbComponent = g.WbComponent;\n';
+            s += '    if (!WbComponent) { console.error("[WbComponent] core.js не загружен для ' +
+                c.cmptype.replace(/"/g, '\\"') + '"); return; }\n';
+            s += '    WbComponent.register(' + JSON.stringify(def, null, 4) + ');\n';
+            s += '})(window);\n';
             if (c.js) {
-                var sc2 = doc.createElement('script');
-                sc2.setAttribute('data-wb-user-comp-script', c.id);
-                sc2.textContent = c.js;
-                el.appendChild(sc2);
+                s += '\n/* --- user code --- */\n';
+                s += c.js;
+                s += '\n';
             }
-            /* JS-ресурсы. */
-            if (c.jsLibs && c.jsLibs.length) {
-                for (var m = 0; m < c.jsLibs.length; m++) {
-                    var jlib = c.jsLibs[m];
-                    var src = jlib.value;
-                    if (jlib.type === 'project' && global.ProjectResolver) {
-                        try { src = global.ProjectResolver.resolve(jlib.value); } catch (e) {}
-                    }
-                    if (!src) continue;
-                    var sc = doc.createElement('script');
-                    sc.src = src;
-                    sc.setAttribute('data-wb-user-comp-asset', c.id);
-                    el.appendChild(sc);
+            return s;
+        },
+
+        /* ---------- Генерация per-cmptype .css ---------- */
+        _buildCmptypeCss: function (c) {
+            var parts = [];
+            parts.push('/* WbComponent: ' + c.name + ' (' + c.cmptype + ') — автогенерация. */');
+            /* Внешние CSS-libs — как @import, чтобы работало через lib-файл. */
+            if (c.cssLibs && c.cssLibs.length) {
+                for (var i = 0; i < c.cssLibs.length; i++) {
+                    var lib = c.cssLibs[i];
+                    if (lib && lib.value) parts.push('@import url("' + lib.value + '");');
                 }
+            }
+            if (c.css) parts.push(c.css);
+            return parts.join('\n') + '\n';
+        },
+
+        /* ---------- Синхронизация фоновых файлов в проекте ----------
+           Собирает все cmptype, использованные на сцене, и обновляет
+           lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}. */
+        syncProjectLibraries: function (project, canvas) {
+            if (!project) return;
+            if (!project.files) project.files = {};
+
+            /* Убираем старые lib-файлы. */
+            var keys = Object.keys(project.files);
+            for (var i = 0; i < keys.length; i++) {
+                if (keys[i].indexOf(LIB_DIR) === 0) delete project.files[keys[i]];
+            }
+
+            /* Собираем использованные cmptype. */
+            var used = {};
+            if (canvas && canvas.getDoc) {
+                var doc = canvas.getDoc();
+                if (doc) {
+                    var els = doc.querySelectorAll('[data-wb-user-comp]');
+                    for (var k = 0; k < els.length; k++) {
+                        var cid = els[k].getAttribute('data-wb-user-comp');
+                        var uc = this.getComponent(cid);
+                        if (uc && uc.cmptype) used[uc.cmptype] = uc;
+                    }
+                }
+            }
+
+            var cts = Object.keys(used);
+            if (!cts.length) return;
+
+            /* core.js — всегда. */
+            project.files[CORE_FILE] = {
+                kind: 'text',
+                _system: 'wb-lib',
+                content: CORE_LIBRARY_SOURCE
+            };
+
+            /* per-cmptype. */
+            for (var m = 0; m < cts.length; m++) {
+                var ct = cts[m];
+                var comp = used[ct];
+                var safeCt = safeName(ct);
+
+                project.files[LIB_DIR + safeCt + '.js'] = {
+                    kind: 'text',
+                    _system: 'wb-lib',
+                    content: this._buildCmptypeJs(comp)
+                };
+                project.files[LIB_DIR + safeCt + '.css'] = {
+                    kind: 'text',
+                    _system: 'wb-lib',
+                    content: this._buildCmptypeCss(comp)
+                };
             }
         },
 
-        /* ---------- построение def для ComponentRegistry ---------- */
+        /* ---------- Собрать <head>-теги для запуска ---------- */
+        buildLibHeadTags: function (project) {
+            if (!project || !project.files) return '';
+            var cts = {};
+            var files = project.files;
+            /* Ищем per-cmptype по файлам проекта. */
+            for (var p in files) {
+                if (!files.hasOwnProperty(p)) continue;
+                if (p.indexOf(LIB_DIR) !== 0) continue;
+                if (p === CORE_FILE) continue;
+                var mm = p.match(/^lib\/wb-component\/(.+)\.(js|css)$/);
+                if (!mm) continue;
+                cts[mm[1]] = true;
+            }
+            var list = Object.keys(cts);
+            if (!list.length) return '';
+
+            var out = [];
+            /* CSS — сначала. */
+            for (var i = 0; i < list.length; i++) {
+                var ct = list[i];
+                var cssPath = LIB_DIR + ct + '.css';
+                if (files[cssPath]) {
+                    out.push('<link rel="stylesheet" href="' + cssPath + '">');
+                }
+            }
+            /* core.js — до per-cmptype. */
+            out.push('<script src="' + CORE_FILE + '"></script>');
+            /* per-cmptype js. */
+            for (var j = 0; j < list.length; j++) {
+                var ct2 = list[j];
+                var jsPath = LIB_DIR + ct2 + '.js';
+                if (files[jsPath]) {
+                    out.push('<script src="' + jsPath + '"></script>');
+                }
+            }
+            return out.join('\n');
+        },
+
+        /* ---------- Определение def для ComponentRegistry ---------- */
         toDef: function (c) {
             if (!c) return null;
             var tagName = (c.tagName || 'div').toLowerCase();
@@ -622,22 +609,21 @@
                 subCategory: 'User Palette',
                 userComponent: c,
                 locked: true,
-
                 nestingMode:  c.nestingMode  || 'all',
                 nestingRules: c.nestingRules || [],
-
                 iconUrl: c.icon || '',
 
+                /* --- create: только корневой элемент, без инлайн-скриптов --- */
                 create: function (doc) {
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
                     if (c.cmptype) el.setAttribute('cmptype', c.cmptype);
-                    global.ComponentStorage.injectAssets(el, c, doc);
                     return el;
                 },
 
+                /* --- preview: editor-only контент. Помечается data-wb-preview=1
+                       у вызывающего (canvas-insert._renderPreview) и не сериализуется. --- */
                 preview: function (el, doc) {
-                    global.ComponentStorage.injectAssets(el, c, doc);
                     var content = c.previewIdeHtml || c.html || '';
                     if (!content) return null;
                     var wrap = doc.createElement('div');
@@ -646,11 +632,7 @@
                     return wrap;
                 },
 
-                schema: {
-                    properties: props,
-                    styles: [],
-                    events: []
-                }
+                schema: { properties: props, styles: [], events: [] }
             };
         },
 

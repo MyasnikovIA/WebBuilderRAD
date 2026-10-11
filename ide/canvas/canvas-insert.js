@@ -1,7 +1,4 @@
-/* Canvas: вставка компонентов, target-логика, preview-узлы.
-
-   Дополняет Canvas.prototype, определённый в canvas-core.js.
-   Загружается ПОСЛЕ canvas-selection.js. */
+/* Canvas: вставка компонентов, target-логика, preview-узлы. */
 (function (global) {
     'use strict';
     var Canvas = global.Canvas;
@@ -18,25 +15,18 @@
         var head = this.getHead();
         if (!html) return null;
         if (!el || el.nodeType !== 1) return body;
-
         if (this._rootType !== 'html') {
             var rc = this.getRootContainer();
             if (rc && el !== rc && !rc.contains(el)) return rc;
         }
-
         if (el !== html && !html.contains(el)) return body;
-
         var n = el;
         while (n && n !== body && n !== head && n !== html) {
-            if (n.getAttribute && n.getAttribute('data-wb-preview') === '1') {
-                n = n.parentNode;
-                continue;
-            }
+            if (n.getAttribute && n.getAttribute('data-wb-preview') === '1') { n = n.parentNode; continue; }
             if (!VOID[n.tagName]) return n;
             n = n.parentNode;
         }
         if (n === head) return head;
-
         if (this._rootType !== 'html') {
             var rc2 = this.getRootContainer();
             if (rc2) return rc2;
@@ -47,20 +37,12 @@
     Canvas.prototype._findParentFor = function (parentOnly, target) {
         var doc = this.getDoc();
         var html = this.getHtml();
-
-        var wanted;
-        if (Array.isArray(parentOnly)) {
-            wanted = parentOnly.map(function (t) { return String(t).toLowerCase(); });
-        } else {
-            wanted = [String(parentOnly).toLowerCase()];
-        }
-
+        var wanted = Array.isArray(parentOnly)
+            ? parentOnly.map(function (t) { return String(t).toLowerCase(); })
+            : [String(parentOnly).toLowerCase()];
         var t = target;
         while (t && t !== html) {
-            if (t.tagName) {
-                var tag = t.tagName.toLowerCase();
-                if (wanted.indexOf(tag) >= 0) return t;
-            }
+            if (t.tagName && wanted.indexOf(t.tagName.toLowerCase()) >= 0) return t;
             t = t.parentNode;
         }
         for (var i = 0; i < wanted.length; i++) {
@@ -70,25 +52,15 @@
         return null;
     };
 
-    /* Проверка правил вложенности user-компонента для вставляемого def.
-       Возвращает { ok:true } либо { ok:false, uc } (uc — сам компонент). */
     Canvas.prototype._checkUserNesting = function (target, def) {
-        if (!global.ComponentStorage || !global.ComponentStorage.canNest) {
-            return { ok: true };
-        }
+        if (!global.ComponentStorage || !global.ComponentStorage.canNest) return { ok: true };
         var ucEl = global.ComponentStorage.findUserCompAncestor(target, this.getHtml());
         if (!ucEl) return { ok: true };
-
-        var ucId = ucEl.getAttribute('data-wb-user-comp');
-        var uc = global.ComponentStorage.getComponent(ucId);
+        var uc = global.ComponentStorage.getComponent(ucEl.getAttribute('data-wb-user-comp'));
         if (!uc) return { ok: true };
-
-        var childTag     = (def && def.tagName) || '';
+        var childTag = (def && def.tagName) || '';
         var childCmptype = (def && def.cmptype) || (def && def.userComponent && def.userComponent.cmptype) || '';
-
-        if (global.ComponentStorage.canNest(uc, childTag, childCmptype)) {
-            return { ok: true };
-        }
+        if (global.ComponentStorage.canNest(uc, childTag, childCmptype)) return { ok: true };
         return { ok: false, uc: uc };
     };
 
@@ -99,52 +71,34 @@
 
         if (def.unique) {
             var existing = doc.querySelector(def.tagName);
-            if (existing) {
-                this.pending = null;
-                bus.emit('palette:placed');
-                this.select(existing);
-                return existing;
-            }
+            if (existing) { this.pending = null; bus.emit('palette:placed'); this.select(existing); return existing; }
         }
 
-        /* ---------- Проверка правил вложенности ---------- */
         var chk = this._checkUserNesting(target, def);
         if (!chk.ok) {
             var m = 'В компонент "' + chk.uc.name + '" запрещено вставлять вложения';
             if (chk.uc.nestingMode === 'list') m += ' данного типа';
             m += '.';
             alert(m);
-            this.pending = null;
-            bus.emit('palette:placed');
+            this.pending = null; bus.emit('palette:placed');
             return null;
         }
 
         var el = def.create ? def.create(doc) : doc.createElement(def.tagName);
-        if (def.cmptype && !el.getAttribute('cmptype')) {
-            el.setAttribute('cmptype', def.cmptype);
-        }
+        if (def.cmptype && !el.getAttribute('cmptype')) el.setAttribute('cmptype', def.cmptype);
         if (def.cmptypeId) el.setAttribute('data-cmptype', def.cmptypeId);
-        if (def.xmlTag && !el.getAttribute('data-wb-tag')) {
-            el.setAttribute('data-wb-tag', def.xmlTag);
-        }
-
+        if (def.xmlTag && !el.getAttribute('data-wb-tag')) el.setAttribute('data-wb-tag', def.xmlTag);
         if (def.nameTemplate) {
             var newName = Canvas.generateComponentName(doc, def.tagName, def.nameTemplate);
             if (newName) el.setAttribute('name', newName);
         }
 
         var parentOnly = def.parentOnly;
-        if (!parentOnly && def.tagName) {
-            parentOnly = PARENT_FALLBACK[String(def.tagName).toLowerCase()];
-        }
+        if (!parentOnly && def.tagName) parentOnly = PARENT_FALLBACK[String(def.tagName).toLowerCase()];
 
         if (parentOnly) {
             var parent = this._findParentFor(parentOnly, target);
-            if (!parent) {
-                this.pending = null;
-                bus.emit('palette:placed');
-                return null;
-            }
+            if (!parent) { this.pending = null; bus.emit('palette:placed'); return null; }
             parent.appendChild(el);
         } else if (def.rootLevel) {
             html.appendChild(el);
@@ -168,10 +122,7 @@
         bus.emit('palette:placed');
 
         var prev = doc.querySelectorAll('.' + SEL);
-        for (var i = 0; i < prev.length; i++) {
-            prev[i].classList.remove(SEL);
-            this._cleanClass(prev[i]);
-        }
+        for (var i = 0; i < prev.length; i++) { prev[i].classList.remove(SEL); this._cleanClass(prev[i]); }
         el.classList.add(SEL);
         this._addResizeHandles(el);
 
@@ -182,10 +133,8 @@
 
     Canvas.prototype._renderPreview = function (el) {
         if (!el || el.nodeType !== 1) return;
-
         var old = el.querySelector(':scope > [data-wb-preview="1"]');
         if (old) old.parentNode.removeChild(old);
-
         if (this.getRootContainer && this.getRootContainer() === el) return;
 
         var def = global.ComponentRegistry && global.ComponentRegistry.match(el);
@@ -197,18 +146,14 @@
         if (!node) return;
 
         if (typeof node === 'string') {
-            var tmp = doc.createElement('div');
-            tmp.innerHTML = node;
-            node = tmp.firstChild;
+            var tmp = doc.createElement('div'); tmp.innerHTML = node; node = tmp.firstChild;
         }
         if (!node || node.nodeType !== 1) return;
 
         node.setAttribute('data-wb-preview', '1');
         el.appendChild(node);
 
-        if (global.ProjectResolver) {
-            try { global.ProjectResolver.applyTree(node); } catch (e) {}
-        }
+        if (global.ProjectResolver) { try { global.ProjectResolver.applyTree(node); } catch (e) {} }
     };
 
     Canvas.prototype.refreshPreview = function (el) {
@@ -222,7 +167,6 @@
             }
         }
     };
-
     Canvas.prototype.refreshPreviewAndParent = function (el) {
         if (!el || el.nodeType !== 1) return;
         this.refreshPreview(el);
@@ -232,33 +176,22 @@
             this._renderPreview(p);
         }
     };
+    Canvas.prototype._place = function (def, target) { this.insertComponent(def, target, 'inside'); };
 
-    Canvas.prototype._place = function (def, target) {
-        this.insertComponent(def, target, 'inside');
-    };
-
-    /* Пройти по дереву и «освежить» все компоненты.
-       ПреViewIDE-контент, сервисные узлы не обходятся. */
     Canvas.prototype._renderAllPreviews = function (root) {
         if (!root || root.nodeType !== 1) return;
-
-        var isComponent = root.getAttribute && (
-            root.getAttribute('data-wb-tag') ||
-            root.getAttribute('cmptype')
-        );
-        if (isComponent) {
-            this._renderPreview(root);
-        }
-
+        var isComponent = root.getAttribute && (root.getAttribute('data-wb-tag') || root.getAttribute('cmptype'));
+        if (isComponent) this._renderPreview(root);
         var kids = root.children;
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i];
             if (!c.getAttribute) continue;
             if (c.getAttribute('data-wb-preview') === '1') continue;
             if (c.getAttribute('data-wb-ide') === '1') continue;
-            if (c.getAttribute('data-wb-user-comp-asset') != null) continue;
-            if (c.getAttribute('data-wb-user-comp-style') != null) continue;
-            if (c.getAttribute('data-wb-user-comp-script') != null) continue;
+            if (c.getAttribute && c.getAttribute('data-wb-user-comp-asset') != null) continue;
+            if (c.getAttribute && c.getAttribute('data-wb-user-comp-style') != null) continue;
+            if (c.getAttribute && c.getAttribute('data-wb-user-comp-script') != null) continue;
+            if (c.getAttribute && c.getAttribute('data-wb-user-comp-bootstrap') != null) continue;
             this._renderAllPreviews(c);
         }
     };

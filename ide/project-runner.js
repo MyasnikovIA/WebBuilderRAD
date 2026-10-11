@@ -5,6 +5,10 @@
    браузер не пытался скачать их по HTTP. Навигация по <a>, <form action>
    перехватывается и приводит к подгрузке следующей страницы из проекта.
 
+   Фоновый слой: если в проекте есть lib/wb-component/{core.js,
+   <cmptype>.js, <cmptype>.css} — они вставляются в <head> каждой
+   отрендеренной страницы как blob-URL, один раз на страницу.
+
    Экспортирует global.ProjectRunner. */
 (function (global) {
     'use strict';
@@ -84,12 +88,10 @@
     function resolveRelative(pagePath, href) {
         if (!href) return '';
 
-        /* Абсолютные/внешние — как есть. */
         if (/^(data:|blob:|https?:|mailto:|tel:|javascript:|#|\/\/)/i.test(href)) {
             return href;
         }
 
-        /* Отделяем query и hash. */
         var hash = '', query = '', p = String(href);
         var hi = p.indexOf('#');
         if (hi >= 0) { hash = p.substring(hi); p = p.substring(0, hi); }
@@ -142,17 +144,14 @@
                     project.files[resolved.split('#')[0].split('?')[0]];
 
                 if (isLink || isForm) {
-                    /* Навигация внутри проекта. */
                     if (targetInProject) {
                         var cleanPath = resolved.split('#')[0].split('?')[0];
                         el.setAttribute('data-wb-nav', cleanPath);
                         if (isLink) el.setAttribute('href', 'javascript:void(0)');
                     }
-                    /* Иначе — оставляем как есть (внешняя ссылка). */
                     continue;
                 }
 
-                /* Ресурсный атрибут — подменяем на blob/data URL. */
                 if (targetInProject) {
                     var cleanRes = resolved.split('#')[0].split('?')[0];
                     el.setAttribute(attr, resolver.resolve(cleanRes));
@@ -185,12 +184,10 @@
     }
 
     function rewriteInlineStyleURLs(el, pagePath, resolver, project) {
-        /* Атрибут style="..." */
         var st = el.getAttribute && el.getAttribute('style');
         if (st && st.indexOf('url(') >= 0) {
             el.setAttribute('style', replaceCssUrls(st, pagePath, resolver, project));
         }
-        /* <style>...</style> */
         if (el.tagName && el.tagName.toLowerCase() === 'style') {
             var t = el.textContent || '';
             if (t.indexOf('url(') >= 0) {
@@ -251,7 +248,6 @@
                 return;
             }
 
-            /* Закрываем предыдущее окно (переиспользуем, если открыто). */
             this._closeCurrent();
 
             var features = [
@@ -280,7 +276,6 @@
 
             this._navigateTo(win, resolver, project, main);
 
-            /* Сторож: освобождаем blob-URL, когда окно закрыто. */
             var self = this;
             _current.watchdog = setInterval(function () {
                 if (!win || win.closed) {
@@ -326,7 +321,6 @@
                 return;
             }
 
-            /* Сохраняем состояние — оно переживёт замену DOM. */
             try {
                 win.__wbProject = {
                     project: project,
@@ -359,9 +353,93 @@
             /* Переписываем URL-атрибуты. */
             rewriteURLs(doc, pagePath, resolver, project);
 
+            /* Фоновый слой: подключаем библиотеки компонентов
+               (core.js + per-cmptype .js/.css) в <head> страницы. */
+            var libHead = this._buildLibraryHead(doc, project, resolver);
+            if (libHead) {
+                var headEl = doc.head || doc.querySelector('head');
+                if (!headEl) {
+                    /* Вставляем head до body. */
+                    var htmlEl = doc.documentElement;
+                    headEl = doc.createElement('head');
+                    var firstChild = htmlEl.firstChild;
+                    if (firstChild) htmlEl.insertBefore(headEl, firstChild);
+                    else htmlEl.appendChild(headEl);
+                }
+                headEl.insertAdjacentHTML('beforeend', libHead);
+            }
+
             /* Собираем HTML. */
             var doctype = '<!DOCTYPE html>';
             return doctype + '\n' + doc.documentElement.outerHTML;
+        },
+
+        /* ------------------------------------------------------------------
+           Сборка фонового слоя: core.js + <cmptype>.js + <cmptype>.css.
+           Все cmptype определяются по data-wb-user-comp + cmptype в HTML.
+           Каждый файл добавляется не более одного раза.
+           ------------------------------------------------------------------ */
+        _buildLibraryHead: function (doc, project, resolver) {
+            if (!project || !project.files) return '';
+
+            var root = doc.documentElement;
+            if (!root) return '';
+
+            var used = {};
+
+            /* data-wb-user-comp + cmptype в любом порядке. */
+            var els = root.querySelectorAll('[data-wb-user-comp]');
+            for (var i = 0; i < els.length; i++) {
+                var ct = els[i].getAttribute('cmptype');
+                if (ct) used[ct] = true;
+            }
+
+            /* Fallback: сканируем outerHTML — на случай, если querySelectorAll
+               ничего не вернул из-за ещё не распарсенного фрагмента. */
+            if (!Object.keys(used).length) {
+                var html = root.outerHTML || '';
+                var m;
+                var re1 = /data-wb-user-comp\s*=\s*"([^"]+)"[^>]*\bcmptype\s*=\s*"([^"]+)"/gi;
+                while ((m = re1.exec(html)) !== null) used[m[2]] = true;
+                var re2 = /cmptype\s*=\s*"([^"]+)"[^>]*\bdata-wb-user-comp\s*=/gi;
+                while ((m = re2.exec(html)) !== null) used[m[1]] = true;
+            }
+
+            var cts = Object.keys(used);
+            if (!cts.length) return '';
+
+            function asUrl(path) {
+                if (!path) return path;
+                try { return resolver.resolve(path); } catch (e) { return path; }
+            }
+
+            var tags = [];
+
+            /* 1. CSS каждого cmptype. */
+            for (var k = 0; k < cts.length; k++) {
+                var safeCt = String(cts[k]).replace(/[^A-Za-z0-9_.-]/g, '_');
+                var cssPath = 'lib/wb-component/' + safeCt + '.css';
+                if (project.files[cssPath]) {
+                    tags.push('<link rel="stylesheet" href="' + asUrl(cssPath) + '">');
+                }
+            }
+
+            /* 2. core.js — один раз, до per-cmptype. */
+            var corePath = 'lib/wb-component/core.js';
+            if (project.files[corePath]) {
+                tags.push('<script src="' + asUrl(corePath) + '"></script>');
+            }
+
+            /* 3. per-cmptype .js. */
+            for (var j = 0; j < cts.length; j++) {
+                var safeCt2 = String(cts[j]).replace(/[^A-Za-z0-9_.-]/g, '_');
+                var jsPath = 'lib/wb-component/' + safeCt2 + '.js';
+                if (project.files[jsPath]) {
+                    tags.push('<script src="' + asUrl(jsPath) + '"></script>');
+                }
+            }
+
+            return tags.join('\n');
         },
 
         /* ------------------------------------------------------------------
@@ -393,7 +471,6 @@
                 var action = fm.getAttribute && fm.getAttribute('action');
                 if (!action) return;
 
-                /* Находим data-wb-nav — он был проставлен в rewriteURLs. */
                 var nav = fm.getAttribute('data-wb-nav');
                 if (!nav) return;
 

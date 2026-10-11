@@ -270,10 +270,14 @@
             var isComp = !!(global.App && global.App._componentMode);
             this.current.rootType = isComp ? 'component' : (canvas.getRootType() || 'html');
             if (isComp && global.componentTab && global.componentTab.getFormData) {
-                try {
-                    this.current.componentData = global.componentTab.getFormData();
-                } catch (e) { /* ignore */ }
+                try { this.current.componentData = global.componentTab.getFormData(); }
+                catch (e) { /* ignore */ }
             }
+        }
+        /* Синхронизация фоновых библиотек компонентов. */
+        if (global.ComponentStorage && global.ComponentStorage.syncProjectLibraries) {
+            try { global.ComponentStorage.syncProjectLibraries(this.current, canvas); }
+            catch (e) { console.error('[ProjectManager] sync libraries', e); }
         }
         global.ProjectStorage.save(this.current);
     };

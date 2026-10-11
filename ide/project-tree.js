@@ -255,6 +255,12 @@
 
         for (var p in files) {
             if (!files.hasOwnProperty(p)) continue;
+
+            /* Фоновый слой библиотек компонентов — не показываем. */
+            if (p.indexOf('lib/wb-component/') === 0) continue;
+            var fdef = files[p];
+            if (fdef && fdef._system === 'wb-lib') continue;
+
             if (searchPrefix && p.indexOf(searchPrefix) !== 0) continue;
 
             var rest = prefix ? p.substring(searchPrefix.length) : p;
@@ -262,11 +268,9 @@
 
             var slash = rest.indexOf('/');
             if (slash < 0) {
-                /* .keep в корне — служебный, не показываем как файл. */
                 if (rest === '.keep') continue;
                 fileList.push(rest);
             } else {
-                /* folder/.keep тоже создаёт папку folder. */
                 folders[rest.substring(0, slash)] = true;
             }
         }

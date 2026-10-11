@@ -13,6 +13,11 @@
    резолвятся в blob:/data:-URL, поэтому предпросмотр получает доступ
    ко всем ресурсам проекта так же, как при Run Project.
 
+   Дополнительно: если проект содержит фоновый слой
+   lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}, эти файлы
+   инжектятся в <head> предпросмотра (как blob-URL) один раз — чтобы
+   runtime-инстансы WbComponent работали в запущенной странице.
+
    Точка входа: global.RunPreview.run().
    Инициализация: RunPreview.attach({ canvas, codeView }). */
 (function (global) {
@@ -50,7 +55,6 @@
 
     /* ------------------------------------------------------------------
        BlobResolver — кэш blob-URL для одного предпросмотра.
-       Освобождается при закрытии окна предпросмотра.
        ------------------------------------------------------------------ */
     function BlobResolver(project) {
         this.project = project;
@@ -142,10 +146,6 @@
                 var clean = resolved ? resolved.split('#')[0].split('?')[0] : '';
                 var inProject = clean && project.files[clean];
 
-                /* Ссылки <a href> и формы <form action> — оставляем
-                   как есть: в предпросмотре переходить по ним некуда.
-                   Но если файл есть в проекте — можно было бы открыть;
-                   пока просто игнорируем. */
                 var isLink = (attr === 'href' && tag === 'a');
                 var isForm = (attr === 'action' && tag === 'form');
 
@@ -270,8 +270,6 @@
             var pagePath = this._getEditingPath() || 'index.html';
 
             if (project) {
-                /* Есть проект — резолвим все ссылки в blob:/data:.
-                   <base> в этом случае не нужен, убираем его. */
                 if (this._resolver) {
                     try { this._resolver.revokeAll(); } catch (e) {}
                     this._resolver = null;
@@ -280,9 +278,8 @@
 
                 html = this._resolveProjectURLs(html, pagePath, project, false);
                 html = this._injectComponentAssets(html);
+                html = this._injectProjectLibraries(html, project);
             } else {
-                /* Нет проекта — старое поведение: <base href> на URL IDE,
-                   чтобы относительные пути хотя бы не ломались в about:blank. */
                 html = this._injectHeadAssets(html);
             }
 
@@ -318,7 +315,6 @@
             }
             if (!doc || !doc.documentElement) return html;
 
-            /* Убираем <base> — он бы ломал blob-URL. */
             if (!keepBase) {
                 var bases = doc.querySelectorAll('base');
                 for (var i = 0; i < bases.length; i++) {
@@ -348,8 +344,7 @@
         },
 
         /* ------------------------------------------------------------------
-           Только CSS компонентов (без <base>) — когда резолвим проект.
-           Пути к previewCss компонентов уже абсолютные.
+           CSS компонентов D3/M2 (без <base>) — когда резолвим проект.
            ------------------------------------------------------------------ */
         _injectComponentAssets: function (html) {
             var links = '';
@@ -376,6 +371,79 @@
                     '<head>\n' + links + '</head>\n$1');
             }
             return links + html;
+        },
+
+        /* ------------------------------------------------------------------
+           Фоновый слой библиотек компонентов.
+           Собираем все cmptype, использованные в HTML, и подключаем
+           core.js + <cmptype>.js + <cmptype>.css по одному разу.
+           Файлы берутся из project.files['lib/wb-component/…']
+           и превращаются в blob-URL через BlobResolver.
+           ------------------------------------------------------------------ */
+        _injectProjectLibraries: function (html, project) {
+            if (!project || !project.files) return html;
+
+            /* 1. Собираем использованные cmptype из HTML. */
+            var used = {};
+            var m;
+
+            /* Вариант: data-wb-user-comp="..." cmptype="..." */
+            var re1 = /data-wb-user-comp\s*=\s*"([^"]+)"[^>]*\bcmptype\s*=\s*"([^"]+)"/gi;
+            while ((m = re1.exec(html)) !== null) used[m[2]] = true;
+
+            /* Вариант: cmptype="..." data-wb-user-comp="..." */
+            var re2 = /cmptype\s*=\s*"([^"]+)"[^>]*\bdata-wb-user-comp\s*=/gi;
+            while ((m = re2.exec(html)) !== null) used[m[1]] = true;
+
+            var cts = Object.keys(used);
+            if (!cts.length) return html;
+
+            var tags = [];
+            var self = this;
+
+            function asUrl(path) {
+                if (!path) return path;
+                if (self._resolver) {
+                    try { return self._resolver.resolve(path); } catch (e) {}
+                }
+                return path;
+            }
+
+            /* 2. CSS каждого cmptype — один раз. */
+            for (var i = 0; i < cts.length; i++) {
+                var safeCt = String(cts[i]).replace(/[^A-Za-z0-9_.-]/g, '_');
+                var cssPath = 'lib/wb-component/' + safeCt + '.css';
+                if (project.files[cssPath]) {
+                    tags.push('<link rel="stylesheet" href="' + asUrl(cssPath) + '">');
+                }
+            }
+
+            /* 3. core.js — один раз. */
+            var corePath = 'lib/wb-component/core.js';
+            if (project.files[corePath]) {
+                tags.push('<script src="' + asUrl(corePath) + '"></script>');
+            }
+
+            /* 4. per-cmptype js. */
+            for (var j = 0; j < cts.length; j++) {
+                var safeCt2 = String(cts[j]).replace(/[^A-Za-z0-9_.-]/g, '_');
+                var jsPath = 'lib/wb-component/' + safeCt2 + '.js';
+                if (project.files[jsPath]) {
+                    tags.push('<script src="' + asUrl(jsPath) + '"></script>');
+                }
+            }
+
+            if (!tags.length) return html;
+            var inject = tags.join('\n') + '\n';
+
+            if (/<\/head>/i.test(html)) {
+                return html.replace(/<\/head>/i, inject + '</head>');
+            }
+            if (/<body[\s>]/i.test(html)) {
+                return html.replace(/(<body[\s>])/i,
+                    '<head>\n' + inject + '</head>\n$1');
+            }
+            return inject + html;
         },
 
         /* ------------------------------------------------------------------
