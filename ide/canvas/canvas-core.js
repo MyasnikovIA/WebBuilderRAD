@@ -66,6 +66,36 @@
         });
     }
 
+    /* ------------------------------------------------------------------
+       expandSelfClosingHtmlTags
+
+       Разворачивает самозакрытые СТАНДАРТНЫЕ HTML-теги (<div/>, <span/>, …)
+       в <tag></tag> ДО того, как HTML попадёт в doc.write().
+
+       В text/html браузер трактует <div .../> как ОТКРЫВАЮЩИЙ тег —
+       следующий элемент становится вложенным. Для user-компонентов
+       (<div data-wb-user-comp cmptype="…"/>) это визуально ломает сцену:
+       верхний div «съедает» нижний и остаётся пустым.
+
+       Void-теги (<br>, <img>, …) не трогаем — они самозакрываются корректно.
+       Custom-теги (cmp*, component) тоже не трогаем — их обрабатывают
+       отдельные expandSelfClosing* функции.
+       ------------------------------------------------------------------ */
+    var HTML_VOID_TAGS = {
+        area:1, base:1, br:1, col:1, embed:1, hr:1, img:1, input:1,
+        link:1, meta:1, param:1, source:1, track:1, wbr:1
+    };
+    var HTML_SELF_CLOSE_RE = /<([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^<>]*?)?)\/>/g;
+    function expandSelfClosingHtmlTags(str) {
+        return String(str).replace(HTML_SELF_CLOSE_RE, function (m, tag, attrs) {
+            var t = tag.toLowerCase();
+            if (HTML_VOID_TAGS[t]) return m;
+            if (t.indexOf('cmp') === 0) return m;
+            if (t === 'component') return m;
+            return '<' + tag + (attrs || '') + '></' + tag + '>';
+        });
+    }
+
     function generateComponentName(doc, tagName, nameTemplate) {
         if (!doc || !nameTemplate) return '';
         var tagLower = String(tagName).toLowerCase();
@@ -459,10 +489,49 @@
         return null;
     };
 
+    Canvas.prototype._ensureRootDivMarkers = function () {
+        if (this._rootType !== 'div') return null;
+        var body = this.getBody();
+        if (!body) return null;
+
+        var bKids = body.children;
+        var i, bk;
+        for (i = 0; i < bKids.length; i++) {
+            bk = bKids[i];
+            if (bk.tagName && bk.tagName.toLowerCase() === 'div' &&
+                bk.getAttribute('data-wb-root') === '1') {
+                return bk;
+            }
+        }
+
+        var onlyDiv = null;
+        var divCount = 0;
+        for (i = 0; i < bKids.length; i++) {
+            bk = bKids[i];
+            if (bk.getAttribute && bk.getAttribute('data-wb-ide') === '1') continue;
+            if (bk.getAttribute && bk.getAttribute('data-wb-preview') === '1') continue;
+            if (bk.tagName && bk.tagName.toLowerCase() === 'div') {
+                onlyDiv = bk;
+                divCount++;
+            } else {
+                return null;
+            }
+        }
+        if (divCount !== 1 || !onlyDiv) return null;
+
+        if (!onlyDiv.getAttribute('data-wb-root')) {
+            onlyDiv.setAttribute('data-wb-root', '1');
+        }
+        if (!onlyDiv.getAttribute('data-cmptype')) {
+            onlyDiv.setAttribute('data-cmptype', 'd3.rootdiv');
+        }
+        if (!onlyDiv.getAttribute('class')) {
+            onlyDiv.setAttribute('class', 'formBackground');
+        }
+        return onlyDiv;
+    };
+
     Canvas.prototype._detectRootType = function () {
-        /* В режиме создания компонента корень всегда div — независимо от того,
-           какой HTML был загружен (в т.ч. при двойном клике по HTML-файлу
-           проекта). Это гарантирует, что вкладка Component не исчезнет. */
         if (global.App && global.App._componentMode) return 'div';
 
         var body = this.getBody();
@@ -514,6 +583,13 @@
             }
         }
 
+        if (!existingRoot && type === 'div' && bKids0.length === 1) {
+            var onlyChild = bKids0[0];
+            if (onlyChild.tagName && onlyChild.tagName.toLowerCase() === 'div') {
+                existingRoot = onlyChild;
+            }
+        }
+
         if (existingRoot) {
             if (type === 'cmpForm') {
                 existingRoot.setAttribute('data-wb-tag', 'cmpForm');
@@ -536,6 +612,9 @@
                 }
                 if (!existingRoot.getAttribute('data-cmptype')) {
                     existingRoot.setAttribute('data-cmptype', 'd3.rootdiv');
+                }
+                if (!existingRoot.getAttribute('class')) {
+                    existingRoot.setAttribute('class', 'formBackground');
                 }
             }
             this._rootType = type;
@@ -659,6 +738,11 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
+        /* ВАЖНО: сначала раскрываем самозакрытые стандартные HTML-теги
+           (<div/>, <span/>, …) в <tag></tag>. Если этого не сделать, браузер
+           при парсинге в text/html трактует <div .../> как открывающий и
+           следующий элемент вкладывается внутрь — компоненты «матрёшатся». */
+        prepared = expandSelfClosingHtmlTags(prepared);
         prepared = expandSelfClosingCmpTags(prepared);
         prepared = expandSelfClosingComponentTags(prepared);
 
@@ -675,7 +759,6 @@
         doc.write(prepared);
         doc.close();
 
-        /* Сразу после парсинга — подменяем пути на blob/data URL. */
         if (global.ProjectResolver) {
             try { global.ProjectResolver.applyTree(doc.documentElement); } catch (e) {}
         }
@@ -761,6 +844,11 @@
         this.pending = null;
         this.designMode = false;
         this._rootType = this._detectRootType();
+
+        if (this._rootType === 'div') {
+            this._ensureRootDivMarkers();
+        }
+
         this._handles = null;
         this._handlesPending = false;
         $(this.iframe).removeClass('wb-design-mode');
@@ -768,7 +856,6 @@
         var body = this.getBody();
         if (body) this._renderAllPreviews(body);
 
-        /* Ещё раз — после создания preview-узлов. */
         if (global.ProjectResolver) {
             try { global.ProjectResolver.applyTree(doc.documentElement); } catch (e) {}
         }
@@ -881,6 +968,7 @@
     Canvas.RUNTIME_CMPTYPE_TO_TAG = RUNTIME_CMPTYPE_TO_TAG;
     Canvas.expandSelfClosingCmpTags = expandSelfClosingCmpTags;
     Canvas.expandSelfClosingComponentTags = expandSelfClosingComponentTags;
+    Canvas.expandSelfClosingHtmlTags = expandSelfClosingHtmlTags;
     Canvas.generateComponentName = generateComponentName;
 
     global.Canvas = Canvas;

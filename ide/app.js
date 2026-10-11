@@ -161,6 +161,7 @@
 
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 89) { History.redo(); e.preventDefault(); }
+            else if (e.ctrlKey && e.keyCode === 83) { App.cmd('saveProject'); e.preventDefault(); }  /* Ctrl+S */
             else if (e.ctrlKey && e.keyCode === 67) { App.cmd('copy');  e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
@@ -328,6 +329,27 @@
             cmprepeaterstyler:      'json'
         };
 
+        /* ------- Тост-уведомление (используется App.saveProject) ------- */
+        function showToast(text) {
+            var el = document.getElementById('wb-toast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'wb-toast';
+                el.style.cssText =
+                    'position:fixed;bottom:20px;right:20px;' +
+                    'background:#323232;color:#fff;padding:8px 14px;' +
+                    'border-radius:4px;font-family:Segoe UI,Tahoma,sans-serif;' +
+                    'font-size:12px;z-index:99999;' +
+                    'box-shadow:0 2px 8px rgba(0,0,0,0.3);' +
+                    'transition:opacity 0.3s;opacity:0;pointer-events:none;';
+                document.body.appendChild(el);
+            }
+            el.textContent = text;
+            el.style.opacity = '1';
+            clearTimeout(el._timer);
+            el._timer = setTimeout(function () { el.style.opacity = '0'; }, 2000);
+        }
+
         var App = {
             cmd: function (action) { if (App[action]) App[action](); },
 
@@ -423,6 +445,31 @@
                     content: ta,
                     onOk: function () { try { ta.focus(); ta.select(); document.execCommand('copy'); } catch (e) {} }
                 });
+            },
+
+            /* ---- Save Project — сохраняет проект целиком (Ctrl+S) ----
+               Сохраняет:
+                 • редактируемый файл (если есть несохранённые правки);
+                 • rootType текущего проекта (html/cmpForm/m2Form/div/component);
+                 • componentData (без js/css — они в lib-файлах);
+                 • lib/wb-component/<cmptype>.js и .css при Root: component. */
+            saveProject: function () {
+                var pm = global.ProjectManagerInstance;
+                if (!pm || !pm.current) {
+                    alert('Проект не выбран. Создайте или выберите проект в панели Project.');
+                    return;
+                }
+                try {
+                    if (pm.editing && canvas && pm._hasUnsavedChanges(canvas)) {
+                        pm._saveCurrentEdit(canvas);
+                    } else {
+                        pm.save();
+                    }
+                    showToast('Проект сохранён: ' + pm.current.name);
+                } catch (ex) {
+                    console.error('[App.saveProject]', ex);
+                    alert('Ошибка сохранения проекта: ' + (ex.message || ex));
+                }
             },
 
             saveJson: function () {
@@ -671,22 +718,23 @@
                 $('#wb-center-tabs .wb-center-tab[data-pane="component"]').show().click();
             },
 
-            /* Выгрузить текущий проект как ZIP-архив компонента.
-               Не создаёт запись в палитре — только формирует ZIP с
-               project.json (type='component') и всеми файлами проекта. */
+            /* Выгрузить текущий проект как ZIP-архив компонента. */
             exportProjectAsComponent: function () {
                 var pm = global.ProjectManagerInstance;
                 if (!pm || !pm.current) {
                     alert('Проект не выбран.');
                     return;
                 }
-                /* Зафиксировать актуальный rootType / componentData. */
                 pm.save();
 
-                /* Если не в режиме компонента — временно пометить. */
                 var p = pm.current;
                 if (global.componentTab && global.componentTab.getFormData) {
-                    try { p.componentData = global.componentTab.getFormData(); } catch (e) {}
+                    try {
+                        var cd = global.componentTab.getFormData();
+                        /* js/css уходят в lib-файлы; в манифест — не дублируем. */
+                        if (cd) { delete cd.js; delete cd.css; }
+                        p.componentData = cd;
+                    } catch (e) {}
                 }
                 global.ZipUtils.exportProject(p, { asComponent: true });
             },

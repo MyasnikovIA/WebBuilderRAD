@@ -72,7 +72,7 @@
         id: 'html.style', category: 'HTML', subCategory: 'Head', caption: 'Style', tagName: 'style',
         create: function (doc) {
             var el = doc.createElement('style');
-            el.textContent = '/* CSS */';
+            el.textContent = '';
             return el;
         },
         schema: sch([{ name: 'media', caption: 'Media', type: 'string', attr: true }])
@@ -82,7 +82,7 @@
         id: 'html.script', category: 'HTML', subCategory: 'Head', caption: 'Script', tagName: 'script',
         create: function (doc) {
             var el = doc.createElement('script');
-            el.textContent = '// JS';
+            el.textContent = '';
             return el;
         },
         schema: sch([

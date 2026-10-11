@@ -261,7 +261,20 @@
         }
 
         if (isUserComp && children.length === 0) {
-            return pad + '<' + tagName + attrs + '/>\n';
+            /* Самозакрытие допустимо ТОЛЬКО для custom-тегов (cmp*, component):
+               на загрузке их разворачивают expandSelfClosingCmpTags() и
+               expandSelfClosingComponentTags(). Для стандартных HTML-контейнеров
+               (<div>, <span>, …) обязателен явный </tag> — иначе браузер
+               воспринимает <div .../> как ОТКРЫВАЮЩИЙ и вкладывает в него
+               следующий контент. Это приводит к тому, что верхний
+               user-component получает «реального» ребёнка, hasRealContent()
+               возвращает true, HTML в него не инжектится — и первый компонент
+               визуально исчезает. */
+            var lt = tagLower;
+            if (lt.indexOf('cmp') === 0 || lt === 'component') {
+                return pad + '<' + tagName + attrs + '/>\n';
+            }
+            return pad + '<' + tagName + attrs + '></' + tagName + '>\n';
         }
         if (children.length === 1 && children[0].nodeType === 3) {
             var txt = children[0].nodeValue.replace(/\s+/g, ' ').trim();

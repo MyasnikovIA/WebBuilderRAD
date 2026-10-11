@@ -644,10 +644,42 @@
         };
     };
 
+    /* ------------------------------------------------------------------
+       saveAsComponent
+
+       Если PreViewIDE(html) не заполнен — берём HTML со сцены (вкладка
+       Code = canvas.cleanHtml()) и используем его как превью компонента.
+       Это избавляет от необходимости дублировать разметку в отдельный
+       редактор: на сцене уже собрана структура компонента, и её
+       достаточно «зафиксировать» в момент сохранения.
+       ------------------------------------------------------------------ */
     ComponentTab.prototype.saveAsComponent = function () {
         var data = this.getFormData();
         if (!data.name) { alert('Укажите имя компонента.'); return; }
-        if (!data.previewIdeHtml) { alert('PreViewIDE(html) пуст.'); return; }
+
+        /* Fallback: PreViewIDE(html) → canvas.cleanHtml() (вкладка Code). */
+        if (!data.previewIdeHtml) {
+            var canvas = global.IDE && global.IDE._canvas;
+            if (canvas && canvas.cleanHtml) {
+                try {
+                    var codeHtml = canvas.cleanHtml();
+                    if (codeHtml && codeHtml.replace(/\s+/g, '')) {
+                        data.previewIdeHtml = codeHtml;
+                        /* Обновляем редактор, чтобы пользователь видел, что
+                           именно сохранено как превью. */
+                        this.previewEditor.setValue(codeHtml);
+                        this.statusEl
+                            .text('PreViewIDE(html) пуст — использован HTML вкладки Code.')
+                            .css('color', '#1565c0');
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        if (!data.previewIdeHtml) {
+            alert('PreViewIDE(html) пуст, и на сцене (вкладка Code) нет содержимого.');
+            return;
+        }
         data.html = data.previewIdeHtml;
 
         var dup = data.cmptype ? global.ComponentStorage.findByCmptype(data.cmptype) : null;
@@ -689,7 +721,9 @@
 
         this.jsEditor.setValue(c.js || '');
         this.cssEditor.setValue(c.css || '');
-        this.previewEditor.setValue(c.previewIdeHtml || '');
+        /* Если previewIdeHtml нет, но есть html (сохранённый ранее) —
+           показываем html в редакторе PreViewIDE. */
+        this.previewEditor.setValue(c.previewIdeHtml || c.html || '');
     };
 
     ComponentTab.prototype.setActive = function (on) { this.active = !!on; };

@@ -177,18 +177,62 @@
         }
     };
 
+    /* ------------------------------------------------------------------
+       load — переключение на другой проект.
+
+       Последовательность:
+         1. Сбросить состояние предыдущего проекта (editing, флаг режима).
+         2. Очистить сцену (canvas.reset → пустой HTML-документ).
+         3. Загрузить главный файл проекта (mainFile / index.html).
+         4. Уведомить об изменении проекта (project:loaded / changed).
+         5. Применить сохранённый rootType (html / cmpForm / m2Form /
+            div / component) — уже поверх загруженного файла.
+       ------------------------------------------------------------------ */
     ProjectManager.prototype.load = function (name) {
         var p = global.ProjectStorage.get(name);
         if (!p) return;
         if (!p.files) p.files = {};
-        this.current = p;
+
+        var canvas = global.IDE && global.IDE._canvas;
+
+        /* 1. Сбрасываем состояние предыдущего проекта. */
         this.editing = null;
+        this.current = p;
         global.ProjectStorage.setCurrent(name);
         if (this.comboEl) this.comboEl.value = name;
-        bus.emit('project:loaded', { project: p, name: name });
+
+        /* ВАЖНО: снимаем флаг компонентного режима ДО загрузки файла,
+           чтобы _detectRootType() определил корень по содержимому
+           файла, а не по «залипшему» флагу предыдущего проекта. */
+        if (global.App) global.App._componentMode = false;
+
+        /* 2. Очищаем сцену. */
+        if (canvas && canvas.reset) {
+            try { canvas.reset(); }
+            catch (e) { console.error('[ProjectManager.load] reset', e); }
+        }
+
+        /* 3. Загружаем главный файл проекта. */
+        var mainPath = p.mainFile;
+        if (!mainPath || !p.files[mainPath]) {
+            mainPath = p.files['index.html'] ? 'index.html' : '';
+        }
+        if (mainPath && p.files[mainPath]) {
+            var ext = (mainPath.match(/\.([^.\\\/]+)$/) || ['', ''])[1].toLowerCase();
+            if (ext === 'html' || ext === 'htm' || ext === 'frm') {
+                bus.emit('project:file:edit-visual', {
+                    path:    mainPath,
+                    data:    p.files[mainPath],
+                    project: p
+                });
+            }
+        }
+
+        /* 4. Уведомления об изменении проекта. */
+        bus.emit('project:loaded',  { project: p, name: name });
         bus.emit('project:changed', { project: p });
 
-        /* Восстановить режим корня, сохранённый в проекте. */
+        /* 5. Применяем сохранённый режим корня. */
         this._applyProjectMode(p);
     };
 
@@ -205,7 +249,9 @@
         bus.emit('project:changed', { project: null });
     };
 
-    /* Применить к canvas / вкладкам сохранённый в проекте режим корня. */
+    /* Применить к canvas / вкладкам сохранённый в проекте режим корня.
+       Для Root: component — восстановить js/css компонента из
+       файлов lib/wb-component/<cmptype>.{js,css}. */
     ProjectManager.prototype._applyProjectMode = function (p) {
         var canvas = global.IDE && global.IDE._canvas;
         var $tabs = null;
@@ -217,15 +263,80 @@
         if (rt === 'component') {
             if (global.App) global.App._componentMode = true;
             if ($tabs) $tabs.show();
-            if (canvas) canvas.setRootType('div');
-            if (global.componentTab && p && p.componentData) {
-                try { global.componentTab.setComponent(p.componentData); } catch (e) {}
+
+            /* Данные компонента — из componentData + lib-файлов. */
+            if (global.componentTab && p) {
+                var cd = p.componentData ? this._cloneObj(p.componentData) : {};
+                var libData = this._readComponentLibraries(p);
+                if (libData) {
+                    if (!cd.js && libData.js)   cd.js  = libData.js;
+                    if (!cd.css && libData.css) cd.css = libData.css;
+                }
+                /* Если previewIdeHtml пуст, но у проекта уже есть
+                   сохранённый ранее html (например, был снят со
+                   вкладки Code в момент сохранения) — используем его. */
+                if (!cd.previewIdeHtml && cd.html) {
+                    cd.previewIdeHtml = cd.html;
+                }
+                try { global.componentTab.setComponent(cd); } catch (e) {}
             }
+
+            if (canvas) canvas.setRootType('div');
         } else {
             if (global.App) global.App._componentMode = false;
             if ($tabs) $tabs.hide();
             if (canvas) canvas.setRootType(rt);
         }
+    };
+
+    ProjectManager.prototype._cloneObj = function (o) {
+        if (!o) return null;
+        try { return JSON.parse(JSON.stringify(o)); }
+        catch (e) { return o; }
+    };
+
+    /* Читает js/css пользовательского компонента из lib-файлов проекта. */
+    ProjectManager.prototype._readComponentLibraries = function (p) {
+        if (!p || !p.files) return null;
+        var cd = p.componentData || {};
+        var ct = cd.cmptype;
+        if (!ct) return null;
+
+        var safeCt = String(ct).replace(/[^A-Za-z0-9_.-]/g, '_');
+        var jsPath  = 'lib/wb-component/' + safeCt + '.js';
+        var cssPath = 'lib/wb-component/' + safeCt + '.css';
+
+        var out = { js: '', css: '' };
+
+        var jsFile = p.files[jsPath];
+        if (jsFile && jsFile.content) {
+            out.js = this._extractUserJs(jsFile.content);
+        }
+        var cssFile = p.files[cssPath];
+        if (cssFile && cssFile.content) {
+            out.css = this._extractUserCss(cssFile.content);
+        }
+        return out;
+    };
+
+    /* Извлекает пользовательский JS из сгенерированного lib-файла. */
+    ProjectManager.prototype._extractUserJs = function (fullJs) {
+        if (!fullJs) return '';
+        var marker = '/* --- user code --- */';
+        var idx = fullJs.indexOf(marker);
+        if (idx < 0) return '';
+        var user = fullJs.substring(idx + marker.length);
+        return user.replace(/^\r?\n/, '');
+    };
+
+    /* Извлекает пользовательский CSS из сгенерированного lib-файла. */
+    ProjectManager.prototype._extractUserCss = function (fullCss) {
+        if (!fullCss) return '';
+        var marker = '/* --- user css --- */';
+        var idx = fullCss.indexOf(marker);
+        if (idx < 0) return '';
+        var user = fullCss.substring(idx + marker.length);
+        return user.replace(/^\r?\n/, '');
     };
 
     ProjectManager.prototype.createNew = function () {
@@ -262,7 +373,15 @@
         this.refreshCombo();
     };
 
-    /* Сохранение — с обогащением данных о режиме/компоненте. */
+    /* ------------------------------------------------------------------
+       save — сохранение проекта.
+
+       Для Root: component:
+         • js/css компонента НЕ пишутся в JSON проекта — они хранятся в
+           lib/wb-component/<cmptype>.{js,css} (см. syncProjectLibraries);
+         • если componentData.previewIdeHtml пуст — берём HTML со сцены
+           (вкладка Code = canvas.cleanHtml()) и сохраняем его как превью.
+       ------------------------------------------------------------------ */
     ProjectManager.prototype.save = function () {
         if (!this.current) return;
         var canvas = global.IDE && global.IDE._canvas;
@@ -270,11 +389,31 @@
             var isComp = !!(global.App && global.App._componentMode);
             this.current.rootType = isComp ? 'component' : (canvas.getRootType() || 'html');
             if (isComp && global.componentTab && global.componentTab.getFormData) {
-                try { this.current.componentData = global.componentTab.getFormData(); }
+                try {
+                    var cd = global.componentTab.getFormData();
+                    if (cd) {
+                        /* Fallback: PreViewIDE(html) → canvas.cleanHtml()
+                           (то же, что показывает вкладка Code). */
+                        if (!cd.previewIdeHtml && canvas.cleanHtml) {
+                            try {
+                                var codeHtml = canvas.cleanHtml();
+                                if (codeHtml && codeHtml.replace(/\s+/g, '')) {
+                                    cd.previewIdeHtml = codeHtml;
+                                    cd.html = codeHtml;
+                                }
+                            } catch (e) { /* ignore */ }
+                        }
+                        /* js/css уходят в отдельные файлы библиотеки. */
+                        delete cd.js;
+                        delete cd.css;
+                    }
+                    this.current.componentData = cd;
+                }
                 catch (e) { /* ignore */ }
             }
         }
-        /* Синхронизация фоновых библиотек компонентов. */
+        /* Синхронизация фоновых библиотек компонентов
+           (в т.ч. запись js/css текущей ComponentTab). */
         if (global.ComponentStorage && global.ComponentStorage.syncProjectLibraries) {
             try { global.ComponentStorage.syncProjectLibraries(this.current, canvas); }
             catch (e) { console.error('[ProjectManager] sync libraries', e); }

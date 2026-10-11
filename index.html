@@ -54,6 +54,8 @@
             <a class="mini-menubutton" plain="true" menu="#viewMenu">View</a>
             <span class="mini-separator"></span>
             <a class="mini-button" iconCls="icon-save" onclick="App.cmd('save')">Save HTML</a>
+            <a class="mini-button" iconCls="icon-save" onclick="App.cmd('saveProject')"
+               title="Сохранить проект целиком (Ctrl+S)">Save Project</a>
             <a class="mini-button" onclick="App.cmd('run')" title="Run — запуск редактируемой формы (F9)">&#9654; Run</a>
             <a class="mini-button" onclick="App.cmd('runProject')" title="Run Project — запуск с главного файла проекта (F10)">&#9654;&#9654; Run Project</a>
             <a class="mini-button" onclick="App.cmd('undo')" title="Ctrl+Z">Undo</a>
@@ -168,6 +170,7 @@
     <li class="separator"></li>
     <li iconCls="icon-open" onclick="App.cmd('load')">Load HTML…</li>
     <li iconCls="icon-save" onclick="App.cmd('save')">Save HTML</li>
+    <li iconCls="icon-save" onclick="App.cmd('saveProject')">Save Project (Ctrl+S)</li>
     <li onclick="App.cmd('run')">Run (Preview in new window)</li>
     <li onclick="App.cmd('runProject')">Run Project (from main file)…</li>
     <li class="separator"></li>

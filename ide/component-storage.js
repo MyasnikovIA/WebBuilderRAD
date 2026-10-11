@@ -5,6 +5,7 @@
      components['<id>'] = {
        id, name, cmptype, tagName, icon, description,
        previewIdeHtml,               — editor-only preview на сцене
+       html,                         — алиас previewIdeHtml (для совместимости)
        js, css,                      — пользовательский код → lib/<cmptype>.{js,css}
        jsLibs, cssLibs,              — внешние ресурсы
        customProperties, customEvents,
@@ -13,7 +14,14 @@
      }
 
    В проекте (project.files) фоновые файлы помечаются `_system: 'wb-lib'`
-   и по пути начинаются на 'lib/wb-component/'. ProjectTree их не показывает. */
+   и по пути начинаются на 'lib/wb-component/'. ProjectTree их не показывает.
+
+   ВАЖНО: HTML-разметка компонента (previewIdeHtml / html) встраивается
+   в <cmptype>.js как поле `html` в дефе, который регистрируется через
+   WbComponent.register(). Рантайм attach() рендерит эту разметку внутрь
+   элемента [data-wb-user-comp], если он ещё пуст. Так экспортированная
+   HTML-страница может показать компонент без хранения разметки в самом
+   HTML-файле. */
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
@@ -24,7 +32,7 @@
     /* ------------------------------------------------------------------
        Фоновый runtime (core.js). Вставляется в проект один раз.
        Не содержит ничего про конкретные компоненты — только реестр,
-       attach-логику и observer. */
+       attach-логику (с рендером def.html), observer. */
     var CORE_LIBRARY_SOURCE = [
         '/* WbComponent core — автогенерация. Не редактировать вручную. */',
         '(function(g){',
@@ -68,6 +76,16 @@
         '    var parts = String(name).split("."), obj = g;',
         '    for(var i=0;i<parts.length;i++){ if(!obj) return null; obj = obj[parts[i]]; }',
         '    return typeof obj==="function" ? obj : null;',
+        '}',
+        '',
+        'function hasRealContent(el){',
+        '    if(!el || !el.childNodes) return false;',
+        '    for(var i=0;i<el.childNodes.length;i++){',
+        '        var c = el.childNodes[i];',
+        '        if(c.nodeType === 1) return true;',
+        '        if(c.nodeType === 3 && c.nodeValue && c.nodeValue.replace(/\\s+/g,"") !== "") return true;',
+        '    }',
+        '    return false;',
         '}',
         '',
         'function attach(el, def){',
@@ -145,6 +163,10 @@
         '        })(evs[j]);',
         '    }',
         '    el._wbComponent = instance;',
+        /* ---- Рендер html-разметки компонента, если элемент пуст ---- */
+        '    if(def.html && !hasRealContent(el)){',
+        '        try { el.innerHTML = def.html; } catch(e){ console.error("[WbComponent] render html", def.cmptype, e); }',
+        '    }',
         '    WbComponent._register(instance);',
         '    return instance;',
         '}',
@@ -161,6 +183,7 @@
         '}',
         'WbComponent._attach = attach;',
         'WbComponent._init = init;',
+        'WbComponent._hasRealContent = hasRealContent;',
         'if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, false);',
         'else init();',
         'if(g.MutationObserver){',
@@ -235,6 +258,8 @@
         for (var r = 0; r < rules.length; r++) { var nr = normalizeRule(rules[r]); if (nr.value) outRules.push(nr); }
         var mode = src.nestingMode;
         if (mode !== 'none' && mode !== 'list' && mode !== 'all') mode = 'all';
+
+        var previewHtml = src.previewIdeHtml || src.html || '';
         return {
             id:             src.id || uid('cmp'),
             name:           src.name || 'Component',
@@ -242,10 +267,10 @@
             tagName:        src.tagName || 'div',
             icon:           src.icon || '',
             description:    src.description || '',
-            html:           src.html || '',
+            html:           previewHtml,
+            previewIdeHtml: previewHtml,
             js:             src.js || '',
             css:            src.css || '',
-            previewIdeHtml: src.previewIdeHtml || '',
             jsLibs:         Array.isArray(src.jsLibs)  ? src.jsLibs  : [],
             cssLibs:        Array.isArray(src.cssLibs) ? src.cssLibs : [],
             customProperties: outProps,
@@ -448,12 +473,22 @@
             return null;
         },
 
-        /* ---------- Генерация per-cmptype .js ---------- */
+        /* ------------------------------------------------------------------
+           Генерация per-cmptype .js.
+
+           Помимо customProperties / customEvents в деф теперь передаётся
+           поле html (previewIdeHtml || html). Функция attach() из core.js
+           вставляет эту разметку в элемент [data-wb-user-comp], если он
+           ещё пуст — так экспортированная HTML-страница показывает
+           компонент без хранения разметки в самом HTML-файле.
+           ------------------------------------------------------------------ */
         _buildCmptypeJs: function (c) {
+            var html = c.previewIdeHtml || c.html || '';
             var def = {
                 id: c.id,
                 cmptype: c.cmptype,
                 name: c.name,
+                html: html,
                 customProperties: c.customProperties || [],
                 customEvents:     c.customEvents     || []
             };
@@ -462,7 +497,7 @@
             s += '(function(g){\n';
             s += '    var WbComponent = g.WbComponent;\n';
             s += '    if (!WbComponent) { console.error("[WbComponent] core.js не загружен для ' +
-                c.cmptype.replace(/"/g, '\\"') + '"); return; }\n';
+                String(c.cmptype || '').replace(/"/g, '\\"') + '"); return; }\n';
             s += '    WbComponent.register(' + JSON.stringify(def, null, 4) + ');\n';
             s += '})(window);\n';
             if (c.js) {
@@ -473,24 +508,45 @@
             return s;
         },
 
-        /* ---------- Генерация per-cmptype .css ---------- */
+        /* ------------------------------------------------------------------
+           Генерация per-cmptype .css.
+
+           Структура файла:
+             1. авто-заголовок (однострочный комментарий);
+             2. @import на каждый cssLib (по одному);
+             3. маркер "user css" и пользовательский CSS.
+
+           Маркер нужен, чтобы при загрузке проекта отделить
+           пользовательскую часть от авто-шапки и @import-ов.
+           ------------------------------------------------------------------ */
         _buildCmptypeCss: function (c) {
             var parts = [];
             parts.push('/* WbComponent: ' + c.name + ' (' + c.cmptype + ') — автогенерация. */');
-            /* Внешние CSS-libs — как @import, чтобы работало через lib-файл. */
             if (c.cssLibs && c.cssLibs.length) {
                 for (var i = 0; i < c.cssLibs.length; i++) {
                     var lib = c.cssLibs[i];
                     if (lib && lib.value) parts.push('@import url("' + lib.value + '");');
                 }
             }
-            if (c.css) parts.push(c.css);
+            if (c.css) {
+                parts.push('/* --- user css --- */');
+                parts.push(c.css);
+            }
             return parts.join('\n') + '\n';
         },
 
-        /* ---------- Синхронизация фоновых файлов в проекте ----------
-           Собирает все cmptype, использованные на сцене, и обновляет
-           lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}. */
+        /* ------------------------------------------------------------------
+           syncProjectLibraries
+
+           Собирает cmptype:
+             1) из [data-wb-user-comp]-элементов на сцене;
+             2) из активной ComponentTab (Root: component) — источник
+                истины по html / js / css, даже если компонент ещё не
+                вставлен на сцену.
+
+           Обновляет lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}.
+           В <cmptype>.js попадают html + js; в <cmptype>.css — css.
+           ------------------------------------------------------------------ */
         syncProjectLibraries: function (project, canvas) {
             if (!project) return;
             if (!project.files) project.files = {};
@@ -503,6 +559,8 @@
 
             /* Собираем использованные cmptype. */
             var used = {};
+
+            /* 1. Из user-компонентов на сцене. */
             if (canvas && canvas.getDoc) {
                 var doc = canvas.getDoc();
                 if (doc) {
@@ -513,6 +571,31 @@
                         if (uc && uc.cmptype) used[uc.cmptype] = uc;
                     }
                 }
+            }
+
+            /* 2. Из активной ComponentTab — источник истины
+                  при редактировании компонента (Root: component). */
+            if (global.App && global.App._componentMode &&
+                global.componentTab && global.componentTab.getFormData) {
+                try {
+                    var cd = global.componentTab.getFormData();
+                    if (cd && cd.cmptype) {
+                        var html = cd.previewIdeHtml || cd.html || '';
+                        used[cd.cmptype] = {
+                            id: cd.id || ('inline:' + cd.cmptype),
+                            name: cd.name || cd.cmptype,
+                            cmptype: cd.cmptype,
+                            html: html,
+                            previewIdeHtml: html,
+                            customProperties: cd.customProperties || [],
+                            customEvents:     cd.customEvents || [],
+                            js:   cd.js  || '',
+                            css:  cd.css || '',
+                            jsLibs:  cd.jsLibs  || [],
+                            cssLibs: cd.cssLibs || []
+                        };
+                    }
+                } catch (e) { /* ignore */ }
             }
 
             var cts = Object.keys(used);
@@ -549,7 +632,6 @@
             if (!project || !project.files) return '';
             var cts = {};
             var files = project.files;
-            /* Ищем per-cmptype по файлам проекта. */
             for (var p in files) {
                 if (!files.hasOwnProperty(p)) continue;
                 if (p.indexOf(LIB_DIR) !== 0) continue;
@@ -562,7 +644,6 @@
             if (!list.length) return '';
 
             var out = [];
-            /* CSS — сначала. */
             for (var i = 0; i < list.length; i++) {
                 var ct = list[i];
                 var cssPath = LIB_DIR + ct + '.css';
@@ -570,9 +651,7 @@
                     out.push('<link rel="stylesheet" href="' + cssPath + '">');
                 }
             }
-            /* core.js — до per-cmptype. */
             out.push('<script src="' + CORE_FILE + '"></script>');
-            /* per-cmptype js. */
             for (var j = 0; j < list.length; j++) {
                 var ct2 = list[j];
                 var jsPath = LIB_DIR + ct2 + '.js';
@@ -613,7 +692,6 @@
                 nestingRules: c.nestingRules || [],
                 iconUrl: c.icon || '',
 
-                /* --- create: только корневой элемент, без инлайн-скриптов --- */
                 create: function (doc) {
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
@@ -621,8 +699,6 @@
                     return el;
                 },
 
-                /* --- preview: editor-only контент. Помечается data-wb-preview=1
-                       у вызывающего (canvas-insert._renderPreview) и не сериализуется. --- */
                 preview: function (el, doc) {
                     var content = c.previewIdeHtml || c.html || '';
                     if (!content) return null;
