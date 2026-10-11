@@ -62,23 +62,31 @@
     }
 
     /* ------------------------------------------------------------------
-       Нормализация самозакрытых стандартных HTML-тегов
+       Нормализация самозакрытых стандартных HTML-тегов.
 
        В text/html браузер трактует <div .../> как ОТКРЫВАЮЩИЙ — следующий
-       элемент становится вложенным. Это ломает визуализацию user-компонентов:
-       верхний <div data-wb-user-comp …/> «съедает» нижний, получает ребёнка,
-       hasRealContent() возвращает true — и HTML в него не инжектится.
+       элемент становится вложенным. Это ломает визуализацию
+       user-компонентов: верхний <div data-wb-user-comp …/> «съедает»
+       нижний, получает ребёнка, hasRealContent() возвращает true — и HTML
+       в него не инжектится.
 
        Разворачиваем <tag …/> в <tag …></tag> для всех стандартных
        HTML-контейнеров. Void-теги (<br>, <img>, …) не трогаем.
        Custom-теги (cmp*, component) тоже не трогаем — их обрабатывают
        expandSelfClosing* в canvas-core.js при загрузке.
+
+       Регулярка написана так, чтобы корректно обрабатывать:
+         • обычные атрибуты;
+         • значения в одинарных / двойных кавычках;
+         • пробелы перед `/>`.
        ------------------------------------------------------------------ */
     var HTML_VOID_TAGS = {
         area:1, base:1, br:1, col:1, embed:1, hr:1, img:1, input:1,
         link:1, meta:1, param:1, source:1, track:1, wbr:1
     };
-    var HTML_SELF_CLOSE_RE = /<([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^<>]*?)?)\/>/g;
+    /* <tag ATTRS /> — ATTRS содержит любые символы, кроме <, >, кавычек
+       внутри которых допустимы пробелы/слэши/спецсимволы. */
+    var HTML_SELF_CLOSE_RE = /<([a-zA-Z][a-zA-Z0-9]*)((?:\s+(?:[^"'<>\/]|\/(?!>)|"[^"]*"|'[^']*')*?)?)\s*\/>/g;
     function normalizeSelfClosingTags(html) {
         if (!html) return html;
         return String(html).replace(HTML_SELF_CLOSE_RE, function (m, tag, attrs) {
@@ -172,14 +180,6 @@
                 });
         },
 
-        /* Экспорт проекта (или компонента) в ZIP.
-           Порядок обработки HTML-файлов:
-             1. ComponentStorage.syncProjectLibraries() обновляет
-                lib/wb-component/* в project.files;
-             2. Для каждого .html/.htm/.frm:
-                a. normalizeSelfClosingTags() — раскрывает <div/> → <div></div>;
-                b. injectLibTagsIntoHtml() — добавляет <link>/<script>
-                   на используемые библиотеки компонентов. */
         exportProject: function (project, opts) {
             if (!project) return;
             opts = opts || {};
@@ -235,9 +235,9 @@
                     if (!f) continue;
                     var content = f.content || '';
 
-                    /* HTML / Frm: нормализуем self-closed теги и
-                       инжектим <link>/<script> на библиотеки компонентов. */
                     if (f.kind === 'text' && /\.(html?|frm)$/i.test(path)) {
+                        /* Сначала раскрываем <tag/> → <tag></tag>,
+                           потом добавляем <link>/<script> на библиотеки. */
                         content = normalizeSelfClosingTags(content);
                         content = injectLibTagsIntoHtml(content, project);
                     }
@@ -336,8 +336,8 @@
         }
     };
 
-    ZipUtils.injectLibTagsIntoHtml   = injectLibTagsIntoHtml;
-    ZipUtils.collectCmptypesInHtml   = collectCmptypesInHtml;
+    ZipUtils.injectLibTagsIntoHtml    = injectLibTagsIntoHtml;
+    ZipUtils.collectCmptypesInHtml    = collectCmptypesInHtml;
     ZipUtils.normalizeSelfClosingTags = normalizeSelfClosingTags;
 
     global.ZipUtils = ZipUtils;
