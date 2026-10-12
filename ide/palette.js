@@ -1,23 +1,38 @@
-/* Palette — палитра компонентов + пользовательская палитра пользователя.
+/* Palette v5 — палитра компонентов + пользовательская палитра пользователя.
+
    Загружается после panels-utils.js.
 
-   ВАЖНО: обработчики устанавливаются через НАТИВНЫЙ addEventListener —
-   MiniUI патчит jQuery.fn.on и ломает его на объектах, созданных из
-   DOM-элементов (см. project-tree.js).
+   ВАЖНО:
+     1. Все обработчики устанавливаются через НАТИВНЫЙ addEventListener —
+        MiniUI патчит jQuery.fn.on и ломает его на объектах, созданных
+        из DOM-элементов (см. project-tree.js).
+     2. draggable ставится двумя способами (property + attribute),
+        плюс MutationObserver следит, чтобы атрибут не был сброшен
+        сторонним кодом. Без draggable="true" HTML5 dragstart не
+        запускается, и перенос компонентов по дереву не работает.
 
    Drag-and-drop пользовательских компонентов внутри дерева:
-     • реализован на мышиных событиях (mousedown/mousemove/mouseup на
-       document) — надёжнее HTML5 DnD, который в некоторых браузерах не
-       срабатывает из-за user-select:none на .wb-tree-label;
-     • цель drop — label папки, label корня User Palette, пустое место
-       внутри <ul> папки/корня или другой компонент (в этом случае —
-       его папка);
-     • поддерживается мультивыделение: тащим всю выделенную группу. */
+     • источник — .wb-user-comp с draggable="true";
+     • цель     — label папки (.wb-ptree-folder),
+                  label корня ([data-user-root="1"]),
+                  label другого компонента (его папка),
+                  пустое место внутри <ul> папки/корня;
+     • мультивыделение — тащим всю выделенную группу;
+     • после drop вызывается ComponentStorage.updateComponent(), который
+       пишет модель палитры в localStorage['wb.userPalette'].
+
+   Двойной клик по компоненту ничего не делает. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
 
+    var VERSION = 'v5';
+
     function Palette(rootEl) {
+        if (global.console && console.log) {
+            console.log('[Palette] version ' + VERSION + ' initializing');
+        }
+
         this.root = $(rootEl);
         this.rootNode = (typeof rootEl === 'string')
             ? document.getElementById(rootEl)
@@ -27,7 +42,10 @@
         this._collapseAllOnRender = true;
         this._userSel = {};              /* id → true для multi-select */
         this._lastUserClick = null;
-        this._suppressNextClick = false;
+        this._dragUserCompIds = null;    /* массив id в момент drag */
+        this._isDragging = false;
+        this._draggableObserver = null;
+
         this._render();
         var self = this;
 
@@ -44,9 +62,85 @@
 
         this._installContextMenu();
         this._installUserPaletteDnD();
+        this._installDraggableObserver();
     }
 
-    /* ---------- Встроенная палитра ---------- */
+    /* ============================================================
+       Хелпер: draggable — держим включённым на .wb-user-comp.
+
+       Выставляем двумя способами сразу: через property (самый надёжный)
+       и через attribute (для соответствия DOM и отладки).
+       ============================================================ */
+    Palette.prototype._forceDraggable = function (el) {
+        if (!el || el.nodeType !== 1) return;
+        if (!el.classList || !el.classList.contains('wb-user-comp')) return;
+
+        try {
+            if (el.draggable !== true) el.draggable = true;
+        } catch (e) { /* ignore */ }
+        if (el.getAttribute('draggable') !== 'true') {
+            el.setAttribute('draggable', 'true');
+        }
+    };
+
+    Palette.prototype._forceDraggableAll = function () {
+        if (!this.rootNode) return;
+        var comps = this.rootNode.querySelectorAll('.wb-user-comp');
+        for (var i = 0; i < comps.length; i++) this._forceDraggable(comps[i]);
+    };
+
+    /* Наблюдатель за атрибутом draggable: если сторонний код (MiniUI,
+       jQuery, обработчики фреймворка) сбросит его в false — вернём true.
+
+       Также выставляет draggable у только что добавленных .wb-user-comp
+       (например, после перерисовки палитры). */
+    Palette.prototype._installDraggableObserver = function () {
+        if (!this.rootNode || !global.MutationObserver) return;
+        var self = this;
+
+        this._draggableObserver = new global.MutationObserver(function (muts) {
+            for (var i = 0; i < muts.length; i++) {
+                var m = muts[i];
+
+                /* Изменение атрибутов. */
+                if (m.type === 'attributes' && m.attributeName === 'draggable') {
+                    var tgt = m.target;
+                    if (tgt && tgt.classList && tgt.classList.contains('wb-user-comp')) {
+                        if (tgt.getAttribute('draggable') !== 'true') {
+                            self._forceDraggable(tgt);
+                        }
+                    }
+                    continue;
+                }
+
+                /* Появление новых .wb-user-comp. */
+                if (m.type === 'childList' && m.addedNodes && m.addedNodes.length) {
+                    for (var j = 0; j < m.addedNodes.length; j++) {
+                        var node = m.addedNodes[j];
+                        if (node.nodeType !== 1) continue;
+                        if (node.classList && node.classList.contains('wb-user-comp')) {
+                            self._forceDraggable(node);
+                        }
+                        var kids = node.querySelectorAll
+                            ? node.querySelectorAll('.wb-user-comp')
+                            : [];
+                        for (var k = 0; k < kids.length; k++) self._forceDraggable(kids[k]);
+                    }
+                }
+            }
+        });
+
+        this._draggableObserver.observe(this.rootNode, {
+            attributes: true,
+            attributeFilter: ['draggable'],
+            childList: true,
+            subtree: true
+        });
+    };
+
+    /* ============================================================
+       Встроенная палитра (D3/M2/HTML)
+       ============================================================ */
     Palette.prototype._render = function () {
         var self = this;
         this.root.empty();
@@ -159,7 +253,9 @@
         $('#wb-domtree').removeClass('wb-drop-mode');
     };
 
-    /* ---------- Пользовательская палитра ---------- */
+    /* ============================================================
+       Пользовательская палитра
+       ============================================================ */
     Palette.prototype._renderUserPalette = function () {
         if (!this._userRootUl) return;
         this._userRootUl.empty();
@@ -206,64 +302,95 @@
         rootComps.sort(function (a,b){ return a.name < b.name ? -1 : 1; });
 
         function renderFolder(f, parentUl) {
-            var li = $('<li></li>');
-            var tog = $('<span class="wb-toggle"></span>').text('\u2212');
-            li.append(tog);
-            var lbl = $('<span class="wb-tree-label wb-ptree-folder"></span>')
-                .text(f.name)
-                .attr('data-folder-id', f.id)
-                .attr('draggable', 'false');
-            li.append(lbl);
-            var ul = $('<ul></ul>');
-            li.append(ul);
+            var li = document.createElement('li');
+            var tog = document.createElement('span');
+            tog.className = 'wb-toggle';
+            tog.textContent = '\u2212';
+            li.appendChild(tog);
+
+            var lbl = document.createElement('span');
+            lbl.className = 'wb-tree-label wb-ptree-folder';
+            lbl.textContent = f.name;
+            lbl.setAttribute('data-folder-id', f.id);
+            lbl.setAttribute('draggable', 'false');
+            li.appendChild(lbl);
+
+            var ul = document.createElement('ul');
+            li.appendChild(ul);
             for (var i=0;i<f.children.length;i++) renderFolder(f.children[i], ul);
-            for (var j=0;j<f.comps.length;j++) ul.append(renderComp(f.comps[j]));
-            tog.click(function (e) {
+            for (var j=0;j<f.comps.length;j++) ul.appendChild(renderComp(f.comps[j]));
+
+            tog.addEventListener('click', function (e) {
                 e.stopPropagation();
-                ul.toggle();
-                tog.text(ul.is(':hidden') ? '+' : '\u2212');
-            });
-            parentUl.append(li);
+                if (ul.style.display === 'none') {
+                    ul.style.display = '';
+                    tog.textContent = '\u2212';
+                } else {
+                    ul.style.display = 'none';
+                    tog.textContent = '+';
+                }
+            }, false);
+
+            parentUl.appendChild(li);
         }
 
         function renderComp(c) {
-            var li = $('<li></li>');
-            li.append($('<span class="wb-toggle wb-leaf"></span>'));
-            var comp = $('<span></span>')
-                .addClass('wb-tree-label wb-comp-label wb-user-comp')
-                .attr('data-user-comp-id', c.id)
-                .attr('draggable', 'false');   /* HTML5 DnD отключён — используем mouse-based */
+            var li = document.createElement('li');
+            var tog = document.createElement('span');
+            tog.className = 'wb-toggle wb-leaf';
+            li.appendChild(tog);
+
+            var comp = document.createElement('span');
+            comp.className = 'wb-tree-label wb-comp-label wb-user-comp';
+            comp.setAttribute('data-user-comp-id', c.id);
+
+            /* Ключевая строка: draggable двумя способами. */
+            comp.draggable = true;
+            comp.setAttribute('draggable', 'true');
+
             if (c.icon) {
                 var src = c.icon;
                 if (global.ProjectResolver && global.ProjectResolver.isProjectPath && global.ProjectResolver.isProjectPath(src)) {
                     try { src = global.ProjectResolver.resolve(src); } catch(e){}
                 }
-                comp.append($('<img/>').addClass('wb-palette-icon').attr('alt','')
-                    .attr('draggable', 'false')
-                    .attr('src', src)
-                    .bind('error', function () { $(this).remove(); }));
+                var img = document.createElement('img');
+                img.className = 'wb-palette-icon';
+                img.alt = '';
+                img.draggable = false;
+                img.setAttribute('draggable', 'false');
+                img.src = src;
+                img.onerror = function () { if (this.parentNode) this.parentNode.removeChild(this); };
+                comp.appendChild(img);
             }
-            comp.append(document.createTextNode(c.name || c.id));
-            comp.click(function (e) {
+            comp.appendChild(document.createTextNode(c.name || c.id));
+
+            comp.addEventListener('click', function (e) {
                 e.stopPropagation();
                 self._selectUserComponent(c, e.ctrlKey || e.metaKey);
-            });
-            comp.dblclick(function (e) {
-                e.stopPropagation();
-                bus.emit('component:edit-request', { component: c });
-            });
-            li.append(comp);
+            }, false);
+
+            /* Двойной клик — ничего не делаем (специально отключено). */
+
+            li.appendChild(comp);
             return li;
         }
 
-        for (var i=0;i<rootFolders.length;i++) renderFolder(rootFolders[i], childrenUl);
-        for (var j=0;j<rootComps.length;j++) childrenUl.append(renderComp(rootComps[j]));
+        for (var i=0;i<rootFolders.length;i++) renderFolder(rootFolders[i], childrenUl[0]);
+        for (var j=0;j<rootComps.length;j++) childrenUl[0].appendChild(renderComp(rootComps[j]));
 
         if (!rootFolders.length && !rootComps.length) {
-            childrenUl.append($('<li><span class="wb-tree-label" style="color:#999;font-style:italic;">(пусто — ПКМ для создания)</span></li>'));
+            var emptyLi = document.createElement('li');
+            var emptyLbl = document.createElement('span');
+            emptyLbl.className = 'wb-tree-label';
+            emptyLbl.style.color = '#999';
+            emptyLbl.style.fontStyle = 'italic';
+            emptyLbl.textContent = '(пусто — ПКМ для создания)';
+            emptyLi.appendChild(emptyLbl);
+            childrenUl[0].appendChild(emptyLi);
         }
 
         this._syncUserSelectionUI();
+        this._forceDraggableAll();
     };
 
     Palette.prototype._buildUserDef = function (c) {
@@ -289,6 +416,8 @@
         this.root.find('.wb-user-comp').each(function () {
             var id = $(this).attr('data-user-comp-id');
             $(this).toggleClass('wb-selected', !!self._userSel[id]);
+            /* На случай, если jQuery .addClass сбросил draggable. */
+            self._forceDraggable(this);
         });
     };
 
@@ -302,18 +431,13 @@
         return out;
     };
 
-    /* ------------------------------------------------------------------
-       Определение цели drop по DOM-элементу под курсором.
-
-       Возвращает { folderId, label } либо null, если drop недопустим.
-         • folderId — id папки ('' = корень User Palette);
-         • label    — DOM-элемент, которому навесим подсветку
-                      (label папки/корня). Может быть null.
-       ------------------------------------------------------------------ */
-    Palette.prototype._resolveUserPaletteDropTarget = function (el, rootNode) {
+    /* ============================================================
+       Определение цели drop.
+       ============================================================ */
+    Palette.prototype._resolveDropTarget = function (el, rootNode) {
         if (!el || !rootNode) return null;
 
-        /* 1. Если под курсором — label (или его потомок). */
+        /* 1. Под курсором label (или его потомок). */
         var node = el;
         while (node && node !== rootNode) {
             if (node.classList && node.classList.contains('wb-tree-label')) {
@@ -324,7 +448,7 @@
                     return { folderId: '', label: node };
                 }
                 if (node.classList.contains('wb-user-comp')) {
-                    /* Дроп на другой компонент — целимся в его папку. */
+                    /* Дроп на другой компонент → в его папку. */
                     var li = node.parentNode;
                     var ul = li ? li.parentNode : null;
                     return this._folderIdFromUl(ul, rootNode);
@@ -334,7 +458,7 @@
             node = node.parentNode;
         }
 
-        /* 2. Если под курсором пустое место — ищем ближайший UL. */
+        /* 2. Пустое место — ищем ближайший UL. */
         node = el;
         while (node && node !== rootNode) {
             if (node.tagName === 'UL') {
@@ -345,7 +469,6 @@
         return null;
     };
 
-    /* По <ul> определяет, какой папке он принадлежит. */
     Palette.prototype._folderIdFromUl = function (ul, rootNode) {
         if (!ul) return null;
         if (ul.classList && ul.classList.contains('wb-user-palette-root')) {
@@ -367,207 +490,142 @@
         return null;
     };
 
-    /* ------------------------------------------------------------------
-       Mouse-based drag-and-drop.
-
-       Используем mousedown/mousemove/mouseup на document вместо HTML5
-       DnD: атрибут draggable и dragstart в некоторых сборках Chrome
-       не срабатывают на <span> с user-select:none. Mouse-based работает
-       независимо от этих факторов.
-       ------------------------------------------------------------------ */
+    /* ============================================================
+       HTML5 drag-and-drop (паттерн project-tree.js)
+       ============================================================ */
     Palette.prototype._installUserPaletteDnD = function () {
         var self = this;
         var rootNode = this.rootNode;
         if (!rootNode) return;
 
-        var pendingDrag = null;    /* { id, ids, startX, startY } */
-        var activeDrag  = null;    /* { ids, ghost, sourceEls, dropTarget } */
-
-        function getCompIdsFromSelection(id) {
-            if (self._userSel[id]) {
-                var ids = [];
-                for (var k in self._userSel) if (self._userSel[k]) ids.push(k);
-                if (ids.length) return ids;
-            }
-            return [id];
-        }
-
-        function findCompEl(target) {
-            var t = target;
+        function findLabel(t) {
             while (t && t !== rootNode) {
-                if (t.classList && t.classList.contains('wb-user-comp')) return t;
+                if (t.classList && t.classList.contains('wb-tree-label')) return t;
                 t = t.parentNode;
             }
             return null;
         }
 
-        function startDrag(ev) {
-            if (activeDrag || !pendingDrag) return;
-
-            var ids = pendingDrag.ids;
-            pendingDrag = null;
-
-            /* Ghost — полупрозрачная плашка, следующая за курсором. */
-            var ghost = document.createElement('div');
-            var text;
-            if (ids.length === 1) {
-                var c = global.ComponentStorage.getComponent(ids[0]);
-                text = c ? (c.name || c.id) : ids[0];
-            } else {
-                text = ids.length + ' компонентов';
-            }
-            ghost.textContent = text;
-            ghost.style.cssText =
-                'position:fixed;pointer-events:none;z-index:100000;' +
-                'padding:3px 8px;border:1px solid #1e88e5;border-radius:3px;' +
-                'background:#e3f2fd;color:#0d47a1;' +
-                'font-family:Segoe UI,Tahoma,sans-serif;font-size:11px;' +
-                'box-shadow:0 2px 6px rgba(0,0,0,0.25);opacity:0.92;' +
-                'white-space:nowrap;';
-            ghost.style.left = (ev.clientX + 10) + 'px';
-            ghost.style.top  = (ev.clientY + 10) + 'px';
-            document.body.appendChild(ghost);
-
-            /* Подсветка источников. */
-            var sourceEls = [];
+        function findCompLabel(compId) {
             var all = rootNode.querySelectorAll('.wb-user-comp');
             for (var i = 0; i < all.length; i++) {
-                var eid = all[i].getAttribute('data-user-comp-id');
-                if (ids.indexOf(eid) >= 0) {
-                    all[i].classList.add('wb-dragging');
-                    sourceEls.push(all[i]);
-                }
+                if (all[i].getAttribute('data-user-comp-id') === compId) return all[i];
             }
-
-            activeDrag = {
-                ids: ids,
-                ghost: ghost,
-                sourceEls: sourceEls,
-                dropTarget: null
-            };
-
-            document.body.style.cursor = 'move';
-            try { document.body.style.userSelect = 'none'; } catch (ex) {}
-            try { document.body.style.webkitUserSelect = 'none'; } catch (ex) {}
+            return null;
         }
 
-        function updateDropTarget(x, y) {
-            if (!activeDrag) return;
+        rootNode.addEventListener('dragstart', function (e) {
+            var lbl = findLabel(e.target);
+            if (!lbl || !lbl.classList.contains('wb-user-comp')) return;
 
-            /* Прячем ghost, чтобы elementFromPoint вернул то, что под ним. */
-            var ghost = activeDrag.ghost;
-            var oldDisplay = '';
-            if (ghost) { oldDisplay = ghost.style.display; ghost.style.display = 'none'; }
-
-            var el = null;
-            try { el = document.elementFromPoint(x, y); } catch (ex) { el = null; }
-
-            if (ghost) ghost.style.display = oldDisplay;
-
-            self._clearDropIndicators();
-
-            if (!el || !rootNode.contains(el)) {
-                activeDrag.dropTarget = null;
-                return;
-            }
-
-            var tgt = self._resolveUserPaletteDropTarget(el, rootNode);
-            if (tgt && tgt.label) tgt.label.classList.add('wb-drop-inside');
-            activeDrag.dropTarget = tgt || null;
-        }
-
-        function endDrag(commit) {
-            if (!activeDrag) return;
-
-            if (commit && activeDrag.dropTarget) {
-                var moved = false;
-                for (var i = 0; i < activeDrag.ids.length; i++) {
-                    if (self._moveUserCompToFolder(activeDrag.ids[i], activeDrag.dropTarget.folderId)) {
-                        moved = true;
-                    }
-                }
-                if (moved) self._renderUserPalette();
-            }
-
-            /* Cleanup. */
-            if (activeDrag.ghost && activeDrag.ghost.parentNode) {
-                activeDrag.ghost.parentNode.removeChild(activeDrag.ghost);
-            }
-            for (var j = 0; j < activeDrag.sourceEls.length; j++) {
-                activeDrag.sourceEls[j].classList.remove('wb-dragging');
-            }
-            self._clearDropIndicators();
-
-            document.body.style.cursor = '';
-            try { document.body.style.userSelect = ''; } catch (ex) {}
-            try { document.body.style.webkitUserSelect = ''; } catch (ex) {}
-
-            /* Подавляем следующий click, чтобы drag не превратился в выделение. */
-            self._suppressNextClick = true;
-
-            activeDrag = null;
-        }
-
-        rootNode.addEventListener('mousedown', function (e) {
-            if (e.button !== 0) return;   /* только левая кнопка */
-            var compEl = findCompEl(e.target);
-            if (!compEl) return;
-
-            var id = compEl.getAttribute('data-user-comp-id');
+            var id = lbl.getAttribute('data-user-comp-id');
             if (!id) return;
 
-            self._suppressNextClick = false;   /* сбрасываем на новом mousedown */
+            if (!self._userSel[id]) {
+                self._userSel = {};
+                self._userSel[id] = true;
+                self._syncUserSelectionUI();
+            }
+            var ids = [];
+            for (var k in self._userSel) if (self._userSel[k]) ids.push(k);
+            if (!ids.length) ids = [id];
+            self._dragUserCompIds = ids;
+            self._isDragging = true;
 
-            pendingDrag = {
-                id: id,
-                ids: getCompIdsFromSelection(id),
-                startX: e.clientX,
-                startY: e.clientY
-            };
+            for (var i = 0; i < ids.length; i++) {
+                var el = findCompLabel(ids[i]);
+                if (el) el.classList.add('wb-dragging');
+            }
+
+            try {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', ids.join('\n'));
+                e.dataTransfer.setData('application/x-wb-user-comp', ids[0]);
+                /* Некоторые браузеры требуют непустой dataTransfer для drag. */
+                if (e.dataTransfer.setDragImage && lbl) {
+                    try { e.dataTransfer.setDragImage(lbl, 0, 0); } catch (ex) {}
+                }
+            } catch (ex) { /* ignore */ }
         }, false);
 
-        function onMouseMove(e) {
-            if (activeDrag) {
-                activeDrag.ghost.style.left = (e.clientX + 10) + 'px';
-                activeDrag.ghost.style.top  = (e.clientY + 10) + 'px';
-                updateDropTarget(e.clientX, e.clientY);
+        rootNode.addEventListener('dragend', function () {
+            self._endDrag();
+        }, false);
+
+        rootNode.addEventListener('dragover', function (e) {
+            if (!self._isDragging || !self._dragUserCompIds || !self._dragUserCompIds.length) return;
+
+            var target = self._resolveDropTarget(e.target, rootNode);
+
+            self._clearDropIndicators();
+
+            if (!target) {
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                 return;
             }
-            if (!pendingDrag) return;
 
-            var dx = e.clientX - pendingDrag.startX;
-            var dy = e.clientY - pendingDrag.startY;
-            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
-
-            startDrag(e);
-            /* Сразу обновим ghost и цель под текущей позицией. */
-            if (activeDrag) {
-                activeDrag.ghost.style.left = (e.clientX + 10) + 'px';
-                activeDrag.ghost.style.top  = (e.clientY + 10) + 'px';
-                updateDropTarget(e.clientX, e.clientY);
+            /* Нельзя бросать в свою же папку. */
+            var srcFolder = self._currentFolderOfIds(self._dragUserCompIds);
+            if (srcFolder !== null && srcFolder === (target.folderId || '')) {
+                if (target.label) target.label.classList.add('wb-drop-forbidden');
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                return;
             }
+
+            e.preventDefault();
+            try { e.dataTransfer.dropEffect = 'move'; } catch (ex) {}
+            if (target.label) target.label.classList.add('wb-drop-inside');
+        }, false);
+
+        rootNode.addEventListener('dragleave', function (e) {
+            if (!self._isDragging) return;
+            var lbl = findLabel(e.target);
+            if (lbl) lbl.classList.remove('wb-drop-inside', 'wb-drop-forbidden');
+        }, false);
+
+        rootNode.addEventListener('drop', function (e) {
+            if (!self._isDragging || !self._dragUserCompIds || !self._dragUserCompIds.length) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            var target = self._resolveDropTarget(e.target, rootNode);
+            if (!target) { self._endDrag(); return false; }
+
+            var moved = false;
+            for (var i = 0; i < self._dragUserCompIds.length; i++) {
+                if (self._moveUserCompToFolder(self._dragUserCompIds[i], target.folderId)) {
+                    moved = true;
+                }
+            }
+            if (moved) {
+                self._renderUserPalette();
+                bus.emit('palette:refresh');
+            }
+            self._endDrag();
+            return false;
+        }, false);
+    };
+
+    Palette.prototype._currentFolderOfIds = function (ids) {
+        var common = null;
+        for (var i = 0; i < ids.length; i++) {
+            var c = global.ComponentStorage.getComponent(ids[i]);
+            if (!c) return null;
+            var f = c.folderId || '';
+            if (common === null) common = f;
+            else if (common !== f) return null;
         }
+        return common;
+    };
 
-        function onMouseUp(e) {
-            if (activeDrag) {
-                updateDropTarget(e.clientX, e.clientY);
-                endDrag(true);
-            }
-            pendingDrag = null;
-        }
-
-        document.addEventListener('mousemove', onMouseMove, false);
-        document.addEventListener('mouseup', onMouseUp, false);
-
-        /* Подавление click после успешного drag: capture-фаза, чтобы
-           заблокировать bubble-обработчик .click() на самом label. */
-        rootNode.addEventListener('click', function (e) {
-            if (self._suppressNextClick) {
-                e.preventDefault();
-                e.stopPropagation();
-                self._suppressNextClick = false;
-            }
-        }, true);
+    Palette.prototype._endDrag = function () {
+        this._isDragging = false;
+        this._dragUserCompIds = null;
+        if (!this.rootNode) return;
+        var drags = this.rootNode.querySelectorAll('.wb-dragging');
+        for (var i = 0; i < drags.length; i++) drags[i].classList.remove('wb-dragging');
+        this._clearDropIndicators();
     };
 
     Palette.prototype._clearDropIndicators = function () {
@@ -578,8 +636,6 @@
         }
     };
 
-    /* Переносит один компонент в папку.
-       Возвращает true, если состояние изменилось. */
     Palette.prototype._moveUserCompToFolder = function (compId, folderId) {
         if (!compId) return false;
         var c = global.ComponentStorage.getComponent(compId);
@@ -595,7 +651,9 @@
         return true;
     };
 
-    /* ---------- Контекстное меню ---------- */
+    /* ============================================================
+       Контекстное меню
+       ============================================================ */
     Palette.prototype._installContextMenu = function () {
         var self = this;
         var rootNode = this.rootNode;
@@ -642,7 +700,9 @@
         if (menu) menu.showAtPos(ctx.x, ctx.y);
     };
 
-    /* ---------- Действия контекстного меню ---------- */
+    /* ============================================================
+       Действия контекстного меню
+       ============================================================ */
     Palette.prototype.userCtxNewFolder = function () {
         var name = prompt('Имя каталога:', 'New Folder');
         if (!name) return;
@@ -926,7 +986,9 @@
             .replace(/"/g, '&quot;');
     }
 
-    /* ---------- Фильтр ---------- */
+    /* ============================================================
+       Фильтр
+       ============================================================ */
     Palette.prototype._filter = function (txt) {
         txt = (txt || '').toLowerCase();
         var $root = this.root;
