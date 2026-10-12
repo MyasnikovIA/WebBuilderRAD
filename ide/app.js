@@ -33,12 +33,20 @@
         global.componentTab = componentTab;   /* нужен ProjectManager.save() и MiniUI-eval */
         $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
 
-        /* Контекстное меню пользовательской палитры. */
+        /* Роутинг контекстного меню Tool Palette.
+           Тип контекста: 'item' (kind: 'user' | 'builtin'), 'folder' | 'root'.
+           Всю маршрутизацию по меню держим здесь, т.к. MiniUI не даёт
+           контексту указывать меню-идентификатор напрямую. */
         EventBus.on('palette:contextmenu', function (ctx) {
             if (!palette) return;
-            var menuId = (ctx.type === 'user-components') ? 'wb-usercompmenu'
-                : (ctx.type === 'user-folder')     ? 'wb-userfoldermenu'
-                    : 'wb-userpalettemenu';
+            var menuId;
+            if (ctx.type === 'item') {
+                menuId = (ctx.kind === 'user') ? 'wb-usercompmenu' : 'wb-paletteitemmenu';
+            } else if (ctx.type === 'folder') {
+                menuId = 'wb-userfoldermenu';
+            } else {
+                menuId = 'wb-userpalettemenu';
+            }
             var m = mini.get(menuId);
             if (m) m.showAtPos(ctx.x, ctx.y);
         });

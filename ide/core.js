@@ -26,9 +26,6 @@
             if (_byId[def.id]) throw new Error('Duplicate component id: ' + def.id);
             def.tagName = (def.tagName || 'div').toLowerCase();
 
-            /* Поддержка двух форматов:
-               - category: 'HTML', subCategory: 'Basic' — новый (рекомендуется);
-               - category: 'HTML/Basic' — старый, разбирается автоматически. */
             if (def.category && def.category.indexOf('/') >= 0 && !def.subCategory) {
                 var parts = def.category.split('/');
                 def.category = parts[0];
@@ -37,7 +34,7 @@
             if (!def.category) def.category = 'General';
             if (!def.subCategory) def.subCategory = null;
 
-            def.categories = [def.category];   /* для обратной совместимости */
+            def.categories = [def.category];
             _byId[def.id] = def;
             (_byCat[def.category] = _byCat[def.category] || []).push(def);
             return def;
@@ -55,8 +52,6 @@
             }
             return r;
         },
-        /* Иерархическое дерево категорий:
-           [ { name, components, subcategories: [ { name, components } ] } ] */
         categoryTree: function () {
             var ORDER = ['D3', 'M2', 'HTML', 'General', 'User'];
             var SUB_ORDER = {
@@ -116,10 +111,6 @@
         match: function (el) {
             if (!el || el.nodeType !== 1) return null;
 
-            /* 0. Пользовательский компонент из Tool Palette.
-                  a) Явный маркер data-wb-user-comp (устанавливается палитрой).
-                  b) Fallback по значению атрибута cmptype — если пользователь
-                     вставил разметку без маркера (например, скопировал HTML). */
             if (global.ComponentStorage && global.ComponentStorage.toDef) {
                 var ucId = el.getAttribute && el.getAttribute('data-wb-user-comp');
                 var uc = ucId ? global.ComponentStorage.getComponent(ucId) : null;
@@ -130,7 +121,6 @@
                         var list = global.ComponentStorage.listComponents();
                         for (var ui = 0; ui < list.length; ui++) {
                             var cand = list[ui];
-                            /* Не подменяем D3/M2-компоненты с таким же cmptype. */
                             if (cand.cmptype && cand.cmptype === userCt
                                 && !_byId['m2.' + String(userCt).toLowerCase()]) {
                                 uc = cand;
@@ -143,11 +133,9 @@
                 if (uc) return global.ComponentStorage.toDef(uc);
             }
 
-            /* 1. D3: явный ID через data-cmptype. */
             var ct = el.getAttribute && el.getAttribute('data-cmptype');
             if (ct && _byId[ct]) return _byId[ct];
 
-            /* 2. M2: <component cmptype="Button">. */
             var m2ct = el.getAttribute && el.getAttribute('cmptype');
             if (m2ct) {
                 var m2id = 'm2.' + String(m2ct).toLowerCase();
@@ -161,11 +149,10 @@
                 }
             }
 
-            /* 3. Обычный HTML / D3 по имени тега. */
             var tag = el.tagName.toLowerCase();
-            var list = ComponentRegistry.all();
-            for (var j = 0; j < list.length; j++) {
-                if (!list[j].cmptype && list[j].tagName === tag) return list[j];
+            var list2 = ComponentRegistry.all();
+            for (var j = 0; j < list2.length; j++) {
+                if (!list2[j].cmptype && list2[j].tagName === tag) return list2[j];
             }
             return _byId['html.generic'] || null;
         }
@@ -271,7 +258,7 @@
 
     /* ---------- Modal (mini-window) ---------- */
     var Modal = (function () {
-        var win = null, bodyEl = null, onOk = null;
+        var win = null, bodyEl = null, onOk = null, onCancel = null;
 
         function ensure() {
             if (win && bodyEl) return;
@@ -293,6 +280,7 @@
                 else if (opts.content) bodyEl.appendChild(opts.content);
 
                 onOk = opts.onOk || null;
+                onCancel = opts.onCancel || null;
                 win.show();
 
                 var mask = win.el.querySelector('.mini-mask');
@@ -308,12 +296,17 @@
                 Modal.close();
                 if (f) f();
             },
-            cancel: function () { Modal.close(); },
+            cancel: function () {
+                var f = onCancel;
+                Modal.close();
+                if (f) f();
+            },
             close: function () {
                 ensure();
                 win.hide();
                 bodyEl.innerHTML = '';
                 onOk = null;
+                onCancel = null;
             }
         };
     })();

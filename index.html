@@ -317,9 +317,11 @@
 </ul>
 
 <!-- =========================================================
-     Контекстное меню USER-КОМПОНЕНТОВ (пользовательская палитра)
+     Контекстное меню USER-КОМПОНЕНТОВ (Tool Palette)
      ========================================================= -->
 <ul id="wb-usercompmenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxEditPalette()">Изменить палитру…</li>
+    <li class="separator"></li>
     <li onclick="palette.userCtxOpenInProject()">Open in IDE as Project…</li>
     <li onclick="palette.userCtxExportSelected()">Export Component(s) to ZIP…</li>
     <li class="separator"></li>
@@ -332,13 +334,17 @@
      Контекстное меню ITEM стандартного компонента палитры
      ========================================================= -->
 <ul id="wb-paletteitemmenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxEditPalette()">Изменить палитру…</li>
+    <li class="separator"></li>
     <li onclick="palette.paletteItemCtxReset()">Reset Placement (move to natural)</li>
 </ul>
 
 <!-- =========================================================
-     Контекстное меню USER-КАТАЛОГА (пользовательская палитра)
+     Контекстное меню USER-КАТАЛОГА (Tool Palette)
      ========================================================= -->
 <ul id="wb-userfoldermenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxEditPalette()">Изменить палитру…</li>
+    <li class="separator"></li>
     <li onclick="palette.userCtxNewFolder()">New Subfolder…</li>
     <li onclick="palette.userCtxRenameFolder()">Rename Folder…</li>
     <li onclick="palette.userCtxDeleteFolder()">Delete Folder</li>
@@ -348,6 +354,8 @@
      Контекстное меню USER-КОРНЯ палитры
      ========================================================= -->
 <ul id="wb-userpalettemenu" class="mini-contextmenu">
+    <li onclick="palette.userCtxEditPalette()">Изменить палитру…</li>
+    <li class="separator"></li>
     <li onclick="palette.userCtxNewFolder()">New Folder…</li>
     <li class="separator"></li>
     <li onclick="palette.userCtxImport()">Import Component(s) from ZIP…</li>
@@ -393,6 +401,11 @@
 <script src="ide/component-storage.js"></script>
 <script src="ide/component-export-utils.js"></script>
 <script src="ide/component-tab.js"></script>
+
+<!-- =========================================================
+     Palette Editor (новое) — редактор раскладки Tool Palette
+     ========================================================= -->
+<script src="ide/palette-editor.js"></script>
 
 <!-- =========================================================
      HTML / UI components (все в категории HTML)

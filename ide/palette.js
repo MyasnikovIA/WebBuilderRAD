@@ -7,14 +7,8 @@
      • компоненты можно перетаскивать между любыми папками;
      • папки можно создавать, переименовывать, удалять, вкладывать;
      • папку можно тащить целиком (с подпапками и компонентами);
-     • мультивыделение (Ctrl+клик) — тащим всю группу.
-
-   Ограничения:
-     • стандартные компоненты (kind='builtin') удалить нельзя;
-     • папки-категории (kind='category') можно удалять — содержимое
-       поднимается в родительскую папку;
-     • стандартные компоненты регистрируются в реестре, поэтому всегда
-       доступны, даже если их папку удалили (перейдут в корень).
+     • мультивыделение (Ctrl+клик) — тащим всю группу;
+     • контекстное меню → «Изменить палитру…» открывает PaletteEditor.
 
    DnD — HTML5 (как в project-tree.js). Все обработчики через НАТИВНЫЙ
    addEventListener. */
@@ -29,11 +23,10 @@
             : rootEl;
         this.active = null;
         this._collapsed = {};
-        this._collapseAllOnRender = true;
         this._userSel = {};              /* itemId → true */
         this._lastUserClick = null;
-        this._dragItemIds = null;        /* массив itemId при drag items */
-        this._dragFolderIds = null;      /* массив folderId при drag folders */
+        this._dragItemIds = null;
+        this._dragFolderIds = null;
         this._isDragging = false;
 
         this._render();
@@ -99,7 +92,6 @@
        Основной рендер.
        ============================================================ */
     Palette.prototype._render = function () {
-        var self = this;
         this.root.empty();
 
         var layout = this._ensureLayout();
@@ -224,7 +216,8 @@
         if (it.kind === 'builtin' && it.def.iconUrl) iconUrl = it.def.iconUrl;
         if (it.kind === 'user' && it.comp.icon) {
             iconUrl = it.comp.icon;
-            if (global.ProjectResolver && global.ProjectResolver.isProjectPath && global.ProjectResolver.isProjectPath(iconUrl)) {
+            if (global.ProjectResolver && global.ProjectResolver.isProjectPath
+                && global.ProjectResolver.isProjectPath(iconUrl)) {
                 try { iconUrl = global.ProjectResolver.resolve(iconUrl); } catch (e) {}
             }
         }
@@ -300,9 +293,7 @@
                     return { folderId: '', label: node };
                 }
                 var fId = node.getAttribute('data-palette-folder-id');
-                if (fId != null) {
-                    return { folderId: fId || '', label: node };
-                }
+                if (fId != null) return { folderId: fId || '', label: node };
                 var itemId = node.getAttribute('data-item-id');
                 if (itemId) {
                     var li = node.parentNode;
@@ -542,6 +533,16 @@
     /* ============================================================
        Действия контекстного меню.
        ============================================================ */
+
+    /* NEW: открыть редактор палитры. */
+    Palette.prototype.userCtxEditPalette = function () {
+        if (global.PaletteEditor && global.PaletteEditor.open) {
+            global.PaletteEditor.open();
+        } else {
+            alert('Модуль PaletteEditor не подключён.');
+        }
+    };
+
     Palette.prototype.userCtxNewFolder = function () {
         var name = prompt('Имя папки:', 'New Folder');
         if (!name) return;
