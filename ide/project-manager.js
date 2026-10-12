@@ -245,8 +245,36 @@
         try {
             $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
         } catch (e) {}
+
+        /* Если активной была вкладка Component — переключаемся на Scene. */
+        this._forceSwitchToSceneIfComponentActive();
+
         bus.emit('project:loaded', { project: null, name: '' });
         bus.emit('project:changed', { project: null });
+    };
+
+    /* ------------------------------------------------------------------
+       Принудительное переключение с вкладки Component на Scene.
+
+       Нужно в двух случаях:
+         • переключение на проект, где нет Root: component;
+         • закрытие проекта.
+
+       Иначе после $tabs.hide() активной остаётся скрытая панель
+       wb-center-pane[data-pane="component"], внутри которой виден
+       .wb-component-tab — пользователь «застревает» на неактуальном
+       контенте, потому что кнопка таба Component скрыта.
+
+       Эмулируем клик по табу «scene» — обработчик клика в app.js
+       сам переключит панели, скроет .wb-component-tab и т.д.
+       ------------------------------------------------------------------ */
+    ProjectManager.prototype._forceSwitchToSceneIfComponentActive = function () {
+        try {
+            var $active = $('#wb-center-tabs .wb-center-tab.wb-active');
+            if ($active.length && $active.attr('data-pane') === 'component') {
+                $('#wb-center-tabs .wb-center-tab[data-pane="scene"]').click();
+            }
+        } catch (e) { /* ignore */ }
     };
 
     /* Применить к canvas / вкладкам сохранённый в проекте режим корня.
@@ -273,8 +301,7 @@
                     if (!cd.css && libData.css) cd.css = libData.css;
                 }
                 /* Если previewIdeHtml пуст, но у проекта уже есть
-                   сохранённый ранее html (например, был снят со
-                   вкладки Code в момент сохранения) — используем его. */
+                   сохранённый ранее html — используем его. */
                 if (!cd.previewIdeHtml && cd.html) {
                     cd.previewIdeHtml = cd.html;
                 }
@@ -286,6 +313,11 @@
             if (global.App) global.App._componentMode = false;
             if ($tabs) $tabs.hide();
             if (canvas) canvas.setRootType(rt);
+
+            /* ВАЖНО: если активной была вкладка Component (теперь скрытая),
+               переключаемся на Scene — иначе .wb-component-tab останется
+               видимым в центральной области, хотя режим проекта уже другой. */
+            this._forceSwitchToSceneIfComponentActive();
         }
     };
 

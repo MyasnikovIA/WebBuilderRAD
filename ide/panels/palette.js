@@ -252,7 +252,7 @@
     };
 
     /* Построение def для вставки компонента на сцену.
-   Вся логика вынесена в ComponentStorage.toDef — единый источник. */
+       Вся логика вынесена в ComponentStorage.toDef — единый источник. */
     Palette.prototype._buildUserDef = function (c) {
         return global.ComponentStorage.toDef(c);
     };
@@ -394,6 +394,271 @@
         this._syncUserSelectionUI();
         this._renderUserPalette();
     };
+
+    /* ------------------------------------------------------------------
+       userCtxImportFromProject
+
+       Открывает модальное окно со списком проектов, у которых
+       rootType === 'component'. Пользователь выбирает проект — его
+       componentData + js/css/html переносятся в палитру.
+
+       Если компонент с таким cmptype уже есть в палитре — предлагается
+       перезаписать.
+       ------------------------------------------------------------------ */
+    Palette.prototype.userCtxImportFromProject = function () {
+        var self = this;
+        var names = global.ProjectStorage.list();
+        var list = [];
+        for (var i = 0; i < names.length; i++) {
+            var p = global.ProjectStorage.get(names[i]);
+            if (p && p.rootType === 'component' && p.componentData) {
+                list.push({ name: names[i], project: p });
+            }
+        }
+        if (!list.length) {
+            alert('Нет проектов-компонентов (Root: component).\n\n' +
+                'Создайте проект с режимом Root: component или перенесите ' +
+                'компонент из палитры: ПКМ по компоненту → Open in IDE as Project…');
+            return;
+        }
+
+        var host = document.createElement('div');
+        host.style.cssText = 'padding:10px;font-family:inherit;font-size:12px;';
+
+        var lbl = document.createElement('div');
+        lbl.textContent = 'Выберите проект-компонент:';
+        lbl.style.marginBottom = '6px';
+        host.appendChild(lbl);
+
+        var sel = document.createElement('select');
+        sel.style.cssText = 'width:100%;padding:4px 6px;font-size:12px;box-sizing:border-box;';
+        for (var k = 0; k < list.length; k++) {
+            var entry = list[k];
+            var cd = entry.project.componentData || {};
+            var opt = document.createElement('option');
+            opt.value = entry.name;
+            opt.textContent = entry.name +
+                '  (cmptype: ' + (cd.cmptype || '?') + ')';
+            sel.appendChild(opt);
+        }
+        host.appendChild(sel);
+
+        var hint = document.createElement('div');
+        hint.style.cssText = 'margin-top:8px;color:#666;font-size:11px;';
+        hint.textContent = 'Компонент будет перенесён из проекта в палитру. ' +
+            'Если компонент с таким cmptype уже есть — предложат перезаписать.';
+        host.appendChild(hint);
+
+        global.Modal.open({
+            title: 'Import Component from Project',
+            content: host,
+            onOk: function () {
+                var selectedName = sel.value;
+                var entry = null;
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].name === selectedName) { entry = list[i]; break; }
+                }
+                if (!entry) return;
+
+                var cd = self._componentDataFromProject(entry.project);
+                if (!cd || !cd.cmptype) {
+                    alert('У выбранного проекта нет данных компонента (cmptype).');
+                    return;
+                }
+
+                var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
+                if (existing) {
+                    var ok = confirm(
+                        'Компонент с cmptype="' + cd.cmptype + '" уже есть в палитре (' +
+                        existing.name + ').\n\nПерезаписать его?');
+                    if (!ok) return;
+                    global.ComponentStorage.updateComponent(existing.id, cd);
+                    self._renderUserPalette();
+                    bus.emit('palette:refresh');
+                    return;
+                }
+
+                global.ComponentStorage.createComponent(cd);
+                self._renderUserPalette();
+                bus.emit('palette:refresh');
+            }
+        });
+    };
+
+    /* Читает компонент из проекта: componentData + js/css из lib-файлов. */
+    Palette.prototype._componentDataFromProject = function (project) {
+        if (!project || !project.componentData) return null;
+
+        var cd;
+        try { cd = JSON.parse(JSON.stringify(project.componentData)); }
+        catch (e) { cd = project.componentData; }
+
+        /* html (previewIdeHtml) и его алиас. */
+        if (!cd.previewIdeHtml && cd.html) cd.previewIdeHtml = cd.html;
+        if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+
+        var ct = cd.cmptype;
+        if (!ct) return cd;
+
+        var safeCt = String(ct).replace(/[^A-Za-z0-9_.-]/g, '_');
+        var files = project.files || {};
+
+        /* JS из lib-файла. */
+        var jsPath = 'lib/wb-component/' + safeCt + '.js';
+        var jsFile = files[jsPath];
+        if (jsFile && jsFile.content) {
+            cd.js = this._extractUserJs(jsFile.content);
+        }
+
+        /* CSS из lib-файла. */
+        var cssPath = 'lib/wb-component/' + safeCt + '.css';
+        var cssFile = files[cssPath];
+        if (cssFile && cssFile.content) {
+            cd.css = this._extractUserCss(cssFile.content);
+        }
+
+        return cd;
+    };
+
+    Palette.prototype._extractUserJs = function (fullJs) {
+        if (!fullJs) return '';
+        var marker = '/* --- user code --- */';
+        var idx = fullJs.indexOf(marker);
+        if (idx < 0) return '';
+        var user = fullJs.substring(idx + marker.length);
+        return user.replace(/^\r?\n/, '');
+    };
+
+    Palette.prototype._extractUserCss = function (fullCss) {
+        if (!fullCss) return '';
+        var marker = '/* --- user css --- */';
+        var idx = fullCss.indexOf(marker);
+        if (idx < 0) return '';
+        var user = fullCss.substring(idx + marker.length);
+        return user.replace(/^\r?\n/, '');
+    };
+
+    /* ------------------------------------------------------------------
+       userCtxOpenInProject
+
+       Открывает выбранный компонент палитры как проект с
+       rootType === 'component'. Проект создаётся (или переиспользуется,
+       если такой уже есть) и сразу загружается в IDE с активной
+       вкладкой Component.
+
+       Обратный перенос в палитру — обычная кнопка «Сохранить как
+       компонент» в ComponentTab.
+       ------------------------------------------------------------------ */
+    Palette.prototype.userCtxOpenInProject = function () {
+        var sel = this.getUserSelection();
+        if (!sel.length) { alert('Ничего не выбрано.'); return; }
+        if (sel.length > 1) { alert('Выберите один компонент.'); return; }
+
+        var comp = sel[0];
+        var defaultName = 'Component_' + (comp.name || comp.cmptype || 'edit');
+        var projName = prompt('Имя проекта для редактирования:', defaultName);
+        if (!projName) return;
+        projName = String(projName).trim();
+        if (!projName) return;
+
+        var pm = global.ProjectManagerInstance;
+        if (!pm) { alert('ProjectManager не подключён.'); return; }
+
+        /* Сохранение текущего редактируемого файла перед переключением. */
+        var canvas = global.IDE && global.IDE._canvas;
+        if (pm.editing && canvas) {
+            if (!pm._confirmSwitchFrom(canvas)) return;
+        }
+
+        /* Проект с таким именем уже есть? */
+        var proj = global.ProjectStorage.get(projName);
+        if (proj) {
+            var rt = proj.rootType;
+            var ok = confirm(
+                'Проект "' + projName + '" уже существует (rootType: ' + rt + ').\n\n' +
+                'Перезаписать его данными выбранного компонента?');
+            if (!ok) return;
+        } else {
+            proj = global.ProjectStorage.create(projName);
+            if (!proj) { alert('Не удалось создать проект.'); return; }
+        }
+
+        /* Заполняем проект данными компонента. */
+        proj.rootType = 'component';
+        proj.mainFile = 'index.html';
+        proj.files = proj.files || {};
+
+        proj.componentData = {
+            id: comp.id,
+            name: comp.name || '',
+            cmptype: comp.cmptype || '',
+            tagName: comp.tagName || 'div',
+            icon: comp.icon || '',
+            description: comp.description || '',
+            previewIdeHtml: comp.previewIdeHtml || comp.html || '',
+            html: comp.previewIdeHtml || comp.html || '',
+            customProperties: comp.customProperties || [],
+            customEvents: comp.customEvents || [],
+            nestingMode: comp.nestingMode || 'all',
+            nestingRules: comp.nestingRules || [],
+            jsLibs: comp.jsLibs || [],
+            cssLibs: comp.cssLibs || []
+        };
+
+        /* index.html кладём как «обёртку» — содержимое компонента (html)
+           загрузится на сцену, а _applyProjectMode обернёт его в
+           div[data-wb-root="1"]. */
+        var compHtml = comp.previewIdeHtml || comp.html || '';
+        proj.files['index.html'] = {
+            kind: 'text',
+            content: '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' +
+                escapeHtml(projName) + '</title>\n</head>\n<body>\n' +
+                compHtml + '\n</body>\n</html>'
+        };
+
+        /* lib-файлы: core.js + <cmptype>.{js,css}. */
+        if (comp.cmptype && global.ComponentStorage) {
+            var safeCt = String(comp.cmptype).replace(/[^A-Za-z0-9_.-]/g, '_');
+            var libDir = global.ComponentStorage.LIB_DIR;
+
+            /* Удаляем все старые lib-файлы, чтобы не было мусора. */
+            var keys = Object.keys(proj.files);
+            for (var i = 0; i < keys.length; i++) {
+                if (keys[i].indexOf(libDir) === 0) delete proj.files[keys[i]];
+            }
+
+            proj.files[libDir + 'core.js'] = {
+                kind: 'text',
+                _system: 'wb-lib',
+                content: global.ComponentStorage.CORE_SOURCE
+            };
+            proj.files[libDir + safeCt + '.js'] = {
+                kind: 'text',
+                _system: 'wb-lib',
+                content: global.ComponentStorage._buildCmptypeJs(comp)
+            };
+            proj.files[libDir + safeCt + '.css'] = {
+                kind: 'text',
+                _system: 'wb-lib',
+                content: global.ComponentStorage._buildCmptypeCss(comp)
+            };
+        }
+
+        global.ProjectStorage.save(proj);
+
+        /* Обновляем выпадающий список проектов и загружаем новый. */
+        pm.refreshCombo();
+        pm.load(projName);
+    };
+
+    /* Локальный хелпер: экранирование для title. */
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
 
     /* ---------- Фильтр ---------- */
     Palette.prototype._filter = function (txt) {
