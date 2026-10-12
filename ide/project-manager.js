@@ -97,7 +97,6 @@
             }, 700);
         });
 
-        /* Режим корня изменился — зафиксировать в проекте. */
         bus.on('canvas:rootType:changed', function () {
             if (!self.current) return;
             self.save();
@@ -568,6 +567,115 @@
         inp.click();
     };
 
+    /* ------------------------------------------------------------------
+       NEW: ctxImportProjectFromZip
+
+       Создать НОВЫЙ проект из ZIP-архива (в отличие от ctxUploadZip,
+       который вливает файлы в текущий).
+
+       Последовательность:
+         1. Прочитать манифест (project.json внутри ZIP), чтобы узнать
+            имя проекта и rootType.
+         2. Спросить имя нового проекта (по умолчанию — из манифеста
+            или из имени файла).
+         3. Проверить коллизию имени; при совпадении — подтверждение.
+         4. ProjectStorage.create(name) → новый пустой проект.
+         5. ZipUtils.importInto(project, file) → разложить файлы.
+         6. Применить rootType / mainFile / componentData из манифеста.
+         7. refreshCombo + load(name).
+       ------------------------------------------------------------------ */
+    ProjectManager.prototype.ctxImportProjectFromZip = function () {
+        var self = this;
+
+        /* Если есть текущий проект с несохранёнными правками файла —
+           спросим про сохранение, прежде чем переключаться на новый. */
+        var canvas = global.IDE && global.IDE._canvas;
+        if (self.editing && canvas) {
+            if (!self._confirmSwitchFrom(canvas)) return;
+        }
+
+        var inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.zip,application/zip,application/x-zip-compressed';
+        inp.onchange = function () {
+            var f = inp.files[0];
+            if (!f) return;
+
+            /* 1. Читаем манифест (может быть null — тогда просто ZIP без project.json). */
+            global.ZipUtils.readManifest(f).then(function (manifest) {
+                /* 2. Имя проекта по умолчанию. */
+                var defaultName =
+                    (manifest && manifest.name) ||
+                    String(f.name || '').replace(/\.zip$/i, '') ||
+                    ('ImportedProject' + Date.now().toString(36));
+
+                var name = prompt('Имя нового проекта:', defaultName);
+                if (!name) return null;
+                name = String(name).trim();
+                if (!name) return null;
+
+                /* 3. Проверка коллизии. */
+                if (global.ProjectStorage.get(name)) {
+                    if (!confirm('Проект "' + name + '" уже существует.\n\n' +
+                        'Перезаписать его данными из ZIP?')) {
+                        return null;
+                    }
+                    global.ProjectStorage.remove(name);
+                }
+
+                /* 4. Создаём новый пустой проект. */
+                var p = global.ProjectStorage.create(name);
+                if (!p) {
+                    alert('Не удалось создать проект "' + name + '".');
+                    return null;
+                }
+
+                /* 5. Импортируем файлы из ZIP. */
+                return global.ZipUtils.importInto(p, f).then(function () {
+                    /* 6. Применяем манифест. */
+                    if (manifest) {
+                        if (manifest.mainFile && p.files[manifest.mainFile]) {
+                            p.mainFile = manifest.mainFile;
+                        }
+                        if (manifest.rootType) {
+                            p.rootType = manifest.rootType;
+                        }
+                        if (manifest.type === 'component' && manifest.component) {
+                            p.rootType = 'component';
+                            p.componentData = manifest.component;
+                        }
+                    } else {
+                        /* Нет манифеста — попробуем угадать mainFile. */
+                        if (!p.mainFile) {
+                            if (p.files['index.html']) p.mainFile = 'index.html';
+                            else {
+                                var firstHtml = null;
+                                for (var path in p.files) {
+                                    if (!p.files.hasOwnProperty(path)) continue;
+                                    if (/\.html?$/i.test(path)) { firstHtml = path; break; }
+                                }
+                                if (firstHtml) p.mainFile = firstHtml;
+                            }
+                        }
+                        if (!p.rootType) p.rootType = 'html';
+                    }
+
+                    global.ProjectStorage.save(p);
+
+                    /* 7. Обновляем combo и загружаем проект. */
+                    self.refreshCombo();
+                    self.load(name);
+
+                    alert('Проект "' + name + '" успешно импортирован из ZIP.');
+                    return p;
+                });
+            }).catch(function (err) {
+                alert('Ошибка импорта проекта из ZIP: ' + (err && err.message || err));
+            });
+        };
+        inp.click();
+    };
+
     ProjectManager.prototype.ctxExportZip = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
         this.save();
@@ -640,23 +748,6 @@
 
        Переносит текущий проект в пользовательскую палитру компонентов
        как компонент. Обратная операция к Palette.userCtxOpenInProject.
-
-       Два сценария:
-
-         1) rootType === 'component' — основной сценарий.
-            • вызывается ComponentTab.getFormData() — свежие JS/CSS/HTML
-              из редакторов (даже если пользователь не нажимал Save);
-            • если PreViewIDE(html) пуст — берём canvas.cleanHtml();
-            • js/css страхуются из lib-файлов, если getFormData() их не
-              вернул (например, пользователь не открывал подвкладки).
-
-         2) rootType !== 'component' — конвертация «на лету».
-            • спрашиваем cmptype и name;
-            • HTML — из canvas.cleanHtml();
-            • js/css — пустые (можно потом доработать в ComponentTab).
-
-       Поведение при совпадении cmptype с существующим компонентом —
-       стандартный confirm: перезаписать или нет.
        ------------------------------------------------------------------ */
     ProjectManager.prototype.ctxSaveAsComponent = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
@@ -664,20 +755,15 @@
         var canvas = global.IDE && global.IDE._canvas;
         var rt = this.current.rootType || 'html';
 
-        /* Сначала фиксируем текущее состояние проекта (файлы, rootType,
-           componentData). Это гарантирует, что lib-файлы содержат
-           актуальные js/css. */
         try { this.save(); } catch (e) { /* ignore */ }
 
         var cd;
 
         if (rt === 'component' && global.componentTab && global.componentTab.getFormData) {
-            /* --- Сценарий 1: проект уже Root: component --- */
             try { cd = global.componentTab.getFormData(); }
             catch (e) { cd = null; }
             if (!cd) cd = {};
         } else {
-            /* --- Сценарий 2: проект НЕ компонент --- */
             cd = this.current.componentData
                 ? this._cloneObj(this.current.componentData)
                 : {};
@@ -702,7 +788,6 @@
             return;
         }
 
-        /* Гарантируем наличие html / previewIdeHtml. */
         if (!cd.previewIdeHtml && cd.html) cd.previewIdeHtml = cd.html;
         if (!cd.previewIdeHtml && canvas && canvas.cleanHtml) {
             try {
@@ -714,8 +799,6 @@
         }
         if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
 
-        /* Страховка для js/css — если getFormData() их не вернул,
-           читаем из lib-файлов проекта. */
         if (!cd.js || !cd.css) {
             var libData = this._readComponentLibraries(this.current);
             if (libData) {
@@ -724,7 +807,6 @@
             }
         }
 
-        /* Нормализуем поля, которые ожидает ComponentStorage. */
         cd.name        = cd.name        || cd.cmptype;
         cd.tagName     = cd.tagName     || 'div';
         cd.description = cd.description || '';
@@ -737,7 +819,6 @@
         cd.js               = cd.js  || '';
         cd.css              = cd.css || '';
 
-        /* Сохраняем в палитру: create или update. */
         var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
         if (existing) {
             var ok = confirm(

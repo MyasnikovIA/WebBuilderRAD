@@ -21,10 +21,33 @@
    WbComponent.register(). Рантайм attach() рендерит эту разметку внутрь
    элемента [data-wb-user-comp], если он ещё пуст. Так экспортированная
    HTML-страница может показать компонент без хранения разметки в самом
-   HTML-файле. */
+   HTML-файле.
+
+   ------------------------------------------------------------------
+   Palette Layout (localStorage 'wb.paletteLayout', version 1):
+
+     Раскладка дерева палитры компонентов (единое дерево для стандартных
+     и пользовательских компонентов).
+
+     {
+       version: 1,
+       initialized: true|false,
+       folders: {
+         '<id>': { id, name, parentId, position, kind: 'user' | 'category' }
+       },
+       items: {
+         'b:<defId>':  { folderId, position },   — built-in компонент
+         'u:<cmpId>':  { folderId, position }    — user-компонент
+       }
+     }
+
+     itemId:
+       'b:' + def.id — стандартный (D3/M2/HTML)
+       'u:' + c.id   — пользовательский */
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
+    var PALETTE_KEY = 'wb.paletteLayout';
 
     var LIB_DIR = 'lib/wb-component/';
     var CORE_FILE = LIB_DIR + 'core.js';
@@ -163,7 +186,6 @@
         '        })(evs[j]);',
         '    }',
         '    el._wbComponent = instance;',
-        /* ---- Рендер html-разметки компонента, если элемент пуст ---- */
         '    if(def.html && !hasRealContent(el)){',
         '        try { el.innerHTML = def.html; } catch(e){ console.error("[WbComponent] render html", def.cmptype, e); }',
         '    }',
@@ -197,6 +219,8 @@
         '})(window);'
     ].join('\n');
 
+    /* ------------------------------------------------------------------
+       Хелперы модели палитры компонентов. */
     function emptyModel() { return { version: 5, folders: {}, components: {} }; }
 
     function readAll() {
@@ -221,6 +245,44 @@
     }
     function safeName(s) {
         return String(s || 'component').replace(/[^A-Za-z0-9_.-]/g, '_');
+    }
+
+    /* ------------------------------------------------------------------
+       Хелперы раскладки палитры (wb.paletteLayout). */
+    function _emptyLayout() {
+        return { version: 1, initialized: false, folders: {}, items: {} };
+    }
+    function _readLayout() {
+        try {
+            var raw = localStorage.getItem(PALETTE_KEY);
+            if (!raw) return _emptyLayout();
+            var o = JSON.parse(raw);
+            if (!o || typeof o !== 'object') return _emptyLayout();
+            if (!o.folders) o.folders = {};
+            if (!o.items) o.items = {};
+            o.version = 1;
+            return o;
+        } catch (e) { return _emptyLayout(); }
+    }
+    function _writeLayout(o) {
+        try { localStorage.setItem(PALETTE_KEY, JSON.stringify(o)); return true; }
+        catch (e) { console.error('[ComponentStorage/layout]', e); return false; }
+    }
+    function _maxPositionInFolder(m, folderId) {
+        var max = 0;
+        for (var iid in m.items) {
+            if (!m.items.hasOwnProperty(iid)) continue;
+            if ((m.items[iid].folderId || '') === (folderId || '')) {
+                if (m.items[iid].position > max) max = m.items[iid].position;
+            }
+        }
+        for (var fid in m.folders) {
+            if (!m.folders.hasOwnProperty(fid)) continue;
+            if ((m.folders[fid].parentId || '') === (folderId || '')) {
+                if (m.folders[fid].position > max) max = m.folders[fid].position;
+            }
+        }
+        return max;
     }
 
     function normalizeProp(p) {
@@ -319,7 +381,7 @@
             return String(path || '').indexOf(LIB_DIR) === 0;
         },
 
-        /* ---------- folders ---------- */
+        /* ---------- folders (старая модель — оставлена для совместимости) ---------- */
         listFolders: function () {
             var m = readAll(), out = [];
             for (var k in m.folders) if (m.folders.hasOwnProperty(k)) out.push(m.folders[k]);
@@ -373,6 +435,19 @@
             }
             m.components[c.id] = c;
             writeAll(m);
+
+            /* Отражаем новый компонент в раскладке палитры. */
+            try {
+                var L = _readLayout();
+                var itemId = 'u:' + c.id;
+                if (!L.items[itemId]) {
+                    var fId = c.folderId || '';
+                    if (fId && !L.folders[fId]) fId = '';
+                    L.items[itemId] = { folderId: fId, position: _maxPositionInFolder(L, fId) + 1 };
+                    _writeLayout(L);
+                }
+            } catch (e) { /* ignore */ }
+
             return c;
         },
         updateComponent: function (id, patch) {
@@ -387,7 +462,16 @@
             var m = readAll();
             if (!m.components[id]) return false;
             delete m.components[id];
-            return writeAll(m);
+            writeAll(m);
+
+            /* Удаляем placement из раскладки. */
+            try {
+                var L = _readLayout();
+                var itemId = 'u:' + id;
+                if (L.items[itemId]) { delete L.items[itemId]; _writeLayout(L); }
+            } catch (e) { /* ignore */ }
+
+            return true;
         },
 
         replaceAll: function (model) {
@@ -440,6 +524,21 @@
                     }
                 }
                 writeAll(m);
+
+                /* Синхронизируем новые компоненты с раскладкой. */
+                try {
+                    var L = _readLayout();
+                    for (var cid in m.components) {
+                        if (!m.components.hasOwnProperty(cid)) continue;
+                        var itemId = 'u:' + cid;
+                        if (L.items[itemId]) continue;
+                        var fId = m.components[cid].folderId || '';
+                        if (fId && !L.folders[fId]) fId = '';
+                        L.items[itemId] = { folderId: fId, position: _maxPositionInFolder(L, fId) + 1 };
+                    }
+                    _writeLayout(L);
+                } catch (e) { /* ignore */ }
+
                 resolve(stats);
             });
         },
@@ -474,14 +573,7 @@
         },
 
         /* ------------------------------------------------------------------
-           Генерация per-cmptype .js.
-
-           Помимо customProperties / customEvents в деф теперь передаётся
-           поле html (previewIdeHtml || html). Функция attach() из core.js
-           вставляет эту разметку в элемент [data-wb-user-comp], если он
-           ещё пуст — так экспортированная HTML-страница показывает
-           компонент без хранения разметки в самом HTML-файле.
-           ------------------------------------------------------------------ */
+           Генерация per-cmptype .js. */
         _buildCmptypeJs: function (c) {
             var html = c.previewIdeHtml || c.html || '';
             var def = {
@@ -509,16 +601,7 @@
         },
 
         /* ------------------------------------------------------------------
-           Генерация per-cmptype .css.
-
-           Структура файла:
-             1. авто-заголовок (однострочный комментарий);
-             2. @import на каждый cssLib (по одному);
-             3. маркер "user css" и пользовательский CSS.
-
-           Маркер нужен, чтобы при загрузке проекта отделить
-           пользовательскую часть от авто-шапки и @import-ов.
-           ------------------------------------------------------------------ */
+           Генерация per-cmptype .css. */
         _buildCmptypeCss: function (c) {
             var parts = [];
             parts.push('/* WbComponent: ' + c.name + ' (' + c.cmptype + ') — автогенерация. */');
@@ -536,31 +619,18 @@
         },
 
         /* ------------------------------------------------------------------
-           syncProjectLibraries
-
-           Собирает cmptype:
-             1) из [data-wb-user-comp]-элементов на сцене;
-             2) из активной ComponentTab (Root: component) — источник
-                истины по html / js / css, даже если компонент ещё не
-                вставлен на сцену.
-
-           Обновляет lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}.
-           В <cmptype>.js попадают html + js; в <cmptype>.css — css.
-           ------------------------------------------------------------------ */
+           syncProjectLibraries */
         syncProjectLibraries: function (project, canvas) {
             if (!project) return;
             if (!project.files) project.files = {};
 
-            /* Убираем старые lib-файлы. */
             var keys = Object.keys(project.files);
             for (var i = 0; i < keys.length; i++) {
                 if (keys[i].indexOf(LIB_DIR) === 0) delete project.files[keys[i]];
             }
 
-            /* Собираем использованные cmptype. */
             var used = {};
 
-            /* 1. Из user-компонентов на сцене. */
             if (canvas && canvas.getDoc) {
                 var doc = canvas.getDoc();
                 if (doc) {
@@ -573,8 +643,6 @@
                 }
             }
 
-            /* 2. Из активной ComponentTab — источник истины
-                  при редактировании компонента (Root: component). */
             if (global.App && global.App._componentMode &&
                 global.componentTab && global.componentTab.getFormData) {
                 try {
@@ -601,14 +669,12 @@
             var cts = Object.keys(used);
             if (!cts.length) return;
 
-            /* core.js — всегда. */
             project.files[CORE_FILE] = {
                 kind: 'text',
                 _system: 'wb-lib',
                 content: CORE_LIBRARY_SOURCE
             };
 
-            /* per-cmptype. */
             for (var m = 0; m < cts.length; m++) {
                 var ct = cts[m];
                 var comp = used[ct];
@@ -710,6 +776,214 @@
 
                 schema: { properties: props, styles: [], events: [] }
             };
+        },
+
+        /* ============================================================
+           Palette Layout — раскладка дерева палитры.
+           ============================================================ */
+        readPaletteLayout: function () { return _readLayout(); },
+        savePaletteLayout: function (l) { return _writeLayout(l); },
+
+        getPaletteFolder: function (id) {
+            return _readLayout().folders[id] || null;
+        },
+        listPaletteFolders: function () {
+            var m = _readLayout(), out = [];
+            for (var k in m.folders) if (m.folders.hasOwnProperty(k)) out.push(m.folders[k]);
+            return out;
+        },
+
+        /* Первичная инициализация раскладки.
+
+           Создаёт:
+             • папки-категории из ComponentRegistry.categoryTree()
+               (kind: 'category') с устойчивыми id 'cat:<path>';
+             • placements для всех built-in компонентов;
+             • переносит существующие ComponentStorage.folders и folderId
+               в layout (kind: 'user'). */
+        ensurePaletteInitialized: function (registry) {
+            var m = _readLayout();
+            if (m.initialized) {
+                this._syncUserComponentsToLayout(m);
+                return m;
+            }
+
+            /* 1. Перенос существующих пользовательских папок. */
+            var legacy = readAll();
+            for (var fid in legacy.folders) {
+                if (!legacy.folders.hasOwnProperty(fid)) continue;
+                if (m.folders[fid]) continue;
+                var f = legacy.folders[fid];
+                m.folders[fid] = {
+                    id: fid,
+                    name: f.name || 'Folder',
+                    parentId: f.parentId || '',
+                    position: 0,
+                    kind: 'user'
+                };
+            }
+
+            /* 2. Категории/подкатегории из реестра — как kind:'category'. */
+            if (registry && registry.categoryTree) {
+                var tree = registry.categoryTree();
+                for (var i = 0; i < tree.length; i++) {
+                    var node = tree[i];
+                    var catId = 'cat:' + node.name;
+                    if (!m.folders[catId]) {
+                        m.folders[catId] = {
+                            id: catId, name: node.name, parentId: '',
+                            position: i, kind: 'category'
+                        };
+                    }
+                    for (var j = 0; j < node.subcategories.length; j++) {
+                        var sub = node.subcategories[j];
+                        var subId = 'cat:' + node.name + '/' + sub.name;
+                        if (!m.folders[subId]) {
+                            m.folders[subId] = {
+                                id: subId, name: sub.name, parentId: catId,
+                                position: j, kind: 'category'
+                            };
+                        }
+                    }
+                }
+            }
+
+            /* 3. Placements для built-in компонентов. */
+            if (registry && registry.all) {
+                var all = registry.all();
+                for (var k = 0; k < all.length; k++) {
+                    var def = all[k];
+                    if (def.hidden) continue;
+                    var itemId = 'b:' + def.id;
+                    if (m.items[itemId]) continue;
+                    var folderId = '';
+                    if (def.subCategory) folderId = 'cat:' + def.category + '/' + def.subCategory;
+                    else if (def.category) folderId = 'cat:' + def.category;
+                    if (folderId && !m.folders[folderId]) folderId = '';
+                    m.items[itemId] = { folderId: folderId, position: k };
+                }
+            }
+
+            /* 4. Placements для user-компонентов — по их folderId. */
+            this._syncUserComponentsToLayout(m);
+
+            m.initialized = true;
+            _writeLayout(m);
+            return m;
+        },
+
+        _syncUserComponentsToLayout: function (m) {
+            m = m || _readLayout();
+            var comps = readAll().components || {};
+            var changed = false;
+            for (var cid in comps) {
+                if (!comps.hasOwnProperty(cid)) continue;
+                var itemId = 'u:' + cid;
+                if (m.items[itemId]) continue;
+                var c = comps[cid];
+                var fId = c.folderId || '';
+                if (fId && !m.folders[fId]) fId = '';
+                m.items[itemId] = { folderId: fId, position: 0 };
+                changed = true;
+            }
+            if (changed) _writeLayout(m);
+            return m;
+        },
+
+        createPaletteFolder: function (name, parentId) {
+            var m = _readLayout();
+            var id = uid('pfld');
+            m.folders[id] = {
+                id: id,
+                name: String(name || 'Folder'),
+                parentId: parentId || '',
+                position: _maxPositionInFolder(m, parentId) + 1,
+                kind: 'user'
+            };
+            _writeLayout(m);
+            return id;
+        },
+
+        renamePaletteFolder: function (id, name) {
+            var m = _readLayout();
+            if (!m.folders[id]) return false;
+            m.folders[id].name = String(name);
+            return _writeLayout(m);
+        },
+
+        /* Удаляет папку. Содержимое (компоненты и подпапки) поднимается
+           в родительскую папку. */
+        deletePaletteFolder: function (id) {
+            var m = _readLayout();
+            var f = m.folders[id];
+            if (!f) return false;
+            var newParent = f.parentId || '';
+
+            for (var fid in m.folders) {
+                if (!m.folders.hasOwnProperty(fid)) continue;
+                if (m.folders[fid].parentId === id) {
+                    m.folders[fid].parentId = newParent;
+                }
+            }
+            for (var iid in m.items) {
+                if (!m.items.hasOwnProperty(iid)) continue;
+                if (m.items[iid].folderId === id) {
+                    m.items[iid].folderId = newParent;
+                }
+            }
+            delete m.folders[id];
+            return _writeLayout(m);
+        },
+
+        /* Перемещает папку внутрь newParentId. Возвращает false при цикле. */
+        movePaletteFolder: function (id, newParentId) {
+            var m = _readLayout();
+            if (!m.folders[id]) return false;
+            newParentId = newParentId || '';
+            if (newParentId === id) return false;
+            if (newParentId && !m.folders[newParentId]) return false;
+
+            var cur = newParentId;
+            while (cur) {
+                if (cur === id) return false;
+                cur = m.folders[cur] ? m.folders[cur].parentId : '';
+            }
+
+            m.folders[id].parentId = newParentId;
+            m.folders[id].position = _maxPositionInFolder(m, newParentId) + 1;
+            return _writeLayout(m);
+        },
+
+        setItemPlacement: function (itemId, folderId, position) {
+            var m = _readLayout();
+            if (!itemId) return false;
+            folderId = folderId || '';
+            if (folderId && !m.folders[folderId]) folderId = '';
+            m.items[itemId] = {
+                folderId: folderId,
+                position: (position == null) ? _maxPositionInFolder(m, folderId) + 1 : position
+            };
+            return _writeLayout(m);
+        },
+
+        clearItemPlacement: function (itemId) {
+            var m = _readLayout();
+            if (!m.items[itemId]) return false;
+            delete m.items[itemId];
+            return _writeLayout(m);
+        },
+
+        getItemPlacement: function (itemId) {
+            return _readLayout().items[itemId] || null;
+        },
+
+        listItemsInFolder: function (folderId) {
+            var m = _readLayout(), out = [];
+            for (var iid in m.items) {
+                if (!m.items.hasOwnProperty(iid)) continue;
+                if ((m.items[iid].folderId || '') === (folderId || '')) out.push(iid);
+            }
+            return out;
         },
 
         buildCustomInspectorField: buildCustomInspectorField

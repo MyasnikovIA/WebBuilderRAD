@@ -262,7 +262,7 @@
 </ul>
 
 <!-- =========================================================
-     Контекстное меню КОРНЯ
+     Контекстное меню КОРНЯ СЦЕНЫ
      ========================================================= -->
 <ul id="wb-rootmenu" class="mini-contextmenu">
     <li onclick="App.cmd('setRootHtml')">Root: HTML</li>
@@ -309,6 +309,7 @@
     <li class="separator"></li>
     <li onclick="IDE.projectManager.ctxUpload()">Upload Files…</li>
     <li onclick="IDE.projectManager.ctxUploadZip()">Upload ZIP into Project…</li>
+    <li onclick="IDE.projectManager.ctxImportProjectFromZip()">Import Project from ZIP…</li>
     <li class="separator"></li>
     <li onclick="IDE.projectManager.ctxExportZip()">Export Project as ZIP…</li>
     <li class="separator"></li>
@@ -319,22 +320,28 @@
      Контекстное меню USER-КОМПОНЕНТОВ (пользовательская палитра)
      ========================================================= -->
 <ul id="wb-usercompmenu" class="mini-contextmenu">
-    <li onclick="palette.userCtxExportSelected()">Export Component(s) to ZIP…</li>
     <li onclick="palette.userCtxOpenInProject()">Open in IDE as Project…</li>
+    <li onclick="palette.userCtxExportSelected()">Export Component(s) to ZIP…</li>
+    <li class="separator"></li>
+    <li onclick="palette.paletteItemCtxReset()">Reset Placement (move to natural)</li>
     <li class="separator"></li>
     <li onclick="palette.userCtxDeleteComponents()">Delete Component(s)</li>
+</ul>
+
+<!-- =========================================================
+     Контекстное меню ITEM стандартного компонента палитры
+     ========================================================= -->
+<ul id="wb-paletteitemmenu" class="mini-contextmenu">
+    <li onclick="palette.paletteItemCtxReset()">Reset Placement (move to natural)</li>
 </ul>
 
 <!-- =========================================================
      Контекстное меню USER-КАТАЛОГА (пользовательская палитра)
      ========================================================= -->
 <ul id="wb-userfoldermenu" class="mini-contextmenu">
-    <li onclick="palette.userCtxNewFolder()">New Folder…</li>
+    <li onclick="palette.userCtxNewFolder()">New Subfolder…</li>
     <li onclick="palette.userCtxRenameFolder()">Rename Folder…</li>
     <li onclick="palette.userCtxDeleteFolder()">Delete Folder</li>
-    <li class="separator"></li>
-    <li onclick="palette.userCtxImport()">Import Component(s) from ZIP…</li>
-    <li onclick="palette.userCtxImportFromProject()">Import Component from Project…</li>
 </ul>
 
 <!-- =========================================================
@@ -344,6 +351,7 @@
     <li onclick="palette.userCtxNewFolder()">New Folder…</li>
     <li class="separator"></li>
     <li onclick="palette.userCtxImport()">Import Component(s) from ZIP…</li>
+    <li onclick="palette.userCtxImportFromProject()">Import Component from Project…</li>
 </ul>
 
 <!-- =========================================================

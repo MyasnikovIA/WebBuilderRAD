@@ -1,38 +1,28 @@
-/* Palette v5 — палитра компонентов + пользовательская палитра пользователя.
+/* Palette v6 — единая палитра компонентов с раскладкой в localStorage.
 
-   Загружается после panels-utils.js.
+   ВСЕ компоненты (D3/M2/HTML + пользовательские) находятся в одном дереве,
+   управляемом раскладкой 'wb.paletteLayout'.
 
-   ВАЖНО:
-     1. Все обработчики устанавливаются через НАТИВНЫЙ addEventListener —
-        MiniUI патчит jQuery.fn.on и ломает его на объектах, созданных
-        из DOM-элементов (см. project-tree.js).
-     2. draggable ставится двумя способами (property + attribute),
-        плюс MutationObserver следит, чтобы атрибут не был сброшен
-        сторонним кодом. Без draggable="true" HTML5 dragstart не
-        запускается, и перенос компонентов по дереву не работает.
+   Возможности:
+     • компоненты можно перетаскивать между любыми папками;
+     • папки можно создавать, переименовывать, удалять, вкладывать;
+     • папку можно тащить целиком (с подпапками и компонентами);
+     • мультивыделение (Ctrl+клик) — тащим всю группу.
 
-   Drag-and-drop пользовательских компонентов внутри дерева:
-     • источник — .wb-user-comp с draggable="true";
-     • цель     — label папки (.wb-ptree-folder),
-                  label корня ([data-user-root="1"]),
-                  label другого компонента (его папка),
-                  пустое место внутри <ul> папки/корня;
-     • мультивыделение — тащим всю выделенную группу;
-     • после drop вызывается ComponentStorage.updateComponent(), который
-       пишет модель палитры в localStorage['wb.userPalette'].
+   Ограничения:
+     • стандартные компоненты (kind='builtin') удалить нельзя;
+     • папки-категории (kind='category') можно удалять — содержимое
+       поднимается в родительскую папку;
+     • стандартные компоненты регистрируются в реестре, поэтому всегда
+       доступны, даже если их папку удалили (перейдут в корень).
 
-   Двойной клик по компоненту ничего не делает. */
+   DnD — HTML5 (как в project-tree.js). Все обработчики через НАТИВНЫЙ
+   addEventListener. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
 
-    var VERSION = 'v5';
-
     function Palette(rootEl) {
-        if (global.console && console.log) {
-            console.log('[Palette] version ' + VERSION + ' initializing');
-        }
-
         this.root = $(rootEl);
         this.rootNode = (typeof rootEl === 'string')
             ? document.getElementById(rootEl)
@@ -40,460 +30,318 @@
         this.active = null;
         this._collapsed = {};
         this._collapseAllOnRender = true;
-        this._userSel = {};              /* id → true для multi-select */
+        this._userSel = {};              /* itemId → true */
         this._lastUserClick = null;
-        this._dragUserCompIds = null;    /* массив id в момент drag */
+        this._dragItemIds = null;        /* массив itemId при drag items */
+        this._dragFolderIds = null;      /* массив folderId при drag folders */
         this._isDragging = false;
-        this._draggableObserver = null;
 
         this._render();
         var self = this;
 
-        /* Фильтр — .bind() не патчится MiniUI, безопасно. */
         $('#wb-palette-filter').bind('keyup input', function () {
             self._filter($(this).val());
         });
 
         bus.on('palette:placed',    function () { self.clearActive(); });
         bus.on('palette:cancelled', function () { self.clearActive(); });
-        bus.on('component:added',   function () { self._renderUserPalette(); });
-        bus.on('component:removed', function () { self._renderUserPalette(); });
-        bus.on('palette:refresh',   function () { self._renderUserPalette(); });
+        bus.on('component:added',   function () {
+            var m = global.ComponentStorage.readPaletteLayout();
+            global.ComponentStorage._syncUserComponentsToLayout(m);
+            self._render();
+        });
+        bus.on('component:removed', function () { self._render(); });
+        bus.on('palette:refresh',   function () { self._render(); });
 
         this._installContextMenu();
-        this._installUserPaletteDnD();
-        this._installDraggableObserver();
+        this._installDnD();
     }
 
     /* ============================================================
-       Хелпер: draggable — держим включённым на .wb-user-comp.
-
-       Выставляем двумя способами сразу: через property (самый надёжный)
-       и через attribute (для соответствия DOM и отладки).
+       Инициализация раскладки.
        ============================================================ */
-    Palette.prototype._forceDraggable = function (el) {
-        if (!el || el.nodeType !== 1) return;
-        if (!el.classList || !el.classList.contains('wb-user-comp')) return;
-
-        try {
-            if (el.draggable !== true) el.draggable = true;
-        } catch (e) { /* ignore */ }
-        if (el.getAttribute('draggable') !== 'true') {
-            el.setAttribute('draggable', 'true');
-        }
-    };
-
-    Palette.prototype._forceDraggableAll = function () {
-        if (!this.rootNode) return;
-        var comps = this.rootNode.querySelectorAll('.wb-user-comp');
-        for (var i = 0; i < comps.length; i++) this._forceDraggable(comps[i]);
-    };
-
-    /* Наблюдатель за атрибутом draggable: если сторонний код (MiniUI,
-       jQuery, обработчики фреймворка) сбросит его в false — вернём true.
-
-       Также выставляет draggable у только что добавленных .wb-user-comp
-       (например, после перерисовки палитры). */
-    Palette.prototype._installDraggableObserver = function () {
-        if (!this.rootNode || !global.MutationObserver) return;
-        var self = this;
-
-        this._draggableObserver = new global.MutationObserver(function (muts) {
-            for (var i = 0; i < muts.length; i++) {
-                var m = muts[i];
-
-                /* Изменение атрибутов. */
-                if (m.type === 'attributes' && m.attributeName === 'draggable') {
-                    var tgt = m.target;
-                    if (tgt && tgt.classList && tgt.classList.contains('wb-user-comp')) {
-                        if (tgt.getAttribute('draggable') !== 'true') {
-                            self._forceDraggable(tgt);
-                        }
-                    }
-                    continue;
-                }
-
-                /* Появление новых .wb-user-comp. */
-                if (m.type === 'childList' && m.addedNodes && m.addedNodes.length) {
-                    for (var j = 0; j < m.addedNodes.length; j++) {
-                        var node = m.addedNodes[j];
-                        if (node.nodeType !== 1) continue;
-                        if (node.classList && node.classList.contains('wb-user-comp')) {
-                            self._forceDraggable(node);
-                        }
-                        var kids = node.querySelectorAll
-                            ? node.querySelectorAll('.wb-user-comp')
-                            : [];
-                        for (var k = 0; k < kids.length; k++) self._forceDraggable(kids[k]);
-                    }
-                }
-            }
-        });
-
-        this._draggableObserver.observe(this.rootNode, {
-            attributes: true,
-            attributeFilter: ['draggable'],
-            childList: true,
-            subtree: true
-        });
+    Palette.prototype._ensureLayout = function () {
+        return global.ComponentStorage.ensurePaletteInitialized(global.ComponentRegistry);
     };
 
     /* ============================================================
-       Встроенная палитра (D3/M2/HTML)
+       Сборка всех элементов палитры (built-in + user).
        ============================================================ */
-    Palette.prototype._render = function () {
-        var self = this;
-        this.root.empty();
-        var ul = $('<ul class="wb-tree wb-tree-root"></ul>');
-        var tree = global.ComponentRegistry.categoryTree();
-
-        if (this._collapseAllOnRender) {
-            this._collapseAllOnRender = false;
-            this._collapsed = {};
-            for (var i = 0; i < tree.length; i++) {
-                var node = tree[i];
-                this._collapsed['cat_' + node.name] = true;
-                for (var j = 0; j < node.subcategories.length; j++) {
-                    this._collapsed['cat_' + node.name + '/' + node.subcategories[j].name] = true;
-                }
-            }
+    Palette.prototype._collectItems = function () {
+        var out = [];
+        var all = global.ComponentRegistry.all();
+        for (var i = 0; i < all.length; i++) {
+            var def = all[i];
+            if (def.hidden) continue;
+            out.push({
+                itemId: 'b:' + def.id,
+                kind: 'builtin',
+                refId: def.id,
+                def: def,
+                caption: def.caption || def.id
+            });
         }
-        for (var k = 0; k < tree.length; k++) ul.append(self._renderTopCategory(tree[k]));
-        this.root.append(ul);
-
-        /* Пользовательская палитра */
-        this._userRootUl = $('<ul class="wb-tree wb-tree-root wb-user-palette-root"></ul>');
-        this.root.append(this._userRootUl);
-        this._renderUserPalette();
-    };
-
-    Palette.prototype._renderTopCategory = function (node) {
-        var self = this;
-        var visibleDirect = node.components.filter(function (c) { return !c.hidden; });
-        var visibleSubs = [];
-        for (var i = 0; i < node.subcategories.length; i++) {
-            var sub = node.subcategories[i];
-            var vis = sub.components.filter(function (c) { return !c.hidden; });
-            if (vis.length > 0) visibleSubs.push({ name: sub.name, components: vis });
-        }
-        var li = $('<li></li>');
-        if (visibleDirect.length === 0 && visibleSubs.length === 0) return li;
-
-        var catId = 'cat_' + node.name;
-        var collapsed = !!this._collapsed[catId];
-        var toggle = $('<span class="wb-toggle"></span>').text(collapsed ? '+' : '\u2212');
-        li.append(toggle);
-        li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(node.name));
-        var cul = $('<ul></ul>');
-        for (var d = 0; d < visibleDirect.length; d++) cul.append(self._renderComponentLi(visibleDirect[d]));
-        for (var s = 0; s < visibleSubs.length; s++) cul.append(self._renderSubCategoryLi(node.name, visibleSubs[s]));
-        if (collapsed) cul.hide();
-        li.append(cul);
-        toggle.click(function (e) {
-            e.stopPropagation();
-            var now = !self._collapsed[catId];
-            self._collapsed[catId] = now;
-            toggle.text(now ? '+' : '\u2212');
-            if (now) cul.hide(); else cul.show();
-        });
-        return li;
-    };
-
-    Palette.prototype._renderSubCategoryLi = function (parentName, sub) {
-        var self = this;
-        var li = $('<li></li>');
-        var catId = 'cat_' + parentName + '/' + sub.name;
-        var collapsed = !!this._collapsed[catId];
-        var toggle = $('<span class="wb-toggle"></span>').text(collapsed ? '+' : '\u2212');
-        li.append(toggle);
-        li.append($('<span class="wb-tree-label wb-cat-label"></span>').text(sub.name));
-        var cul = $('<ul></ul>');
-        for (var i = 0; i < sub.components.length; i++) cul.append(self._renderComponentLi(sub.components[i]));
-        if (collapsed) cul.hide();
-        li.append(cul);
-        toggle.click(function (e) {
-            e.stopPropagation();
-            var now = !self._collapsed[catId];
-            self._collapsed[catId] = now;
-            toggle.text(now ? '+' : '\u2212');
-            if (now) cul.hide(); else cul.show();
-        });
-        return li;
-    };
-
-    Palette.prototype._renderComponentLi = function (c) {
-        var self = this;
-        var cli = $('<li></li>');
-        cli.append($('<span class="wb-toggle wb-leaf"></span>'));
-        var comp = $('<span></span>')
-            .addClass('wb-tree-label wb-comp-label wb-palette-btn')
-            .attr('data-comp-id', c.id);
-        if (c.iconUrl) {
-            var $img = $('<img/>').addClass('wb-palette-icon').attr('alt','').attr('src', c.iconUrl)
-                .bind('error', function () { $(this).remove(); });
-            comp.append($img);
-        }
-        comp.append(document.createTextNode(c.caption));
-        comp.click(function () { self._select(c, comp); });
-        cli.append(comp);
-        return cli;
-    };
-
-    Palette.prototype._select = function (comp, btn) {
-        this.clearActive();
-        btn.addClass('wb-active');
-        this.active = comp;
-        $('#wb-domtree').addClass('wb-drop-mode');
-        bus.emit('palette:selected', { component: comp });
-    };
-
-    Palette.prototype.clearActive = function () {
-        this.root.find('.wb-palette-btn').removeClass('wb-active');
-        this.active = null;
-        $('#wb-domtree').removeClass('wb-drop-mode');
-    };
-
-    /* ============================================================
-       Пользовательская палитра
-       ============================================================ */
-    Palette.prototype._renderUserPalette = function () {
-        if (!this._userRootUl) return;
-        this._userRootUl.empty();
-        var self = this;
-        var model = global.ComponentStorage.read();
-
-        /* Заголовок-корень. */
-        var rootLi = $('<li></li>');
-        var rootToggle = $('<span class="wb-toggle"></span>').text('\u2212');
-        rootLi.append(rootToggle);
-        var rootLabel = $('<span class="wb-tree-label wb-cat-label"></span>')
-            .text('User Palette')
-            .attr('data-user-root', '1');
-        rootLi.append(rootLabel);
-
-        var childrenUl = $('<ul></ul>');
-        rootLi.append(childrenUl);
-        this._userRootUl.append(rootLi);
-
-        rootToggle.click(function (e) {
-            e.stopPropagation();
-            var isHidden = childrenUl.is(':hidden');
-            childrenUl.toggle();
-            rootToggle.text(isHidden ? '\u2212' : '+');
-        });
-
-        /* Строим дерево папок и компонентов. */
-        var folders = {};
-        for (var fk in model.folders) if (model.folders.hasOwnProperty(fk)) {
-            folders[fk] = $.extend({}, model.folders[fk], { children: [], comps: [] });
-        }
-        var rootFolders = [], rootComps = [];
-        for (var ck in model.components) if (model.components.hasOwnProperty(ck)) {
-            var c = model.components[ck];
-            if (c.folderId && folders[c.folderId]) folders[c.folderId].comps.push(c);
-            else rootComps.push(c);
-        }
-        for (var fk2 in folders) {
-            var f = folders[fk2];
-            if (f.parentId && folders[f.parentId]) folders[f.parentId].children.push(f);
-            else rootFolders.push(f);
-        }
-        rootFolders.sort(function (a,b){ return a.name < b.name ? -1 : 1; });
-        rootComps.sort(function (a,b){ return a.name < b.name ? -1 : 1; });
-
-        function renderFolder(f, parentUl) {
-            var li = document.createElement('li');
-            var tog = document.createElement('span');
-            tog.className = 'wb-toggle';
-            tog.textContent = '\u2212';
-            li.appendChild(tog);
-
-            var lbl = document.createElement('span');
-            lbl.className = 'wb-tree-label wb-ptree-folder';
-            lbl.textContent = f.name;
-            lbl.setAttribute('data-folder-id', f.id);
-            lbl.setAttribute('draggable', 'false');
-            li.appendChild(lbl);
-
-            var ul = document.createElement('ul');
-            li.appendChild(ul);
-            for (var i=0;i<f.children.length;i++) renderFolder(f.children[i], ul);
-            for (var j=0;j<f.comps.length;j++) ul.appendChild(renderComp(f.comps[j]));
-
-            tog.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (ul.style.display === 'none') {
-                    ul.style.display = '';
-                    tog.textContent = '\u2212';
-                } else {
-                    ul.style.display = 'none';
-                    tog.textContent = '+';
-                }
-            }, false);
-
-            parentUl.appendChild(li);
-        }
-
-        function renderComp(c) {
-            var li = document.createElement('li');
-            var tog = document.createElement('span');
-            tog.className = 'wb-toggle wb-leaf';
-            li.appendChild(tog);
-
-            var comp = document.createElement('span');
-            comp.className = 'wb-tree-label wb-comp-label wb-user-comp';
-            comp.setAttribute('data-user-comp-id', c.id);
-
-            /* Ключевая строка: draggable двумя способами. */
-            comp.draggable = true;
-            comp.setAttribute('draggable', 'true');
-
-            if (c.icon) {
-                var src = c.icon;
-                if (global.ProjectResolver && global.ProjectResolver.isProjectPath && global.ProjectResolver.isProjectPath(src)) {
-                    try { src = global.ProjectResolver.resolve(src); } catch(e){}
-                }
-                var img = document.createElement('img');
-                img.className = 'wb-palette-icon';
-                img.alt = '';
-                img.draggable = false;
-                img.setAttribute('draggable', 'false');
-                img.src = src;
-                img.onerror = function () { if (this.parentNode) this.parentNode.removeChild(this); };
-                comp.appendChild(img);
-            }
-            comp.appendChild(document.createTextNode(c.name || c.id));
-
-            comp.addEventListener('click', function (e) {
-                e.stopPropagation();
-                self._selectUserComponent(c, e.ctrlKey || e.metaKey);
-            }, false);
-
-            /* Двойной клик — ничего не делаем (специально отключено). */
-
-            li.appendChild(comp);
-            return li;
-        }
-
-        for (var i=0;i<rootFolders.length;i++) renderFolder(rootFolders[i], childrenUl[0]);
-        for (var j=0;j<rootComps.length;j++) childrenUl[0].appendChild(renderComp(rootComps[j]));
-
-        if (!rootFolders.length && !rootComps.length) {
-            var emptyLi = document.createElement('li');
-            var emptyLbl = document.createElement('span');
-            emptyLbl.className = 'wb-tree-label';
-            emptyLbl.style.color = '#999';
-            emptyLbl.style.fontStyle = 'italic';
-            emptyLbl.textContent = '(пусто — ПКМ для создания)';
-            emptyLi.appendChild(emptyLbl);
-            childrenUl[0].appendChild(emptyLi);
-        }
-
-        this._syncUserSelectionUI();
-        this._forceDraggableAll();
-    };
-
-    Palette.prototype._buildUserDef = function (c) {
-        return global.ComponentStorage.toDef(c);
-    };
-
-    Palette.prototype._selectUserComponent = function (c, additive) {
-        if (!additive) this._userSel = {};
-        this._userSel[c.id] = true;
-        this._lastUserClick = c.id;
-        this._syncUserSelectionUI();
-
-        var def = this._buildUserDef(c);
-        this.clearActive();
-        this.root.find('.wb-user-comp[data-user-comp-id="' + c.id + '"]').addClass('wb-active');
-        this.active = def;
-        $('#wb-domtree').addClass('wb-drop-mode');
-        bus.emit('palette:selected', { component: def });
-    };
-
-    Palette.prototype._syncUserSelectionUI = function () {
-        var self = this;
-        this.root.find('.wb-user-comp').each(function () {
-            var id = $(this).attr('data-user-comp-id');
-            $(this).toggleClass('wb-selected', !!self._userSel[id]);
-            /* На случай, если jQuery .addClass сбросил draggable. */
-            self._forceDraggable(this);
-        });
-    };
-
-    Palette.prototype.getUserSelection = function () {
-        var ids = [], out = [];
-        for (var k in this._userSel) if (this._userSel[k]) ids.push(k);
-        for (var i = 0; i < ids.length; i++) {
-            var c = global.ComponentStorage.getComponent(ids[i]);
-            if (c) out.push(c);
+        var comps = global.ComponentStorage.listComponents();
+        for (var j = 0; j < comps.length; j++) {
+            var c = comps[j];
+            out.push({
+                itemId: 'u:' + c.id,
+                kind: 'user',
+                refId: c.id,
+                comp: c,
+                caption: c.name || c.id
+            });
         }
         return out;
     };
 
     /* ============================================================
-       Определение цели drop.
+       Основной рендер.
+       ============================================================ */
+    Palette.prototype._render = function () {
+        var self = this;
+        this.root.empty();
+
+        var layout = this._ensureLayout();
+
+        var fmap = {};
+        fmap[''] = {
+            id: '', name: '', parentId: null, position: -1, kind: 'root',
+            items: [], childFolders: []
+        };
+        for (var fid in layout.folders) {
+            if (!layout.folders.hasOwnProperty(fid)) continue;
+            var f = layout.folders[fid];
+            fmap[fid] = {
+                id: f.id, name: f.name, parentId: f.parentId || '',
+                position: f.position || 0, kind: f.kind || 'user',
+                items: [], childFolders: []
+            };
+        }
+
+        for (var fid2 in fmap) {
+            if (fid2 === '') continue;
+            var fld = fmap[fid2];
+            var pid = fld.parentId;
+            if (!fmap[pid]) pid = '';
+            fmap[pid].childFolders.push(fld);
+        }
+
+        var items = this._collectItems();
+        for (var ii = 0; ii < items.length; ii++) {
+            var it = items[ii];
+            var pl = layout.items[it.itemId] || { folderId: '', position: 0 };
+            var target = fmap[pl.folderId] || fmap[''];
+            it.position = pl.position || 0;
+            target.items.push(it);
+        }
+
+        for (var fid3 in fmap) {
+            if (!fmap.hasOwnProperty(fid3)) continue;
+            fmap[fid3].childFolders.sort(function (a, b) {
+                if (a.position !== b.position) return a.position - b.position;
+                return a.name < b.name ? -1 : 1;
+            });
+            fmap[fid3].items.sort(function (a, b) {
+                if (a.position !== b.position) return a.position - b.position;
+                return a.caption < b.caption ? -1 : 1;
+            });
+        }
+
+        var ul = document.createElement('ul');
+        ul.className = 'wb-tree wb-tree-root';
+        this._buildFolderNode(fmap[''], ul, /* isRoot */ true);
+        this.root.append(ul);
+
+        this._syncSelectionUI();
+    };
+
+    Palette.prototype._buildFolderNode = function (folder, parentUl, isRoot) {
+        var self = this;
+        var li = document.createElement('li');
+        var hasChildren = folder.childFolders.length > 0 || folder.items.length > 0;
+        var collKey = 'f:' + folder.id;
+        var collapsed = !!this._collapsed[collKey];
+
+        var tog = document.createElement('span');
+        tog.className = 'wb-toggle' + (hasChildren ? '' : ' wb-leaf');
+        tog.textContent = hasChildren ? (collapsed ? '+' : '\u2212') : '';
+        li.appendChild(tog);
+
+        var lbl = document.createElement('span');
+        lbl.className = 'wb-tree-label wb-cat-label wb-palette-folder';
+        lbl.setAttribute('data-palette-folder-id', folder.id);
+        if (folder.kind === 'category') lbl.classList.add('wb-palette-folder-cat');
+        if (isRoot) {
+            lbl.classList.add('wb-palette-root');
+            lbl.setAttribute('data-palette-root', '1');
+            lbl.textContent = 'Palette';
+        } else {
+            lbl.textContent = folder.name;
+            lbl.setAttribute('draggable', 'true');
+        }
+        li.appendChild(lbl);
+
+        var ul = document.createElement('ul');
+        if (collapsed) ul.style.display = 'none';
+
+        for (var i = 0; i < folder.childFolders.length; i++) {
+            this._buildFolderNode(folder.childFolders[i], ul, false);
+        }
+        for (var j = 0; j < folder.items.length; j++) {
+            ul.appendChild(this._buildItemNode(folder.items[j]));
+        }
+
+        li.appendChild(ul);
+        parentUl.appendChild(li);
+
+        if (hasChildren) {
+            tog.addEventListener('click', function (e) {
+                e.stopPropagation();
+                self._collapsed[collKey] = !self._collapsed[collKey];
+                var now = self._collapsed[collKey];
+                tog.textContent = now ? '+' : '\u2212';
+                ul.style.display = now ? 'none' : '';
+            }, false);
+        }
+        return li;
+    };
+
+    Palette.prototype._buildItemNode = function (it) {
+        var self = this;
+        var li = document.createElement('li');
+        var tog = document.createElement('span');
+        tog.className = 'wb-toggle wb-leaf';
+        li.appendChild(tog);
+
+        var item = document.createElement('span');
+        item.className = 'wb-tree-label wb-comp-label wb-palette-item';
+        item.setAttribute('data-item-id', it.itemId);
+        item.setAttribute('data-item-kind', it.kind);
+        item.setAttribute('draggable', 'true');
+
+        var iconUrl = '';
+        if (it.kind === 'builtin' && it.def.iconUrl) iconUrl = it.def.iconUrl;
+        if (it.kind === 'user' && it.comp.icon) {
+            iconUrl = it.comp.icon;
+            if (global.ProjectResolver && global.ProjectResolver.isProjectPath && global.ProjectResolver.isProjectPath(iconUrl)) {
+                try { iconUrl = global.ProjectResolver.resolve(iconUrl); } catch (e) {}
+            }
+        }
+        if (iconUrl) {
+            var img = document.createElement('img');
+            img.className = 'wb-palette-icon';
+            img.alt = '';
+            img.draggable = false;
+            img.setAttribute('draggable', 'false');
+            img.src = iconUrl;
+            img.onerror = function () { if (this.parentNode) this.parentNode.removeChild(this); };
+            item.appendChild(img);
+        }
+        item.appendChild(document.createTextNode(it.caption));
+
+        item.addEventListener('click', function (e) {
+            e.stopPropagation();
+            self._selectItem(it, e.ctrlKey || e.metaKey);
+        }, false);
+
+        li.appendChild(item);
+        return li;
+    };
+
+    /* ============================================================
+       Выделение.
+       ============================================================ */
+    Palette.prototype._selectItem = function (it, additive) {
+        if (!additive) this._userSel = {};
+        this._userSel[it.itemId] = true;
+        this._lastUserClick = it.itemId;
+        this._syncSelectionUI();
+
+        var def;
+        if (it.kind === 'builtin') def = it.def;
+        else def = global.ComponentStorage.toDef(it.comp);
+        this.clearActive();
+        this.root.find('.wb-palette-item[data-item-id="' + cssEscape(it.itemId) + '"]').addClass('wb-active');
+        this.active = def;
+        $('#wb-domtree').addClass('wb-drop-mode');
+        bus.emit('palette:selected', { component: def });
+    };
+
+    Palette.prototype._syncSelectionUI = function () {
+        var self = this;
+        this.root.find('.wb-palette-item').each(function () {
+            var id = $(this).attr('data-item-id');
+            $(this).toggleClass('wb-selected', !!self._userSel[id]);
+        });
+    };
+
+    Palette.prototype.getSelectedItemIds = function () {
+        var out = [];
+        for (var k in this._userSel) if (this._userSel[k]) out.push(k);
+        return out;
+    };
+
+    Palette.prototype.clearActive = function () {
+        this.root.find('.wb-palette-item').removeClass('wb-active');
+        this.active = null;
+        $('#wb-domtree').removeClass('wb-drop-mode');
+    };
+
+    /* ============================================================
+       Resolve drop target.
        ============================================================ */
     Palette.prototype._resolveDropTarget = function (el, rootNode) {
         if (!el || !rootNode) return null;
-
-        /* 1. Под курсором label (или его потомок). */
         var node = el;
         while (node && node !== rootNode) {
             if (node.classList && node.classList.contains('wb-tree-label')) {
-                if (node.classList.contains('wb-ptree-folder')) {
-                    return { folderId: node.getAttribute('data-folder-id') || '', label: node };
-                }
-                if (node.getAttribute('data-user-root') === '1') {
+                if (node.getAttribute('data-palette-root') === '1') {
                     return { folderId: '', label: node };
                 }
-                if (node.classList.contains('wb-user-comp')) {
-                    /* Дроп на другой компонент → в его папку. */
+                var fId = node.getAttribute('data-palette-folder-id');
+                if (fId != null) {
+                    return { folderId: fId || '', label: node };
+                }
+                var itemId = node.getAttribute('data-item-id');
+                if (itemId) {
                     var li = node.parentNode;
                     var ul = li ? li.parentNode : null;
-                    return this._folderIdFromUl(ul, rootNode);
+                    return this._folderFromUl(ul, rootNode);
                 }
                 return null;
             }
             node = node.parentNode;
         }
-
-        /* 2. Пустое место — ищем ближайший UL. */
         node = el;
         while (node && node !== rootNode) {
-            if (node.tagName === 'UL') {
-                return this._folderIdFromUl(node, rootNode);
-            }
+            if (node.tagName === 'UL') return this._folderFromUl(node, rootNode);
             node = node.parentNode;
         }
         return null;
     };
 
-    Palette.prototype._folderIdFromUl = function (ul, rootNode) {
+    Palette.prototype._folderFromUl = function (ul, rootNode) {
         if (!ul) return null;
-        if (ul.classList && ul.classList.contains('wb-user-palette-root')) {
-            return { folderId: '', label: null };
-        }
         var li = ul.parentNode;
         if (li && li.tagName === 'LI') {
             for (var i = 0; i < li.children.length; i++) {
                 var c = li.children[i];
                 if (!c.classList || !c.classList.contains('wb-tree-label')) continue;
-                if (c.classList.contains('wb-ptree-folder')) {
-                    return { folderId: c.getAttribute('data-folder-id') || '', label: c };
-                }
-                if (c.getAttribute('data-user-root') === '1') {
+                if (c.getAttribute('data-palette-root') === '1') {
                     return { folderId: '', label: c };
                 }
+                var fId = c.getAttribute('data-palette-folder-id');
+                if (fId != null) return { folderId: fId || '', label: c };
             }
         }
         return null;
     };
 
     /* ============================================================
-       HTML5 drag-and-drop (паттерн project-tree.js)
+       HTML5 DnD.
        ============================================================ */
-    Palette.prototype._installUserPaletteDnD = function () {
+    Palette.prototype._installDnD = function () {
         var self = this;
         var rootNode = this.rootNode;
         if (!rootNode) return;
@@ -506,70 +354,64 @@
             return null;
         }
 
-        function findCompLabel(compId) {
-            var all = rootNode.querySelectorAll('.wb-user-comp');
-            for (var i = 0; i < all.length; i++) {
-                if (all[i].getAttribute('data-user-comp-id') === compId) return all[i];
-            }
-            return null;
-        }
-
         rootNode.addEventListener('dragstart', function (e) {
             var lbl = findLabel(e.target);
-            if (!lbl || !lbl.classList.contains('wb-user-comp')) return;
+            if (!lbl) return;
 
-            var id = lbl.getAttribute('data-user-comp-id');
-            if (!id) return;
+            var itemId = lbl.getAttribute('data-item-id');
+            var folderId = lbl.getAttribute('data-palette-folder-id');
 
-            if (!self._userSel[id]) {
-                self._userSel = {};
-                self._userSel[id] = true;
-                self._syncUserSelectionUI();
-            }
-            var ids = [];
-            for (var k in self._userSel) if (self._userSel[k]) ids.push(k);
-            if (!ids.length) ids = [id];
-            self._dragUserCompIds = ids;
-            self._isDragging = true;
-
-            for (var i = 0; i < ids.length; i++) {
-                var el = findCompLabel(ids[i]);
-                if (el) el.classList.add('wb-dragging');
-            }
-
-            try {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', ids.join('\n'));
-                e.dataTransfer.setData('application/x-wb-user-comp', ids[0]);
-                /* Некоторые браузеры требуют непустой dataTransfer для drag. */
-                if (e.dataTransfer.setDragImage && lbl) {
-                    try { e.dataTransfer.setDragImage(lbl, 0, 0); } catch (ex) {}
+            if (itemId) {
+                if (!self._userSel[itemId]) {
+                    self._userSel = {};
+                    self._userSel[itemId] = true;
+                    self._syncSelectionUI();
                 }
-            } catch (ex) { /* ignore */ }
+                var ids = self.getSelectedItemIds();
+                self._dragItemIds = ids;
+                self._dragFolderIds = null;
+                for (var i = 0; i < ids.length; i++) {
+                    var el = rootNode.querySelector('.wb-palette-item[data-item-id="' + cssEscape(ids[i]) + '"]');
+                    if (el) el.classList.add('wb-dragging');
+                }
+                try {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', ids.join('\n'));
+                    e.dataTransfer.setData('application/x-wb-palette-item', ids[0]);
+                } catch (ex) {}
+            } else if (folderId && folderId !== '') {
+                self._dragFolderIds = [folderId];
+                self._dragItemIds = null;
+                lbl.classList.add('wb-dragging');
+                try {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', folderId);
+                    e.dataTransfer.setData('application/x-wb-palette-folder', folderId);
+                } catch (ex) {}
+            } else {
+                return;
+            }
+            self._isDragging = true;
         }, false);
 
-        rootNode.addEventListener('dragend', function () {
-            self._endDrag();
-        }, false);
+        rootNode.addEventListener('dragend', function () { self._endDrag(); }, false);
 
         rootNode.addEventListener('dragover', function (e) {
-            if (!self._isDragging || !self._dragUserCompIds || !self._dragUserCompIds.length) return;
-
+            if (!self._isDragging) return;
             var target = self._resolveDropTarget(e.target, rootNode);
-
             self._clearDropIndicators();
+            if (!target) { if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; return; }
 
-            if (!target) {
-                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
-                return;
-            }
-
-            /* Нельзя бросать в свою же папку. */
-            var srcFolder = self._currentFolderOfIds(self._dragUserCompIds);
-            if (srcFolder !== null && srcFolder === (target.folderId || '')) {
-                if (target.label) target.label.classList.add('wb-drop-forbidden');
-                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
-                return;
+            if (self._dragFolderIds && self._dragFolderIds.length) {
+                var movingF = self._dragFolderIds[0];
+                if (movingF === target.folderId) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
+                if (target.folderId && self._isFolderDescendant(target.folderId, movingF)) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
             }
 
             e.preventDefault();
@@ -578,14 +420,12 @@
         }, false);
 
         rootNode.addEventListener('dragleave', function (e) {
-            if (!self._isDragging) return;
             var lbl = findLabel(e.target);
             if (lbl) lbl.classList.remove('wb-drop-inside', 'wb-drop-forbidden');
         }, false);
 
         rootNode.addEventListener('drop', function (e) {
-            if (!self._isDragging || !self._dragUserCompIds || !self._dragUserCompIds.length) return;
-
+            if (!self._isDragging) return;
             e.preventDefault();
             e.stopPropagation();
 
@@ -593,35 +433,43 @@
             if (!target) { self._endDrag(); return false; }
 
             var moved = false;
-            for (var i = 0; i < self._dragUserCompIds.length; i++) {
-                if (self._moveUserCompToFolder(self._dragUserCompIds[i], target.folderId)) {
-                    moved = true;
+
+            if (self._dragItemIds && self._dragItemIds.length) {
+                for (var i = 0; i < self._dragItemIds.length; i++) {
+                    if (global.ComponentStorage.setItemPlacement(self._dragItemIds[i], target.folderId)) {
+                        moved = true;
+                    }
                 }
             }
-            if (moved) {
-                self._renderUserPalette();
-                bus.emit('palette:refresh');
+
+            if (self._dragFolderIds && self._dragFolderIds.length) {
+                for (var j = 0; j < self._dragFolderIds.length; j++) {
+                    if (global.ComponentStorage.movePaletteFolder(self._dragFolderIds[j], target.folderId)) {
+                        moved = true;
+                    }
+                }
             }
+
             self._endDrag();
+            if (moved) self._render();
             return false;
         }, false);
     };
 
-    Palette.prototype._currentFolderOfIds = function (ids) {
-        var common = null;
-        for (var i = 0; i < ids.length; i++) {
-            var c = global.ComponentStorage.getComponent(ids[i]);
-            if (!c) return null;
-            var f = c.folderId || '';
-            if (common === null) common = f;
-            else if (common !== f) return null;
+    Palette.prototype._isFolderDescendant = function (folderId, ancestorId) {
+        var m = global.ComponentStorage.readPaletteLayout();
+        var cur = folderId;
+        while (cur) {
+            if (cur === ancestorId) return true;
+            cur = m.folders[cur] ? m.folders[cur].parentId : '';
         }
-        return common;
+        return false;
     };
 
     Palette.prototype._endDrag = function () {
         this._isDragging = false;
-        this._dragUserCompIds = null;
+        this._dragItemIds = null;
+        this._dragFolderIds = null;
         if (!this.rootNode) return;
         var drags = this.rootNode.querySelectorAll('.wb-dragging');
         for (var i = 0; i < drags.length; i++) drags[i].classList.remove('wb-dragging');
@@ -636,23 +484,8 @@
         }
     };
 
-    Palette.prototype._moveUserCompToFolder = function (compId, folderId) {
-        if (!compId) return false;
-        var c = global.ComponentStorage.getComponent(compId);
-        if (!c) return false;
-
-        var curFolder = c.folderId || '';
-        var newFolder = folderId || '';
-        if (curFolder === newFolder) return false;
-
-        if (newFolder && !global.ComponentStorage.getFolder(newFolder)) return false;
-
-        global.ComponentStorage.updateComponent(compId, { folderId: newFolder });
-        return true;
-    };
-
     /* ============================================================
-       Контекстное меню
+       Контекстное меню.
        ============================================================ */
     Palette.prototype._installContextMenu = function () {
         var self = this;
@@ -666,65 +499,189 @@
             var tgt = $(e.target);
             var ctx = { x: e.clientX, y: e.clientY };
 
-            var userCompEl = tgt.closest('.wb-user-comp');
-            if (userCompEl.length) {
-                var id = userCompEl.attr('data-user-comp-id');
+            var itemEl = tgt.closest('[data-item-id]');
+            var folderEl = tgt.closest('[data-palette-folder-id]');
+
+            if (itemEl.length) {
+                var id = itemEl.attr('data-item-id');
                 if (!self._userSel[id]) {
                     self._userSel = {};
                     self._userSel[id] = true;
-                    self._syncUserSelectionUI();
+                    self._syncSelectionUI();
                 }
-                ctx.type = 'user-components';
-                ctx.ids = Object.keys(self._userSel).filter(function (k) {
-                    return self._userSel[k];
-                });
+                ctx.type = 'item';
+                ctx.ids = self.getSelectedItemIds();
+                ctx.kind = itemEl.attr('data-item-kind');
+            } else if (folderEl.length) {
+                ctx.type = 'folder';
+                ctx.folderId = folderEl.attr('data-palette-folder-id') || '';
+                var l = global.ComponentStorage.getPaletteFolder(ctx.folderId);
+                ctx.folderKind = l ? l.kind : 'user';
             } else {
-                var folderEl = tgt.closest('[data-folder-id]');
-                if (folderEl.length) {
-                    ctx.type = 'user-folder';
-                    ctx.folderId = folderEl.attr('data-folder-id');
-                } else {
-                    ctx.type = 'user-root';
-                }
+                ctx.type = 'root';
             }
+
             self._ctx = ctx;
             bus.emit('palette:contextmenu', ctx);
         }, false);
     };
 
     Palette.prototype.showContextMenu = function (ctx) {
-        var menuId = (ctx.type === 'user-components') ? 'wb-usercompmenu'
-            : (ctx.type === 'user-folder')     ? 'wb-userfoldermenu'
-                : 'wb-userpalettemenu';
+        var menuId;
+        if (ctx.type === 'item') {
+            menuId = (ctx.kind === 'user') ? 'wb-usercompmenu' : 'wb-paletteitemmenu';
+        } else if (ctx.type === 'folder') {
+            menuId = 'wb-userfoldermenu';
+        } else {
+            menuId = 'wb-userpalettemenu';
+        }
         var menu = global.mini.get(menuId);
         if (menu) menu.showAtPos(ctx.x, ctx.y);
     };
 
     /* ============================================================
-       Действия контекстного меню
+       Действия контекстного меню.
        ============================================================ */
     Palette.prototype.userCtxNewFolder = function () {
-        var name = prompt('Имя каталога:', 'New Folder');
+        var name = prompt('Имя папки:', 'New Folder');
         if (!name) return;
-        var parentId = (this._ctx && this._ctx.type === 'user-folder') ? this._ctx.folderId : '';
-        global.ComponentStorage.createFolder(String(name).trim(), parentId);
-        this._renderUserPalette();
+        var parentId = (this._ctx && this._ctx.type === 'folder') ? (this._ctx.folderId || '') : '';
+        global.ComponentStorage.createPaletteFolder(String(name).trim(), parentId);
+        this._render();
     };
+
     Palette.prototype.userCtxRenameFolder = function () {
-        if (!this._ctx || this._ctx.type !== 'user-folder') return;
-        var f = global.ComponentStorage.getFolder(this._ctx.folderId);
+        if (!this._ctx || this._ctx.type !== 'folder') return;
+        var f = global.ComponentStorage.getPaletteFolder(this._ctx.folderId);
         if (!f) return;
-        var name = prompt('Новое имя каталога:', f.name);
+        var name = prompt('Новое имя папки:', f.name);
         if (!name) return;
-        global.ComponentStorage.renameFolder(f.id, String(name).trim());
-        this._renderUserPalette();
+        global.ComponentStorage.renamePaletteFolder(f.id, String(name).trim());
+        this._render();
     };
+
     Palette.prototype.userCtxDeleteFolder = function () {
-        if (!this._ctx || this._ctx.type !== 'user-folder') return;
-        if (!confirm('Удалить каталог? Компоненты и вложенные каталоги переместятся в корень.')) return;
-        global.ComponentStorage.deleteFolder(this._ctx.folderId);
-        this._renderUserPalette();
+        if (!this._ctx || this._ctx.type !== 'folder') return;
+        if (!this._ctx.folderId) return;
+        if (!confirm('Удалить папку? Компоненты и подпапки переместятся в родителя.')) return;
+        global.ComponentStorage.deletePaletteFolder(this._ctx.folderId);
+        this._render();
     };
+
+    Palette.prototype.paletteItemCtxReset = function () {
+        if (!this._ctx || this._ctx.type !== 'item') return;
+        var ids = this._ctx.ids || [];
+        for (var i = 0; i < ids.length; i++) {
+            global.ComponentStorage.clearItemPlacement(ids[i]);
+        }
+        try {
+            global.ComponentStorage.savePaletteLayout({ version: 1, initialized: false, folders: {}, items: {} });
+        } catch (e) {}
+        this._render();
+    };
+
+    Palette.prototype.userCtxOpenInProject = function () {
+        var ids = (this._ctx && this._ctx.ids) || [];
+        if (!ids.length) return;
+        var uid = ids[0];
+        if (uid.indexOf('u:') !== 0) return;
+        var compId = uid.substring(2);
+        var comp = global.ComponentStorage.getComponent(compId);
+        if (!comp) return;
+
+        var defaultName = 'Component_' + (comp.name || comp.cmptype || 'edit');
+        var projName = prompt('Имя проекта для редактирования:', defaultName);
+        if (!projName) return;
+        projName = String(projName).trim();
+        if (!projName) return;
+
+        var pm = global.ProjectManagerInstance;
+        if (!pm) { alert('ProjectManager не подключён.'); return; }
+
+        var proj = global.ProjectStorage.get(projName);
+        if (proj) {
+            if (!confirm('Проект "' + projName + '" уже существует. Перезаписать?')) return;
+        } else {
+            proj = global.ProjectStorage.create(projName);
+            if (!proj) { alert('Не удалось создать проект.'); return; }
+        }
+
+        proj.rootType = 'component';
+        proj.mainFile = 'index.html';
+        proj.files = proj.files || {};
+
+        proj.componentData = {
+            id: comp.id, name: comp.name || '', cmptype: comp.cmptype || '',
+            tagName: comp.tagName || 'div', icon: comp.icon || '',
+            description: comp.description || '',
+            previewIdeHtml: comp.previewIdeHtml || comp.html || '',
+            html: comp.previewIdeHtml || comp.html || '',
+            customProperties: comp.customProperties || [],
+            customEvents: comp.customEvents || [],
+            nestingMode: comp.nestingMode || 'all',
+            nestingRules: comp.nestingRules || [],
+            jsLibs: comp.jsLibs || [], cssLibs: comp.cssLibs || []
+        };
+
+        var compHtml = comp.previewIdeHtml || comp.html || '';
+        proj.files['index.html'] = {
+            kind: 'text',
+            content: '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' +
+                escapeHtml(projName) + '</title>\n</head>\n<body>\n' + compHtml + '\n</body>\n</html>'
+        };
+
+        var safeCt = String(comp.cmptype || '').replace(/[^A-Za-z0-9_.-]/g, '_');
+        var libDir = global.ComponentStorage.LIB_DIR;
+        if (safeCt) {
+            var keys = Object.keys(proj.files);
+            for (var i = 0; i < keys.length; i++) {
+                if (keys[i].indexOf(libDir) === 0) delete proj.files[keys[i]];
+            }
+            proj.files[libDir + 'core.js'] = {
+                kind: 'text', _system: 'wb-lib',
+                content: global.ComponentStorage.CORE_SOURCE
+            };
+            proj.files[libDir + safeCt + '.js'] = {
+                kind: 'text', _system: 'wb-lib',
+                content: global.ComponentStorage._buildCmptypeJs(comp)
+            };
+            proj.files[libDir + safeCt + '.css'] = {
+                kind: 'text', _system: 'wb-lib',
+                content: global.ComponentStorage._buildCmptypeCss(comp)
+            };
+        }
+
+        global.ProjectStorage.save(proj);
+        pm.refreshCombo();
+        pm.load(projName);
+    };
+
+    Palette.prototype.userCtxDeleteComponents = function () {
+        var ids = (this._ctx && this._ctx.ids) || [];
+        var uids = ids.filter(function (x) { return x.indexOf('u:') === 0; });
+        if (!uids.length) { alert('Ничего не выбрано.'); return; }
+        if (!confirm('Удалить выбранные компоненты (' + uids.length + ')?')) return;
+        for (var i = 0; i < uids.length; i++) {
+            var cid = uids[i].substring(2);
+            global.ComponentStorage.deleteComponent(cid);
+            global.ComponentStorage.clearItemPlacement(uids[i]);
+        }
+        this._userSel = {};
+        this._render();
+    };
+
+    Palette.prototype.userCtxExportSelected = function () {
+        var ids = (this._ctx && this._ctx.ids) || [];
+        var comps = [];
+        for (var i = 0; i < ids.length; i++) {
+            if (ids[i].indexOf('u:') !== 0) continue;
+            var c = global.ComponentStorage.getComponent(ids[i].substring(2));
+            if (c) comps.push(c);
+        }
+        if (!comps.length) { alert('Ничего не выбрано.'); return; }
+        global.ComponentExportUtils.exportComponents(comps);
+    };
+
     Palette.prototype.userCtxImport = function () {
         var self = this;
         var inp = document.createElement('input');
@@ -734,26 +691,12 @@
             var f = inp.files[0]; if (!f) return;
             global.ComponentExportUtils.importComponents(f).then(function (n) {
                 alert('Импортировано компонентов: ' + n);
-                self._renderUserPalette();
+                self._render();
             }).catch(function (err) {
                 alert('Ошибка импорта: ' + (err && err.message || err));
             });
         };
         inp.click();
-    };
-    Palette.prototype.userCtxExportSelected = function () {
-        var sel = this.getUserSelection();
-        if (!sel.length) { alert('Ничего не выбрано.'); return; }
-        global.ComponentExportUtils.exportComponents(sel);
-    };
-    Palette.prototype.userCtxDeleteComponents = function () {
-        var sel = this.getUserSelection();
-        if (!sel.length) { alert('Ничего не выбрано.'); return; }
-        if (!confirm('Удалить выбранные компоненты (' + sel.length + ')?')) return;
-        for (var i = 0; i < sel.length; i++) global.ComponentStorage.deleteComponent(sel[i].id);
-        this._userSel = {};
-        this._syncUserSelectionUI();
-        this._renderUserPalette();
     };
 
     Palette.prototype.userCtxImportFromProject = function () {
@@ -766,104 +709,60 @@
                 list.push({ name: names[i], project: p });
             }
         }
-        if (!list.length) {
-            alert('Нет проектов-компонентов (Root: component).\n\n' +
-                'Создайте проект с режимом Root: component или перенесите ' +
-                'компонент из палитры: ПКМ по компоненту → Open in IDE as Project…');
-            return;
-        }
+        if (!list.length) { alert('Нет проектов-компонентов (Root: component).'); return; }
 
         var host = document.createElement('div');
         host.style.cssText = 'padding:10px;font-family:inherit;font-size:12px;';
-
         var lbl = document.createElement('div');
         lbl.textContent = 'Выберите проект-компонент:';
         lbl.style.marginBottom = '6px';
         host.appendChild(lbl);
-
         var sel = document.createElement('select');
         sel.style.cssText = 'width:100%;padding:4px 6px;font-size:12px;box-sizing:border-box;';
         for (var k = 0; k < list.length; k++) {
-            var entry = list[k];
-            var cd = entry.project.componentData || {};
+            var cd = list[k].project.componentData || {};
             var opt = document.createElement('option');
-            opt.value = entry.name;
-            opt.textContent = entry.name +
-                '  (cmptype: ' + (cd.cmptype || '?') + ')';
+            opt.value = list[k].name;
+            opt.textContent = list[k].name + '  (cmptype: ' + (cd.cmptype || '?') + ')';
             sel.appendChild(opt);
         }
         host.appendChild(sel);
-
-        var hint = document.createElement('div');
-        hint.style.cssText = 'margin-top:8px;color:#666;font-size:11px;';
-        hint.textContent = 'Компонент будет перенесён из проекта в палитру. ' +
-            'Если компонент с таким cmptype уже есть — предложат перезаписать.';
-        host.appendChild(hint);
 
         global.Modal.open({
             title: 'Import Component from Project',
             content: host,
             onOk: function () {
-                var selectedName = sel.value;
                 var entry = null;
-                for (var i = 0; i < list.length; i++) {
-                    if (list[i].name === selectedName) { entry = list[i]; break; }
-                }
+                for (var j = 0; j < list.length; j++) if (list[j].name === sel.value) { entry = list[j]; break; }
                 if (!entry) return;
-
                 var cd = self._componentDataFromProject(entry.project);
-                if (!cd || !cd.cmptype) {
-                    alert('У выбранного проекта нет данных компонента (cmptype).');
-                    return;
-                }
-
+                if (!cd || !cd.cmptype) { alert('Нет данных компонента.'); return; }
                 var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
                 if (existing) {
-                    var ok = confirm(
-                        'Компонент с cmptype="' + cd.cmptype + '" уже есть в палитре (' +
-                        existing.name + ').\n\nПерезаписать его?');
-                    if (!ok) return;
+                    if (!confirm('Компонент с cmptype="' + cd.cmptype + '" уже есть. Перезаписать?')) return;
                     global.ComponentStorage.updateComponent(existing.id, cd);
-                    self._renderUserPalette();
-                    bus.emit('palette:refresh');
-                    return;
+                } else {
+                    global.ComponentStorage.createComponent(cd);
                 }
-
-                global.ComponentStorage.createComponent(cd);
-                self._renderUserPalette();
-                bus.emit('palette:refresh');
+                self._render();
             }
         });
     };
 
     Palette.prototype._componentDataFromProject = function (project) {
         if (!project || !project.componentData) return null;
-
         var cd;
-        try { cd = JSON.parse(JSON.stringify(project.componentData)); }
-        catch (e) { cd = project.componentData; }
-
+        try { cd = JSON.parse(JSON.stringify(project.componentData)); } catch (e) { cd = project.componentData; }
         if (!cd.previewIdeHtml && cd.html) cd.previewIdeHtml = cd.html;
         if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
-
         var ct = cd.cmptype;
         if (!ct) return cd;
-
         var safeCt = String(ct).replace(/[^A-Za-z0-9_.-]/g, '_');
         var files = project.files || {};
-
-        var jsPath = 'lib/wb-component/' + safeCt + '.js';
-        var jsFile = files[jsPath];
-        if (jsFile && jsFile.content) {
-            cd.js = this._extractUserJs(jsFile.content);
-        }
-
-        var cssPath = 'lib/wb-component/' + safeCt + '.css';
-        var cssFile = files[cssPath];
-        if (cssFile && cssFile.content) {
-            cd.css = this._extractUserCss(cssFile.content);
-        }
-
+        var jsFile = files['lib/wb-component/' + safeCt + '.js'];
+        if (jsFile && jsFile.content) cd.js = this._extractUserJs(jsFile.content);
+        var cssFile = files['lib/wb-component/' + safeCt + '.css'];
+        if (cssFile && cssFile.content) cd.css = this._extractUserCss(cssFile.content);
         return cd;
     };
 
@@ -872,140 +771,29 @@
         var marker = '/* --- user code --- */';
         var idx = fullJs.indexOf(marker);
         if (idx < 0) return '';
-        var user = fullJs.substring(idx + marker.length);
-        return user.replace(/^\r?\n/, '');
+        return fullJs.substring(idx + marker.length).replace(/^\r?\n/, '');
     };
-
     Palette.prototype._extractUserCss = function (fullCss) {
         if (!fullCss) return '';
         var marker = '/* --- user css --- */';
         var idx = fullCss.indexOf(marker);
         if (idx < 0) return '';
-        var user = fullCss.substring(idx + marker.length);
-        return user.replace(/^\r?\n/, '');
+        return fullCss.substring(idx + marker.length).replace(/^\r?\n/, '');
     };
-
-    Palette.prototype.userCtxOpenInProject = function () {
-        var sel = this.getUserSelection();
-        if (!sel.length) { alert('Ничего не выбрано.'); return; }
-        if (sel.length > 1) { alert('Выберите один компонент.'); return; }
-
-        var comp = sel[0];
-        var defaultName = 'Component_' + (comp.name || comp.cmptype || 'edit');
-        var projName = prompt('Имя проекта для редактирования:', defaultName);
-        if (!projName) return;
-        projName = String(projName).trim();
-        if (!projName) return;
-
-        var pm = global.ProjectManagerInstance;
-        if (!pm) { alert('ProjectManager не подключён.'); return; }
-
-        var canvas = global.IDE && global.IDE._canvas;
-        if (pm.editing && canvas) {
-            if (!pm._confirmSwitchFrom(canvas)) return;
-        }
-
-        var proj = global.ProjectStorage.get(projName);
-        if (proj) {
-            var rt = proj.rootType;
-            var ok = confirm(
-                'Проект "' + projName + '" уже существует (rootType: ' + rt + ').\n\n' +
-                'Перезаписать его данными выбранного компонента?');
-            if (!ok) return;
-        } else {
-            proj = global.ProjectStorage.create(projName);
-            if (!proj) { alert('Не удалось создать проект.'); return; }
-        }
-
-        proj.rootType = 'component';
-        proj.mainFile = 'index.html';
-        proj.files = proj.files || {};
-
-        proj.componentData = {
-            id: comp.id,
-            name: comp.name || '',
-            cmptype: comp.cmptype || '',
-            tagName: comp.tagName || 'div',
-            icon: comp.icon || '',
-            description: comp.description || '',
-            previewIdeHtml: comp.previewIdeHtml || comp.html || '',
-            html: comp.previewIdeHtml || comp.html || '',
-            customProperties: comp.customProperties || [],
-            customEvents: comp.customEvents || [],
-            nestingMode: comp.nestingMode || 'all',
-            nestingRules: comp.nestingRules || [],
-            jsLibs: comp.jsLibs || [],
-            cssLibs: comp.cssLibs || []
-        };
-
-        var compHtml = comp.previewIdeHtml || comp.html || '';
-        proj.files['index.html'] = {
-            kind: 'text',
-            content: '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<title>' +
-                escapeHtml(projName) + '</title>\n</head>\n<body>\n' +
-                compHtml + '\n</body>\n</html>'
-        };
-
-        if (comp.cmptype && global.ComponentStorage) {
-            var safeCt = String(comp.cmptype).replace(/[^A-Za-z0-9_.-]/g, '_');
-            var libDir = global.ComponentStorage.LIB_DIR;
-
-            var keys = Object.keys(proj.files);
-            for (var i = 0; i < keys.length; i++) {
-                if (keys[i].indexOf(libDir) === 0) delete proj.files[keys[i]];
-            }
-
-            proj.files[libDir + 'core.js'] = {
-                kind: 'text',
-                _system: 'wb-lib',
-                content: global.ComponentStorage.CORE_SOURCE
-            };
-            proj.files[libDir + safeCt + '.js'] = {
-                kind: 'text',
-                _system: 'wb-lib',
-                content: global.ComponentStorage._buildCmptypeJs(comp)
-            };
-            proj.files[libDir + safeCt + '.css'] = {
-                kind: 'text',
-                _system: 'wb-lib',
-                content: global.ComponentStorage._buildCmptypeCss(comp)
-            };
-        }
-
-        global.ProjectStorage.save(proj);
-
-        pm.refreshCombo();
-        pm.load(projName);
-    };
-
-    function escapeHtml(s) {
-        return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
 
     /* ============================================================
-       Фильтр
+       Фильтр.
        ============================================================ */
     Palette.prototype._filter = function (txt) {
         txt = (txt || '').toLowerCase();
         var $root = this.root;
         if (!txt) {
             $root.find('ul, li').show();
-            $root.find('li').each(function () {
-                var $t = $(this).children('.wb-toggle').first();
-                if (!$t.length || $t.hasClass('wb-leaf')) return;
-                var $ul = $(this).children('ul').first();
-                if ($ul.length) $ul.show();
-                $t.text('\u2212');
-            });
             return;
         }
         $root.find('li').hide();
         $root.find('ul').hide();
-        $root.find('.wb-comp-label').each(function () {
+        $root.find('.wb-palette-item').each(function () {
             var $lab = $(this);
             if ($lab.text().toLowerCase().indexOf(txt) < 0) return;
             $lab.show();
@@ -1014,16 +802,26 @@
             $li.parents('li').show();
             $li.parents('ul').show();
         });
-        $root.find('.wb-cat-label').each(function () {
+        $root.find('.wb-palette-folder').each(function () {
             var $lab = $(this);
             if ($lab.text().toLowerCase().indexOf(txt) < 0) return;
             var $li = $lab.closest('li');
             $li.show();
-            $li.find('ul, li, .wb-comp-label').show();
+            $li.find('ul, li, .wb-palette-item').show();
             $li.parents('li').show();
             $li.parents('ul').show();
         });
     };
+
+    function escapeHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function cssEscape(s) {
+        return String(s).replace(/[^a-zA-Z0-9_\-:]/g, function (c) {
+            return '\\' + c;
+        });
+    }
 
     global.Palette = Palette;
 })(window, jQuery);
