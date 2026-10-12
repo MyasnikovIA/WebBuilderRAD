@@ -177,17 +177,6 @@
         }
     };
 
-    /* ------------------------------------------------------------------
-       load — переключение на другой проект.
-
-       Последовательность:
-         1. Сбросить состояние предыдущего проекта (editing, флаг режима).
-         2. Очистить сцену (canvas.reset → пустой HTML-документ).
-         3. Загрузить главный файл проекта (mainFile / index.html).
-         4. Уведомить об изменении проекта (project:loaded / changed).
-         5. Применить сохранённый rootType (html / cmpForm / m2Form /
-            div / component) — уже поверх загруженного файла.
-       ------------------------------------------------------------------ */
     ProjectManager.prototype.load = function (name) {
         var p = global.ProjectStorage.get(name);
         if (!p) return;
@@ -195,24 +184,18 @@
 
         var canvas = global.IDE && global.IDE._canvas;
 
-        /* 1. Сбрасываем состояние предыдущего проекта. */
         this.editing = null;
         this.current = p;
         global.ProjectStorage.setCurrent(name);
         if (this.comboEl) this.comboEl.value = name;
 
-        /* ВАЖНО: снимаем флаг компонентного режима ДО загрузки файла,
-           чтобы _detectRootType() определил корень по содержимому
-           файла, а не по «залипшему» флагу предыдущего проекта. */
         if (global.App) global.App._componentMode = false;
 
-        /* 2. Очищаем сцену. */
         if (canvas && canvas.reset) {
             try { canvas.reset(); }
             catch (e) { console.error('[ProjectManager.load] reset', e); }
         }
 
-        /* 3. Загружаем главный файл проекта. */
         var mainPath = p.mainFile;
         if (!mainPath || !p.files[mainPath]) {
             mainPath = p.files['index.html'] ? 'index.html' : '';
@@ -228,11 +211,9 @@
             }
         }
 
-        /* 4. Уведомления об изменении проекта. */
         bus.emit('project:loaded',  { project: p, name: name });
         bus.emit('project:changed', { project: p });
 
-        /* 5. Применяем сохранённый режим корня. */
         this._applyProjectMode(p);
     };
 
@@ -240,34 +221,17 @@
         this.current = null;
         this.editing = null;
         global.ProjectStorage.setCurrent('');
-        /* Сбросить режим компонента. */
         if (global.App) global.App._componentMode = false;
         try {
             $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
         } catch (e) {}
 
-        /* Если активной была вкладка Component — переключаемся на Scene. */
         this._forceSwitchToSceneIfComponentActive();
 
         bus.emit('project:loaded', { project: null, name: '' });
         bus.emit('project:changed', { project: null });
     };
 
-    /* ------------------------------------------------------------------
-       Принудительное переключение с вкладки Component на Scene.
-
-       Нужно в двух случаях:
-         • переключение на проект, где нет Root: component;
-         • закрытие проекта.
-
-       Иначе после $tabs.hide() активной остаётся скрытая панель
-       wb-center-pane[data-pane="component"], внутри которой виден
-       .wb-component-tab — пользователь «застревает» на неактуальном
-       контенте, потому что кнопка таба Component скрыта.
-
-       Эмулируем клик по табу «scene» — обработчик клика в app.js
-       сам переключит панели, скроет .wb-component-tab и т.д.
-       ------------------------------------------------------------------ */
     ProjectManager.prototype._forceSwitchToSceneIfComponentActive = function () {
         try {
             var $active = $('#wb-center-tabs .wb-center-tab.wb-active');
@@ -277,9 +241,6 @@
         } catch (e) { /* ignore */ }
     };
 
-    /* Применить к canvas / вкладкам сохранённый в проекте режим корня.
-       Для Root: component — восстановить js/css компонента из
-       файлов lib/wb-component/<cmptype>.{js,css}. */
     ProjectManager.prototype._applyProjectMode = function (p) {
         var canvas = global.IDE && global.IDE._canvas;
         var $tabs = null;
@@ -292,7 +253,6 @@
             if (global.App) global.App._componentMode = true;
             if ($tabs) $tabs.show();
 
-            /* Данные компонента — из componentData + lib-файлов. */
             if (global.componentTab && p) {
                 var cd = p.componentData ? this._cloneObj(p.componentData) : {};
                 var libData = this._readComponentLibraries(p);
@@ -300,8 +260,6 @@
                     if (!cd.js && libData.js)   cd.js  = libData.js;
                     if (!cd.css && libData.css) cd.css = libData.css;
                 }
-                /* Если previewIdeHtml пуст, но у проекта уже есть
-                   сохранённый ранее html — используем его. */
                 if (!cd.previewIdeHtml && cd.html) {
                     cd.previewIdeHtml = cd.html;
                 }
@@ -313,10 +271,6 @@
             if (global.App) global.App._componentMode = false;
             if ($tabs) $tabs.hide();
             if (canvas) canvas.setRootType(rt);
-
-            /* ВАЖНО: если активной была вкладка Component (теперь скрытая),
-               переключаемся на Scene — иначе .wb-component-tab останется
-               видимым в центральной области, хотя режим проекта уже другой. */
             this._forceSwitchToSceneIfComponentActive();
         }
     };
@@ -327,7 +281,6 @@
         catch (e) { return o; }
     };
 
-    /* Читает js/css пользовательского компонента из lib-файлов проекта. */
     ProjectManager.prototype._readComponentLibraries = function (p) {
         if (!p || !p.files) return null;
         var cd = p.componentData || {};
@@ -351,7 +304,6 @@
         return out;
     };
 
-    /* Извлекает пользовательский JS из сгенерированного lib-файла. */
     ProjectManager.prototype._extractUserJs = function (fullJs) {
         if (!fullJs) return '';
         var marker = '/* --- user code --- */';
@@ -361,7 +313,6 @@
         return user.replace(/^\r?\n/, '');
     };
 
-    /* Извлекает пользовательский CSS из сгенерированного lib-файла. */
     ProjectManager.prototype._extractUserCss = function (fullCss) {
         if (!fullCss) return '';
         var marker = '/* --- user css --- */';
@@ -405,15 +356,6 @@
         this.refreshCombo();
     };
 
-    /* ------------------------------------------------------------------
-       save — сохранение проекта.
-
-       Для Root: component:
-         • js/css компонента НЕ пишутся в JSON проекта — они хранятся в
-           lib/wb-component/<cmptype>.{js,css} (см. syncProjectLibraries);
-         • если componentData.previewIdeHtml пуст — берём HTML со сцены
-           (вкладка Code = canvas.cleanHtml()) и сохраняем его как превью.
-       ------------------------------------------------------------------ */
     ProjectManager.prototype.save = function () {
         if (!this.current) return;
         var canvas = global.IDE && global.IDE._canvas;
@@ -424,8 +366,6 @@
                 try {
                     var cd = global.componentTab.getFormData();
                     if (cd) {
-                        /* Fallback: PreViewIDE(html) → canvas.cleanHtml()
-                           (то же, что показывает вкладка Code). */
                         if (!cd.previewIdeHtml && canvas.cleanHtml) {
                             try {
                                 var codeHtml = canvas.cleanHtml();
@@ -435,7 +375,6 @@
                                 }
                             } catch (e) { /* ignore */ }
                         }
-                        /* js/css уходят в отдельные файлы библиотеки. */
                         delete cd.js;
                         delete cd.css;
                     }
@@ -444,8 +383,6 @@
                 catch (e) { /* ignore */ }
             }
         }
-        /* Синхронизация фоновых библиотек компонентов
-           (в т.ч. запись js/css текущей ComponentTab). */
         if (global.ComponentStorage && global.ComponentStorage.syncProjectLibraries) {
             try { global.ComponentStorage.syncProjectLibraries(this.current, canvas); }
             catch (e) { console.error('[ProjectManager] sync libraries', e); }
@@ -593,7 +530,6 @@
         inp.click();
     };
 
-    /* Upload ZIP — только если это проект (не компонент). */
     ProjectManager.prototype.ctxUploadZip = function () {
         if (!this.current) return;
         var self = this;
@@ -615,7 +551,6 @@
                     self.save();
                     bus.emit('project:changed', { project: self.current });
 
-                    /* Восстановить режим корня + componentData из манифеста. */
                     if (manifest && manifest.rootType) {
                         self.current.rootType = manifest.rootType;
                         if (manifest.rootType === 'component' && manifest.component) {
@@ -635,7 +570,7 @@
 
     ProjectManager.prototype.ctxExportZip = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
-        this.save();  /* зафиксировать rootType / componentData */
+        this.save();
         global.ZipUtils.exportProject(this.current);
     };
 
@@ -698,6 +633,125 @@
         this.current.mainFile = '';
         this.save();
         bus.emit('project:changed', { project: this.current });
+    };
+
+    /* ------------------------------------------------------------------
+       ctxSaveAsComponent
+
+       Переносит текущий проект в пользовательскую палитру компонентов
+       как компонент. Обратная операция к Palette.userCtxOpenInProject.
+
+       Два сценария:
+
+         1) rootType === 'component' — основной сценарий.
+            • вызывается ComponentTab.getFormData() — свежие JS/CSS/HTML
+              из редакторов (даже если пользователь не нажимал Save);
+            • если PreViewIDE(html) пуст — берём canvas.cleanHtml();
+            • js/css страхуются из lib-файлов, если getFormData() их не
+              вернул (например, пользователь не открывал подвкладки).
+
+         2) rootType !== 'component' — конвертация «на лету».
+            • спрашиваем cmptype и name;
+            • HTML — из canvas.cleanHtml();
+            • js/css — пустые (можно потом доработать в ComponentTab).
+
+       Поведение при совпадении cmptype с существующим компонентом —
+       стандартный confirm: перезаписать или нет.
+       ------------------------------------------------------------------ */
+    ProjectManager.prototype.ctxSaveAsComponent = function () {
+        if (!this.current) { alert('Проект не выбран.'); return; }
+
+        var canvas = global.IDE && global.IDE._canvas;
+        var rt = this.current.rootType || 'html';
+
+        /* Сначала фиксируем текущее состояние проекта (файлы, rootType,
+           componentData). Это гарантирует, что lib-файлы содержат
+           актуальные js/css. */
+        try { this.save(); } catch (e) { /* ignore */ }
+
+        var cd;
+
+        if (rt === 'component' && global.componentTab && global.componentTab.getFormData) {
+            /* --- Сценарий 1: проект уже Root: component --- */
+            try { cd = global.componentTab.getFormData(); }
+            catch (e) { cd = null; }
+            if (!cd) cd = {};
+        } else {
+            /* --- Сценарий 2: проект НЕ компонент --- */
+            cd = this.current.componentData
+                ? this._cloneObj(this.current.componentData)
+                : {};
+
+            if (!cd.cmptype) {
+                var ct = prompt('cmptype нового компонента:', 'my.component');
+                if (!ct) return;
+                cd.cmptype = String(ct).trim();
+                if (!cd.cmptype) return;
+            }
+            if (!cd.name) {
+                var nm = prompt('Имя компонента:', this.current.name || 'Component');
+                if (!nm) return;
+                cd.name = String(nm).trim();
+                if (!cd.name) return;
+            }
+            if (!cd.tagName) cd.tagName = 'div';
+        }
+
+        if (!cd || !cd.cmptype) {
+            alert('Не удалось определить cmptype компонента.');
+            return;
+        }
+
+        /* Гарантируем наличие html / previewIdeHtml. */
+        if (!cd.previewIdeHtml && cd.html) cd.previewIdeHtml = cd.html;
+        if (!cd.previewIdeHtml && canvas && canvas.cleanHtml) {
+            try {
+                var codeHtml = canvas.cleanHtml();
+                if (codeHtml && codeHtml.replace(/\s+/g, '')) {
+                    cd.previewIdeHtml = codeHtml;
+                }
+            } catch (e) { /* ignore */ }
+        }
+        if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+
+        /* Страховка для js/css — если getFormData() их не вернул,
+           читаем из lib-файлов проекта. */
+        if (!cd.js || !cd.css) {
+            var libData = this._readComponentLibraries(this.current);
+            if (libData) {
+                if (!cd.js  && libData.js)  cd.js  = libData.js;
+                if (!cd.css && libData.css) cd.css = libData.css;
+            }
+        }
+
+        /* Нормализуем поля, которые ожидает ComponentStorage. */
+        cd.name        = cd.name        || cd.cmptype;
+        cd.tagName     = cd.tagName     || 'div';
+        cd.description = cd.description || '';
+        cd.jsLibs      = Array.isArray(cd.jsLibs)  ? cd.jsLibs  : [];
+        cd.cssLibs     = Array.isArray(cd.cssLibs) ? cd.cssLibs : [];
+        cd.customProperties = Array.isArray(cd.customProperties) ? cd.customProperties : [];
+        cd.customEvents     = Array.isArray(cd.customEvents)     ? cd.customEvents     : [];
+        cd.nestingMode      = cd.nestingMode  || 'all';
+        cd.nestingRules     = Array.isArray(cd.nestingRules) ? cd.nestingRules : [];
+        cd.js               = cd.js  || '';
+        cd.css              = cd.css || '';
+
+        /* Сохраняем в палитру: create или update. */
+        var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
+        if (existing) {
+            var ok = confirm(
+                'Компонент с cmptype="' + cd.cmptype + '" уже есть в палитре (' +
+                existing.name + ').\n\nПерезаписать его?');
+            if (!ok) return;
+            global.ComponentStorage.updateComponent(existing.id, cd);
+            alert('Компонент "' + cd.name + '" обновлён в палитре.');
+        } else {
+            global.ComponentStorage.createComponent(cd);
+            alert('Компонент "' + cd.name + '" сохранён в палитру.');
+        }
+
+        bus.emit('palette:refresh');
     };
 
     global.ProjectManager = ProjectManager;
