@@ -5,8 +5,8 @@
      components['<id>'] = {
        id, name, cmptype, tagName, icon, description,
        previewIdeHtml,               — editor-only preview на сцене
-       html,                         — алиас previewIdeHtml (для совместимости)
-       js, css,                      — пользовательский код → lib/<cmptype>.{js,css}
+       html,                         — алиас previewIdeHtml
+       js, css,                      — пользовательский код
        jsLibs, cssLibs,              — внешние ресурсы
        customProperties, customEvents,
        nestingMode, nestingRules,
@@ -16,18 +16,14 @@
    В проекте (project.files) фоновые файлы помечаются `_system: 'wb-lib'`
    и по пути начинаются на 'lib/wb-component/'. ProjectTree их не показывает.
 
-   ВАЖНО: HTML-разметка компонента (previewIdeHtml / html) встраивается
+   HTML-разметка компонента (previewIdeHtml / html) встраивается
    в <cmptype>.js как поле `html` в дефе, который регистрируется через
    WbComponent.register(). Рантайм attach() рендерит эту разметку внутрь
-   элемента [data-wb-user-comp], если он ещё пуст. Так экспортированная
-   HTML-страница может показать компонент без хранения разметки в самом
-   HTML-файле.
+   элемента [data-wb-user-comp], если он ещё пуст. Также в деф попадают
+   jsLibs / cssLibs — core.js подгружает их лениво (один раз на URL).
 
    ------------------------------------------------------------------
    Palette Layout (localStorage 'wb.paletteLayout', version 1):
-
-     Раскладка дерева палитры компонентов (единое дерево для стандартных
-     и пользовательских компонентов).
 
      {
        version: 1,
@@ -36,14 +32,10 @@
          '<id>': { id, name, parentId, position, kind: 'user' | 'category' }
        },
        items: {
-         'b:<defId>':  { folderId, position },   — built-in компонент
-         'u:<cmpId>':  { folderId, position }    — user-компонент
+         'b:<defId>':  { folderId, position },
+         'u:<cmpId>':  { folderId, position }
        }
-     }
-
-     itemId:
-       'b:' + def.id — стандартный (D3/M2/HTML)
-       'u:' + c.id   — пользовательский */
+     } */
 (function (global) {
     'use strict';
     var KEY = 'wb.userPalette';
@@ -54,8 +46,12 @@
 
     /* ------------------------------------------------------------------
        Фоновый runtime (core.js). Вставляется в проект один раз.
-       Не содержит ничего про конкретные компоненты — только реестр,
-       attach-логику (с рендером def.html), observer. */
+
+       Помимо реестра / attach / observer теперь содержит:
+         • WbComponent.applyLibs(def) — подгружает <link> / <script>
+           для def.jsLibs / def.cssLibs в <head> документа (по одному
+           разу на URL, с флагом data-wb-user-comp-asset, чтобы теги
+           были видны только рантайму, но не пользовательскому коду). */
     var CORE_LIBRARY_SOURCE = [
         '/* WbComponent core — автогенерация. Не редактировать вручную. */',
         '(function(g){',
@@ -66,9 +62,11 @@
         '    _registry: {},',
         '    _byCmptype: {},',
         '    _pending: [],',
+        '    _libsLoaded: {},',
         '    register: function(def){',
         '        if(!def || !def.cmptype) return;',
         '        this._defs[def.cmptype] = def;',
+        '        try { this.applyLibs(def); } catch(e){ console.error("[WbComponent] applyLibs", def.cmptype, e); }',
         '        for(var i=0;i<this._pending.length;i++){',
         '            var p = this._pending[i];',
         '            if(p.ct === def.cmptype){',
@@ -90,6 +88,39 @@
         '        if(!ct){ for(k in this._registry) if(this._registry.hasOwnProperty(k)) out.push(this._registry[k]); return out; }',
         '        for(k in this._registry) if(this._registry[k].cmptype===ct) out.push(this._registry[k]);',
         '        return out;',
+        '    },',
+        '    applyLibs: function(def){',
+        '        if(!def) return;',
+        '        var head = document.head || document.getElementsByTagName("head")[0];',
+        '        if(!head) return;',
+        '        var cssList = def.cssLibs || [];',
+        '        for(var i=0;i<cssList.length;i++){',
+        '            var lib = cssList[i];',
+        '            var url = lib && (typeof lib === "string" ? lib : lib.value);',
+        '            var typ = lib && lib.type ? lib.type : "url";',
+        '            if(!url || typ === "project") continue;',
+        '            if(this._libsLoaded["css:"+url]) continue;',
+        '            this._libsLoaded["css:"+url] = true;',
+        '            var link = document.createElement("link");',
+        '            link.rel = "stylesheet";',
+        '            link.href = url;',
+        '            link.setAttribute("data-wb-user-comp-asset", "1");',
+        '            head.appendChild(link);',
+        '        }',
+        '        var jsList = def.jsLibs || [];',
+        '        for(var j=0;j<jsList.length;j++){',
+        '            var libj = jsList[j];',
+        '            var urlj = libj && (typeof libj === "string" ? libj : libj.value);',
+        '            var typj = libj && libj.type ? libj.type : "url";',
+        '            if(!urlj || typj === "project") continue;',
+        '            if(this._libsLoaded["js:"+urlj]) continue;',
+        '            this._libsLoaded["js:"+urlj] = true;',
+        '            var script = document.createElement("script");',
+        '            script.src = urlj;',
+        '            script.async = false;',
+        '            script.setAttribute("data-wb-user-comp-asset", "1");',
+        '            head.appendChild(script);',
+        '        }',
         '    }',
         '};',
         'g.WbComponent = WbComponent;',
@@ -285,6 +316,26 @@
         return max;
     }
 
+    function normalizeLibEntry(entry) {
+        if (!entry) return null;
+        if (typeof entry === 'string') {
+            return { type: 'url', value: entry };
+        }
+        return {
+            type: entry.type || 'url',
+            value: entry.value || ''
+        };
+    }
+    function normalizeLibsArray(arr) {
+        var out = [];
+        if (!Array.isArray(arr)) return out;
+        for (var i = 0; i < arr.length; i++) {
+            var e = normalizeLibEntry(arr[i]);
+            if (e && e.value) out.push(e);
+        }
+        return out;
+    }
+
     function normalizeProp(p) {
         p = p || {};
         return {
@@ -333,8 +384,8 @@
             previewIdeHtml: previewHtml,
             js:             src.js || '',
             css:            src.css || '',
-            jsLibs:         Array.isArray(src.jsLibs)  ? src.jsLibs  : [],
-            cssLibs:        Array.isArray(src.cssLibs) ? src.cssLibs : [],
+            jsLibs:         normalizeLibsArray(src.jsLibs),
+            cssLibs:        normalizeLibsArray(src.cssLibs),
             customProperties: outProps,
             customEvents:     outEvs,
             nestingMode:      mode,
@@ -381,7 +432,7 @@
             return String(path || '').indexOf(LIB_DIR) === 0;
         },
 
-        /* ---------- folders (старая модель — оставлена для совместимости) ---------- */
+        /* ---------- folders (старая модель) ---------- */
         listFolders: function () {
             var m = readAll(), out = [];
             for (var k in m.folders) if (m.folders.hasOwnProperty(k)) out.push(m.folders[k]);
@@ -426,6 +477,16 @@
             return null;
         },
 
+        /* Возвращает { jsLibs, cssLibs } компонента в нормализованном виде. */
+        getComponentLibs: function (compOrId) {
+            var c = typeof compOrId === 'string' ? this.getComponent(compOrId) : compOrId;
+            if (!c) return { jsLibs: [], cssLibs: [] };
+            return {
+                jsLibs:  normalizeLibsArray(c.jsLibs),
+                cssLibs: normalizeLibsArray(c.cssLibs)
+            };
+        },
+
         createComponent: function (def) {
             var m = readAll();
             var c = normalizeComponent(def);
@@ -436,7 +497,6 @@
             m.components[c.id] = c;
             writeAll(m);
 
-            /* Отражаем новый компонент в раскладке палитры. */
             try {
                 var L = _readLayout();
                 var itemId = 'u:' + c.id;
@@ -453,7 +513,10 @@
         updateComponent: function (id, patch) {
             var m = readAll();
             if (!m.components[id]) return false;
-            var norm = normalizeComponent(Object.assign({}, m.components[id], patch));
+            var merged = Object.assign({}, m.components[id], patch);
+            /* patch может содержать jsLibs / cssLibs — normalizeComponent
+               приведёт их к канонической форме. */
+            var norm = normalizeComponent(merged);
             norm.id = id;
             m.components[id] = norm;
             return writeAll(m);
@@ -464,7 +527,6 @@
             delete m.components[id];
             writeAll(m);
 
-            /* Удаляем placement из раскладки. */
             try {
                 var L = _readLayout();
                 var itemId = 'u:' + id;
@@ -525,7 +587,6 @@
                 }
                 writeAll(m);
 
-                /* Синхронизируем новые компоненты с раскладкой. */
                 try {
                     var L = _readLayout();
                     for (var cid in m.components) {
@@ -581,6 +642,9 @@
                 cmptype: c.cmptype,
                 name: c.name,
                 html: html,
+                /* jsLibs / cssLibs — для ленивой загрузки в браузере. */
+                jsLibs:  normalizeLibsArray(c.jsLibs),
+                cssLibs: normalizeLibsArray(c.cssLibs),
                 customProperties: c.customProperties || [],
                 customEvents:     c.customEvents     || []
             };
@@ -619,7 +683,18 @@
         },
 
         /* ------------------------------------------------------------------
-           syncProjectLibraries */
+           syncProjectLibraries
+
+           Собирает cmptype из:
+             1) [data-wb-user-comp]-элементов на сцене;
+             2) активной ComponentTab (Root: component).
+
+           Обновляет lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}.
+           jsLibs / cssLibs попадают в <cmptype>.js — рантайм подгружает
+           их лениво в браузере через WbComponent.applyLibs().
+
+           ВАЖНО: при сборе из активной ComponentTab теперь читаются
+           jsLibs / cssLibs из getFormData() и переносятся в деф. */
         syncProjectLibraries: function (project, canvas) {
             if (!project) return;
             if (!project.files) project.files = {};
@@ -655,12 +730,12 @@
                             cmptype: cd.cmptype,
                             html: html,
                             previewIdeHtml: html,
+                            jsLibs:  normalizeLibsArray(cd.jsLibs),
+                            cssLibs: normalizeLibsArray(cd.cssLibs),
                             customProperties: cd.customProperties || [],
                             customEvents:     cd.customEvents || [],
                             js:   cd.js  || '',
-                            css:  cd.css || '',
-                            jsLibs:  cd.jsLibs  || [],
-                            cssLibs: cd.cssLibs || []
+                            css:  cd.css || ''
                         };
                     }
                 } catch (e) { /* ignore */ }
@@ -728,6 +803,62 @@
             return out.join('\n');
         },
 
+        /* Возвращает плоский список {url, kind} для всех внешних libs
+           (js + css), использованных user-компонентами в проекте. */
+        collectExternalLibs: function (project) {
+            var out = { js: [], css: [] };
+            var seenJs = {}, seenCss = {};
+            if (!project) return out;
+
+            /* 1. Уникальные cmptype из сцены. */
+            var used = {};
+            var canvas = global.IDE && global.IDE._canvas;
+            if (canvas && canvas.getDoc) {
+                var doc = canvas.getDoc();
+                if (doc) {
+                    var els = doc.querySelectorAll('[data-wb-user-comp]');
+                    for (var i = 0; i < els.length; i++) {
+                        var cid = els[i].getAttribute('data-wb-user-comp');
+                        var uc = this.getComponent(cid);
+                        if (uc && uc.cmptype) used[uc.cmptype] = uc;
+                    }
+                }
+            }
+            /* 2. Из active ComponentTab. */
+            if (global.App && global.App._componentMode &&
+                global.componentTab && global.componentTab.getFormData) {
+                try {
+                    var cd = global.componentTab.getFormData();
+                    if (cd && cd.cmptype) {
+                        used[cd.cmptype] = {
+                            jsLibs:  normalizeLibsArray(cd.jsLibs),
+                            cssLibs: normalizeLibsArray(cd.cssLibs)
+                        };
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            for (var ct in used) {
+                if (!used.hasOwnProperty(ct)) continue;
+                var comp = used[ct];
+                var cssLibs = comp.cssLibs || [];
+                for (var c = 0; c < cssLibs.length; c++) {
+                    var u = cssLibs[c].value;
+                    if (!u || seenCss[u]) continue;
+                    seenCss[u] = true;
+                    out.css.push(u);
+                }
+                var jsLibs = comp.jsLibs || [];
+                for (var j = 0; j < jsLibs.length; j++) {
+                    var uj = jsLibs[j].value;
+                    if (!uj || seenJs[uj]) continue;
+                    seenJs[uj] = true;
+                    out.js.push(uj);
+                }
+            }
+            return out;
+        },
+
         /* ---------- Определение def для ComponentRegistry ---------- */
         toDef: function (c) {
             if (!c) return null;
@@ -757,6 +888,9 @@
                 nestingMode:  c.nestingMode  || 'all',
                 nestingRules: c.nestingRules || [],
                 iconUrl: c.icon || '',
+                /* jsLibs / cssLibs — для _injectComponentAssets в Canvas. */
+                jsLibs:  normalizeLibsArray(c.jsLibs),
+                cssLibs: normalizeLibsArray(c.cssLibs),
 
                 create: function (doc) {
                     var el = doc.createElement(tagName);
@@ -779,7 +913,7 @@
         },
 
         /* ============================================================
-           Palette Layout — раскладка дерева палитры.
+           Palette Layout.
            ============================================================ */
         readPaletteLayout: function () { return _readLayout(); },
         savePaletteLayout: function (l) { return _writeLayout(l); },
@@ -793,14 +927,6 @@
             return out;
         },
 
-        /* Первичная инициализация раскладки.
-
-           Создаёт:
-             • папки-категории из ComponentRegistry.categoryTree()
-               (kind: 'category') с устойчивыми id 'cat:<path>';
-             • placements для всех built-in компонентов;
-             • переносит существующие ComponentStorage.folders и folderId
-               в layout (kind: 'user'). */
         ensurePaletteInitialized: function (registry) {
             var m = _readLayout();
             if (m.initialized) {
@@ -808,7 +934,6 @@
                 return m;
             }
 
-            /* 1. Перенос существующих пользовательских папок. */
             var legacy = readAll();
             for (var fid in legacy.folders) {
                 if (!legacy.folders.hasOwnProperty(fid)) continue;
@@ -823,7 +948,6 @@
                 };
             }
 
-            /* 2. Категории/подкатегории из реестра — как kind:'category'. */
             if (registry && registry.categoryTree) {
                 var tree = registry.categoryTree();
                 for (var i = 0; i < tree.length; i++) {
@@ -848,7 +972,6 @@
                 }
             }
 
-            /* 3. Placements для built-in компонентов. */
             if (registry && registry.all) {
                 var all = registry.all();
                 for (var k = 0; k < all.length; k++) {
@@ -864,7 +987,6 @@
                 }
             }
 
-            /* 4. Placements для user-компонентов — по их folderId. */
             this._syncUserComponentsToLayout(m);
 
             m.initialized = true;
@@ -911,8 +1033,6 @@
             return _writeLayout(m);
         },
 
-        /* Удаляет папку. Содержимое (компоненты и подпапки) поднимается
-           в родительскую папку. */
         deletePaletteFolder: function (id) {
             var m = _readLayout();
             var f = m.folders[id];
@@ -935,7 +1055,6 @@
             return _writeLayout(m);
         },
 
-        /* Перемещает папку внутрь newParentId. Возвращает false при цикле. */
         movePaletteFolder: function (id, newParentId) {
             var m = _readLayout();
             if (!m.folders[id]) return false;

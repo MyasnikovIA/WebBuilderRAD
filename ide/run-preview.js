@@ -383,15 +383,10 @@
         _injectProjectLibraries: function (html, project) {
             if (!project || !project.files) return html;
 
-            /* 1. Собираем использованные cmptype из HTML. */
             var used = {};
             var m;
-
-            /* Вариант: data-wb-user-comp="..." cmptype="..." */
             var re1 = /data-wb-user-comp\s*=\s*"([^"]+)"[^>]*\bcmptype\s*=\s*"([^"]+)"/gi;
             while ((m = re1.exec(html)) !== null) used[m[2]] = true;
-
-            /* Вариант: cmptype="..." data-wb-user-comp="..." */
             var re2 = /cmptype\s*=\s*"([^"]+)"[^>]*\bdata-wb-user-comp\s*=/gi;
             while ((m = re2.exec(html)) !== null) used[m[1]] = true;
 
@@ -401,6 +396,29 @@
             var tags = [];
             var self = this;
 
+            /* 1. Внешние библиотеки (https://…). */
+            if (global.ComponentStorage) {
+                var seenExtCss = {}, seenExtJs = {};
+                for (var e = 0; e < cts.length; e++) {
+                    var uc = global.ComponentStorage.findByCmptype(cts[e]);
+                    if (!uc) continue;
+                    var libs = global.ComponentStorage.getComponentLibs(uc);
+                    for (var i = 0; i < libs.cssLibs.length; i++) {
+                        var u = libs.cssLibs[i].value;
+                        if (!u || seenExtCss[u]) continue;
+                        seenExtCss[u] = true;
+                        tags.push('<link rel="stylesheet" href="' + u + '">');
+                    }
+                    for (var j = 0; j < libs.jsLibs.length; j++) {
+                        var uj = libs.jsLibs[j].value;
+                        if (!uj || seenExtJs[uj]) continue;
+                        seenExtJs[uj] = true;
+                        tags.push('<script src="' + uj + '"></script>');
+                    }
+                }
+            }
+
+            /* 2. lib/wb-component/* из проекта (blob-URL). */
             function asUrl(path) {
                 if (!path) return path;
                 if (self._resolver) {
@@ -409,24 +427,20 @@
                 return path;
             }
 
-            /* 2. CSS каждого cmptype — один раз. */
-            for (var i = 0; i < cts.length; i++) {
-                var safeCt = String(cts[i]).replace(/[^A-Za-z0-9_.-]/g, '_');
+            for (var i2 = 0; i2 < cts.length; i2++) {
+                var safeCt = String(cts[i2]).replace(/[^A-Za-z0-9_.-]/g, '_');
                 var cssPath = 'lib/wb-component/' + safeCt + '.css';
                 if (project.files[cssPath]) {
                     tags.push('<link rel="stylesheet" href="' + asUrl(cssPath) + '">');
                 }
             }
 
-            /* 3. core.js — один раз. */
             var corePath = 'lib/wb-component/core.js';
             if (project.files[corePath]) {
                 tags.push('<script src="' + asUrl(corePath) + '"></script>');
             }
-
-            /* 4. per-cmptype js. */
-            for (var j = 0; j < cts.length; j++) {
-                var safeCt2 = String(cts[j]).replace(/[^A-Za-z0-9_.-]/g, '_');
+            for (var j2 = 0; j2 < cts.length; j2++) {
+                var safeCt2 = String(cts[j2]).replace(/[^A-Za-z0-9_.-]/g, '_');
                 var jsPath = 'lib/wb-component/' + safeCt2 + '.js';
                 if (project.files[jsPath]) {
                     tags.push('<script src="' + asUrl(jsPath) + '"></script>');
@@ -440,8 +454,7 @@
                 return html.replace(/<\/head>/i, inject + '</head>');
             }
             if (/<body[\s>]/i.test(html)) {
-                return html.replace(/(<body[\s>])/i,
-                    '<head>\n' + inject + '</head>\n$1');
+                return html.replace(/(<body[\s>])/i, '<head>\n' + inject + '</head>\n$1');
             }
             return inject + html;
         },

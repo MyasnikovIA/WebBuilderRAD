@@ -361,10 +361,12 @@
         if (canvas && canvas.getRootType) {
             var isComp = !!(global.App && global.App._componentMode);
             this.current.rootType = isComp ? 'component' : (canvas.getRootType() || 'html');
+
             if (isComp && global.componentTab && global.componentTab.getFormData) {
                 try {
                     var cd = global.componentTab.getFormData();
                     if (cd) {
+                        /* Fallback: PreViewIDE(html) → canvas.cleanHtml(). */
                         if (!cd.previewIdeHtml && canvas.cleanHtml) {
                             try {
                                 var codeHtml = canvas.cleanHtml();
@@ -374,20 +376,43 @@
                                 }
                             } catch (e) { /* ignore */ }
                         }
+                        /* js / css пишутся в отдельные файлы библиотеки;
+                           jsLibs / cssLibs — в componentData, чтобы
+                           сохраняться в project.json и в lib-файлах. */
                         delete cd.js;
                         delete cd.css;
+                        /* нормализуем списки (если пришли массивами строк или объектов) */
+                        cd.jsLibs  = normalizeLibs(cd.jsLibs);
+                        cd.cssLibs = normalizeLibs(cd.cssLibs);
                     }
                     this.current.componentData = cd;
                 }
                 catch (e) { /* ignore */ }
             }
         }
+
         if (global.ComponentStorage && global.ComponentStorage.syncProjectLibraries) {
             try { global.ComponentStorage.syncProjectLibraries(this.current, canvas); }
             catch (e) { console.error('[ProjectManager] sync libraries', e); }
         }
         global.ProjectStorage.save(this.current);
     };
+
+    /* Локальный хелпер: нормализует список lib-ов к [{type,value}]. */
+    function normalizeLibs(arr) {
+        var out = [];
+        if (!Array.isArray(arr)) return out;
+        for (var i = 0; i < arr.length; i++) {
+            var e = arr[i];
+            if (!e) continue;
+            if (typeof e === 'string') {
+                out.push({ type: 'url', value: e });
+            } else {
+                out.push({ type: e.type || 'url', value: e.value || '' });
+            }
+        }
+        return out;
+    }
 
     ProjectManager.prototype.stopEditing = function () {
         this.editing = null;

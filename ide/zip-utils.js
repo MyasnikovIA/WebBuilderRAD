@@ -143,17 +143,65 @@
         return /(?:src|href)\s*=\s*["']lib\/wb-component\//i.test(html);
     }
 
+    /* Вставляет теги библиотек в <head> HTML-строки.
+   Возвращает изменённую строку либо исходную, если инжект не нужен.
+
+   Добавляет:
+     1. <link> для CSS библиотек user-компонентов;
+     2. <script> для JS библиотек user-компонентов;
+     3. lib/wb-component/core.js и <cmptype>.{css,js} (как раньше). */
     function injectLibTagsIntoHtml(html, project) {
         if (!html || !project) return html;
-        if (hasLibTags(html)) return html;
 
         var cmptypes = collectCmptypesInHtml(html);
         if (!cmptypes.length) return html;
 
-        var tags = buildLibTagsFor(cmptypes, project);
-        if (!tags) return html;
+        /* Внешние библиотеки (https://…) — соберём из ComponentStorage. */
+        var extCss = [], extJs = [];
+        if (global.ComponentStorage) {
+            var seenCss = {}, seenJs = {};
+            for (var i = 0; i < cmptypes.length; i++) {
+                var uc = global.ComponentStorage.findByCmptype(cmptypes[i]);
+                if (!uc) continue;
+                var libs = global.ComponentStorage.getComponentLibs(uc);
+                for (var c = 0; c < libs.cssLibs.length; c++) {
+                    var cu = libs.cssLibs[c].value;
+                    if (!cu || seenCss[cu]) continue;
+                    seenCss[cu] = true;
+                    extCss.push(cu);
+                }
+                for (var j = 0; j < libs.jsLibs.length; j++) {
+                    var ju = libs.jsLibs[j].value;
+                    if (!ju || seenJs[ju]) continue;
+                    seenJs[ju] = true;
+                    extJs.push(ju);
+                }
+            }
+        }
 
-        var inject = '\n' + tags + '\n';
+        /* Теги lib/wb-component/*, которые нужно добавить (если их нет). */
+        var wbTags = buildLibTagsFor(cmptypes, project);
+
+        var hasLib = hasLibTags(html);
+
+        /* Если ни внешних, ни wb-библиотек нет — выходим. */
+        if (!extCss.length && !extJs.length && !wbTags) return html;
+
+        var injectParts = [];
+        if (extCss.length) {
+            for (var cc = 0; cc < extCss.length; cc++) {
+                injectParts.push('<link rel="stylesheet" href="' + extCss[cc] + '">');
+            }
+        }
+        if (extJs.length) {
+            for (var jj = 0; jj < extJs.length; jj++) {
+                injectParts.push('<script src="' + extJs[jj] + '"></script>');
+            }
+        }
+        if (wbTags && !hasLib) injectParts.push(wbTags);
+
+        if (!injectParts.length) return html;
+        var inject = '\n' + injectParts.join('\n') + '\n';
 
         if (/<\/head>/i.test(html)) {
             return html.replace(/<\/head>/i, inject + '</head>');

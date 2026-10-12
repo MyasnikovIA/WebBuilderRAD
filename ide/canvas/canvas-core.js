@@ -339,27 +339,82 @@
         var head = this.getOrCreateHead();
         if (!head) return;
 
+        /* Удаляем все старые комп-ассеты (из предыдущей загрузки). */
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
-        if (!global.ComponentRegistry) return;
-        var list = global.ComponentRegistry.all();
-        for (var i = 0; i < list.length; i++) {
-            var comp = list[i];
-            var cssList = comp.previewCssUrls || [];
-            for (var c = 0; c < cssList.length; c++) {
-                var link = doc.createElement('link');
-                link.rel = 'stylesheet';
-                link.href = cssList[c];
-                link.setAttribute('data-wb-comp-asset', '1');
-                head.appendChild(link);
+        var seenCss = {};
+        var seenJs  = {};
+
+        /* 1. CSS / JS для built-in компонентов из ComponentRegistry. */
+        if (global.ComponentRegistry) {
+            var list = global.ComponentRegistry.all();
+            for (var i = 0; i < list.length; i++) {
+                var comp = list[i];
+                var cssList = comp.previewCssUrls || [];
+                for (var c = 0; c < cssList.length; c++) {
+                    var url = cssList[c];
+                    if (!url || seenCss[url]) continue;
+                    seenCss[url] = true;
+                    var link = doc.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = url;
+                    link.setAttribute('data-wb-comp-asset', '1');
+                    head.appendChild(link);
+                }
+                var jsList = comp.previewJsUrls || [];
+                for (var j = 0; j < jsList.length; j++) {
+                    var src = jsList[j];
+                    if (!src || seenJs[src]) continue;
+                    seenJs[src] = true;
+                    var script = doc.createElement('script');
+                    script.src = src;
+                    script.async = false;
+                    script.setAttribute('data-wb-comp-asset', '1');
+                    head.appendChild(script);
+                }
             }
-            var jsList = comp.previewJsUrls || [];
-            for (var j = 0; j < jsList.length; j++) {
-                var script = doc.createElement('script');
-                script.src = jsList[j];
-                script.setAttribute('data-wb-comp-asset', '1');
-                head.appendChild(script);
+        }
+
+        /* 2. CSS / JS для user-компонентов. */
+        if (global.ComponentStorage) {
+            var userComps = global.ComponentStorage.listComponents();
+
+            /* Уникальные cmptype, реально присутствующие на сцене. */
+            var usedCmptypes = {};
+            var userEls = doc.querySelectorAll('[data-wb-user-comp]');
+            for (var u = 0; u < userEls.length; u++) {
+                var ct = userEls[u].getAttribute('cmptype');
+                if (ct) usedCmptypes[ct] = true;
+            }
+
+            for (var k = 0; k < userComps.length; k++) {
+                var uc = userComps[k];
+                if (!uc.cmptype) continue;
+                if (!usedCmptypes[uc.cmptype]) continue;
+
+                var libs = global.ComponentStorage.getComponentLibs(uc);
+
+                for (var cc = 0; cc < libs.cssLibs.length; cc++) {
+                    var cURL = libs.cssLibs[cc].value;
+                    if (!cURL || seenCss[cURL]) continue;
+                    seenCss[cURL] = true;
+                    var lk = doc.createElement('link');
+                    lk.rel = 'stylesheet';
+                    lk.href = cURL;
+                    lk.setAttribute('data-wb-comp-asset', '1');
+                    head.appendChild(lk);
+                }
+                for (var jj = 0; jj < libs.jsLibs.length; jj++) {
+                    var jURL = libs.jsLibs[jj].value;
+                    if (!jURL || seenJs[jURL]) continue;
+                    seenJs[jURL] = true;
+                    var sc = doc.createElement('script');
+                    sc.src = jURL;
+                    sc.async = false;
+                    sc.setAttribute('data-wb-comp-asset', '1');
+                    head.appendChild(sc);
+                }
             }
         }
     };

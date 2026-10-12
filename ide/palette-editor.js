@@ -399,17 +399,6 @@
 
     /* ============================================================
        Resolve drop target.
-
-       Возвращает:
-         {
-           folderId,        — в какую папку положить (inside)
-                              или куда положить перед/после
-           label,           — DOM-элемент для подсветки
-           zone,            — 'before' | 'after' | 'inside'
-           targetKind,      — 'item' | 'folder' | 'container' | 'root'
-           targetItemId,    — если zone before/after и targetKind='item'
-           targetFolderId   — если zone before/after и targetKind='folder'
-         }
        ============================================================ */
     PaletteEditor.prototype._resolveDropTarget = function (el, rootNode, nativeEvent) {
         if (!el || !rootNode) return null;
@@ -575,9 +564,6 @@
             self._clearDropIndicators();
             if (!target) { if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; return; }
 
-            /* ---- Проверки валидности ---- */
-
-            /* Папка тащится на item — запрещаем (только в папку или корень). */
             if (self._dragFolderIds && self._dragFolderIds.length) {
                 if (target.targetKind === 'item') {
                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
@@ -585,17 +571,14 @@
                 }
                 var movingF = self._dragFolderIds[0];
 
-                /* Нельзя в себя (inside). */
                 if (target.zone === 'inside' && target.folderId === movingF) {
                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                     return;
                 }
-                /* Нельзя вставить "перед/после самой себя". */
                 if (target.targetKind === 'folder' && target.targetFolderId === movingF) {
                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                     return;
                 }
-                /* Нельзя в потомка. */
                 if (target.targetKind === 'folder' && target.targetFolderId) {
                     if (self._isFolderDescendant(target.targetFolderId, movingF)) {
                         if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
@@ -608,7 +591,6 @@
                 }
             }
 
-            /* Item тащится "before/after" самого себя — no-op. */
             if (self._dragItemIds && self._dragItemIds.length) {
                 if (target.targetKind === 'item' &&
                     self._dragItemIds.indexOf(target.targetItemId) >= 0) {
@@ -620,7 +602,6 @@
             e.preventDefault();
             try { e.dataTransfer.dropEffect = 'move'; } catch (ex) {}
 
-            /* Подсветка — как в dom-tree. */
             if (target.label) {
                 if (target.zone === 'before')     target.label.classList.add('wb-drop-before');
                 else if (target.zone === 'after') target.label.classList.add('wb-drop-after');
@@ -643,11 +624,9 @@
 
             var moved = false;
 
-            /* ---------- Items ---------- */
             if (self._dragItemIds && self._dragItemIds.length) {
                 if ((target.zone === 'before' || target.zone === 'after') &&
                     target.targetKind === 'item') {
-                    /* Реордер внутри папки. */
                     moved = self._reorderItems(
                         self._dragItemIds,
                         target.folderId || '',
@@ -655,7 +634,6 @@
                         target.zone
                     );
                 } else {
-                    /* Перенос в папку / в папку целевого item / в корень. */
                     for (var i = 0; i < self._dragItemIds.length; i++) {
                         if (global.ComponentStorage.setItemPlacement(
                             self._dragItemIds[i], target.folderId)) {
@@ -665,11 +643,9 @@
                 }
             }
 
-            /* ---------- Folders ---------- */
             if (self._dragFolderIds && self._dragFolderIds.length) {
                 if ((target.zone === 'before' || target.zone === 'after') &&
                     target.targetKind === 'folder' && target.targetFolderId) {
-                    /* Реордер папок внутри parent. */
                     moved = self._reorderFolders(
                         self._dragFolderIds,
                         target.folderId || '',
@@ -692,11 +668,6 @@
         }, false);
     };
 
-    /* ============================================================
-       Реордер items внутри папки.
-
-       Возвращает true, если что-то изменилось.
-       ============================================================ */
     PaletteEditor.prototype._reorderItems = function (movingIds, folderId, targetItemId, zone) {
         if (!movingIds || !movingIds.length) return false;
         folderId = folderId || '';
@@ -704,7 +675,6 @@
         var self = this;
         var layout = global.ComponentStorage.readPaletteLayout();
 
-        /* Текущий отсортированный список items в целевой папке. */
         var allIds = [];
         for (var iid in layout.items) {
             if (!layout.items.hasOwnProperty(iid)) continue;
@@ -719,7 +689,6 @@
             return ca < cb ? -1 : 1;
         });
 
-        /* Убираем перемещаемые из списка. */
         var moving = {};
         for (var i = 0; i < movingIds.length; i++) moving[movingIds[i]] = true;
         var filtered = [];
@@ -727,7 +696,6 @@
             if (!moving[allIds[j]]) filtered.push(allIds[j]);
         }
 
-        /* Индекс цели. */
         var targetIdx = -1;
         for (var k = 0; k < filtered.length; k++) {
             if (filtered[k] === targetItemId) { targetIdx = k; break; }
@@ -740,7 +708,6 @@
             .concat(movingIds)
             .concat(filtered.slice(insertAt));
 
-        /* Применяем новые позиции. */
         for (var n = 0; n < result.length; n++) {
             var id = result[n];
             if (!layout.items[id]) layout.items[id] = {};
@@ -752,9 +719,6 @@
         return true;
     };
 
-    /* ============================================================
-       Реордер folders внутри parent.
-       ============================================================ */
     PaletteEditor.prototype._reorderFolders = function (movingIds, parentFolderId, targetFolderId, zone) {
         if (!movingIds || !movingIds.length) return false;
         parentFolderId = parentFolderId || '';
@@ -869,6 +833,20 @@
         }, false);
     };
 
+    /* ------------------------------------------------------------------
+       _buildCtxMenu
+
+       ИСПРАВЛЕНО: раньше обработчик mousedown в capture-фазе закрывал
+       меню и удалял пункт из DOM до того, как приходил click — из-за
+       этого колбэки пунктов (удаление, экспорт, и т.д.) никогда не
+       срабатывали. В wb-palette этого не было, потому что там меню
+       штатные от MiniUI.
+
+       Теперь mousedown на документе закрывает меню только если клик
+       был СНАРУЖИ (menu.contains(ev.target) === false). Клик по пункту
+       доходит до нашего click-обработчика, который вызывает closeMenu
+       и только потом — колбэк пункта.
+       ------------------------------------------------------------------ */
     PaletteEditor.prototype._buildCtxMenu = function (x, y) {
         var menu = document.createElement('div');
         menu.className = 'wb-palette-ctx';
@@ -882,8 +860,13 @@
         menu.style.left = x + 'px';
         menu.style.top  = y + 'px';
 
+        var docListener = null;
+
         function closeMenu() {
-            document.removeEventListener('mousedown', closeMenu, true);
+            if (docListener) {
+                document.removeEventListener('mousedown', docListener, true);
+                docListener = null;
+            }
             if (menu.parentNode) menu.parentNode.removeChild(menu);
         }
         menu._close = closeMenu;
@@ -905,20 +888,31 @@
             });
             li.addEventListener('click', function (ev) {
                 ev.stopPropagation();
+                ev.preventDefault();
+                /* Закрываем меню ПЕРЕД вызовом — на случай, если колбэк
+                   открывает диалоги (prompt / confirm / modal). */
                 closeMenu();
-                fn();
+                try { fn(); }
+                catch (err) { console.error('[PaletteEditor ctx]', err); }
             }, false);
             menu.appendChild(li);
         };
+
         menu._addSep = function () {
             var s = document.createElement('div');
             s.style.cssText = 'height:1px;background:var(--wb-border,#e0e0e0);margin:3px 0;';
             menu.appendChild(s);
         };
+
         menu._installClose = function () {
             document.body.appendChild(menu);
             setTimeout(function () {
-                document.addEventListener('mousedown', closeMenu, true);
+                /* Закрываем только если клик вне меню. */
+                docListener = function (ev) {
+                    if (menu.contains(ev.target)) return;
+                    closeMenu();
+                };
+                document.addEventListener('mousedown', docListener, true);
             }, 0);
         };
         return menu;
