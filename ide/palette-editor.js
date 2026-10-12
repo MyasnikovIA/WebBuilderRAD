@@ -4,6 +4,9 @@
 
    Даёт пользователю:
      • перемещать любые компоненты и папки по дереву (HTML5 DnD);
+     • менять порядок элементов и папок внутри одного контейнера
+       (зоны drop как в wb-domtree: верхние 25% — before,
+       нижние 25% — after, середина — inside);
      • создавать / переименовывать / удалять папки;
      • удалять только пользовательские компоненты;
      • импортировать компоненты из ZIP / из проектов с Root: component;
@@ -12,10 +15,7 @@
    Изменения сохраняются в localStorage['wb.paletteLayout'] мгновенно
    (после каждого DnD / операции). Кнопка «Отмена» восстанавливает
    снимок, сделанный при открытии редактора. Кнопка «OK» просто
-   закрывает окно, изменения остаются.
-
-   Тема: используется текущая тема IDE (light/dark). Цвета берутся
-   из CSS-переменных --wb-*, определённых в css/theme.css. */
+   закрывает окно, изменения остаются. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -34,10 +34,8 @@
     }
 
     /* ============================================================
-       Подписка на hide модального окна MiniUI.
-
-       MiniUI закрывает окно по своему крестику / Esc напрямую, без
-       вызова наших onOk/onCancel. Слушаем hide, чтобы сбросить _open.
+       Наблюдатель за окном MiniUI: когда окно закрывается
+       (крестиком / Esc / извне), сбрасываем _open и snapshot.
        ============================================================ */
     PaletteEditor.prototype._installModalWatch = function () {
         if (this._modalWatchInstalled) return;
@@ -49,8 +47,6 @@
 
         try {
             win.on('hide', function () {
-                /* Окно скрыто (нашими колбэками или извне) — гарантируем
-                   корректное состояние редактора. */
                 self._open = false;
                 self._snapshot = null;
                 self._treeEl = null;
@@ -65,9 +61,6 @@
     PaletteEditor.prototype.open = function () {
         var self = this;
 
-        /* Страховка от «залипшего» _open: если MiniUI-окно уже не видно,
-           значит наш предыдущий вызов не смог завершиться корректно —
-           сбрасываем флаг. */
         try {
             var win0 = global.mini && global.mini.get && global.mini.get('wb-window');
             if (!win0 || !win0.getVisible || !win0.getVisible()) {
@@ -77,7 +70,6 @@
 
         if (this._open) return;
 
-        /* Устанавливаем наблюдатель на мини-окно (однократно). */
         this._installModalWatch();
 
         try {
@@ -95,21 +87,18 @@
     PaletteEditor.prototype._doOpen = function () {
         var self = this;
 
-        /* Снимок раскладки для отката по Cancel. */
         this._snapshot = JSON.parse(JSON.stringify(
             global.ComponentStorage.readPaletteLayout()));
 
         this._collapsed = {};
         this._selItems = {};
 
-        /* ---- Контейнер. ---- */
         var host = document.createElement('div');
         host.className = 'wb-palette-editor';
         host.style.cssText =
             'display:flex;flex-direction:column;height:100%;min-height:400px;' +
             'background:var(--wb-panel-bg,#fff);color:var(--wb-text,#222);';
 
-        /* ---- Тулбар. ---- */
         var toolbar = document.createElement('div');
         toolbar.style.cssText =
             'flex:0 0 auto;padding:4px 6px;' +
@@ -134,7 +123,6 @@
         toolbar.appendChild(btnReset);
         host.appendChild(toolbar);
 
-        /* ---- Дерево. ---- */
         var treeBox = document.createElement('div');
         treeBox.style.cssText =
             'flex:1;overflow:auto;padding:6px;' +
@@ -143,7 +131,6 @@
             'min-height:0;border-bottom:1px solid var(--wb-border,#c0c0c0);';
         host.appendChild(treeBox);
 
-        /* ---- Подсказка. ---- */
         var hint = document.createElement('div');
         hint.style.cssText =
             'flex:0 0 auto;padding:4px 6px;font-size:11px;' +
@@ -152,6 +139,7 @@
             'border-top:1px solid var(--wb-border,#c0c0c0);';
         hint.textContent =
             'Перетаскивайте компоненты и папки мышью. ' +
+            'Верх / низ цели — вставка до / после, середина — внутрь. ' +
             'Стандартные компоненты нельзя удалить — только переместить.';
         host.appendChild(hint);
 
@@ -179,7 +167,6 @@
         this._open = false;
         this._treeEl = null;
         if (!save && hadSnapshot) {
-            /* Откат. */
             try { global.ComponentStorage.savePaletteLayout(hadSnapshot); } catch (e) {}
         }
         this._snapshot = null;
@@ -215,6 +202,19 @@
             });
         }
         return out;
+    };
+
+    PaletteEditor.prototype._captionForItemId = function (itemId) {
+        if (!itemId) return '';
+        if (itemId.indexOf('b:') === 0) {
+            var def = global.ComponentRegistry.get(itemId.substring(2));
+            return def ? (def.caption || def.id) : itemId;
+        }
+        if (itemId.indexOf('u:') === 0) {
+            var comp = global.ComponentStorage.getComponent(itemId.substring(2));
+            return comp ? (comp.name || comp.id) : itemId;
+        }
+        return itemId;
     };
 
     /* ============================================================
@@ -386,31 +386,107 @@
     };
 
     /* ============================================================
-       Resolve drop target.
+       Зона drop относительно label — как в dom-tree.js.
        ============================================================ */
-    PaletteEditor.prototype._resolveDropTarget = function (el, rootNode) {
+    PaletteEditor.prototype._zoneFromEvent = function (labelEl, nativeEvent) {
+        var rect = labelEl.getBoundingClientRect();
+        var y = nativeEvent.clientY - rect.top;
+        var h = rect.height || 1;
+        if (y < h * 0.25) return 'before';
+        if (y > h * 0.75) return 'after';
+        return 'inside';
+    };
+
+    /* ============================================================
+       Resolve drop target.
+
+       Возвращает:
+         {
+           folderId,        — в какую папку положить (inside)
+                              или куда положить перед/после
+           label,           — DOM-элемент для подсветки
+           zone,            — 'before' | 'after' | 'inside'
+           targetKind,      — 'item' | 'folder' | 'container' | 'root'
+           targetItemId,    — если zone before/after и targetKind='item'
+           targetFolderId   — если zone before/after и targetKind='folder'
+         }
+       ============================================================ */
+    PaletteEditor.prototype._resolveDropTarget = function (el, rootNode, nativeEvent) {
         if (!el || !rootNode) return null;
+
         var node = el;
         while (node && node !== rootNode) {
-            if (node.classList && node.classList.contains('wb-tree-label')) {
-                if (node.getAttribute('data-palette-root') === '1') {
-                    return { folderId: '', label: node };
-                }
-                var fId = node.getAttribute('data-palette-folder-id');
-                if (fId != null) return { folderId: fId || '', label: node };
-                var itemId = node.getAttribute('data-item-id');
-                if (itemId) {
-                    var li = node.parentNode;
-                    var ul = li ? li.parentNode : null;
-                    return this._folderFromUl(ul, rootNode);
-                }
-                return null;
-            }
+            if (node.classList && node.classList.contains('wb-tree-label')) break;
             node = node.parentNode;
         }
+
+        if (node && node !== rootNode) {
+            var lbl = node;
+
+            if (lbl.getAttribute('data-palette-root') === '1') {
+                return {
+                    folderId: '', label: lbl, zone: 'inside',
+                    targetKind: 'root'
+                };
+            }
+
+            var fId = lbl.getAttribute('data-palette-folder-id');
+            if (fId != null) {
+                var zoneF = nativeEvent ? this._zoneFromEvent(lbl, nativeEvent) : 'inside';
+                if (zoneF === 'before' || zoneF === 'after') {
+                    var pf = global.ComponentStorage.getPaletteFolder(fId);
+                    var parentFolderId = (pf && pf.parentId) ? pf.parentId : '';
+                    return {
+                        folderId: parentFolderId,
+                        label: lbl,
+                        zone: zoneF,
+                        targetKind: 'folder',
+                        targetFolderId: fId
+                    };
+                }
+                return {
+                    folderId: fId || '',
+                    label: lbl,
+                    zone: 'inside',
+                    targetKind: 'folder'
+                };
+            }
+
+            var itemId = lbl.getAttribute('data-item-id');
+            if (itemId) {
+                var layout = global.ComponentStorage.readPaletteLayout();
+                var pl = layout.items[itemId];
+                var itemFolderId = (pl && pl.folderId) ? pl.folderId : '';
+                var zoneI = nativeEvent ? this._zoneFromEvent(lbl, nativeEvent) : 'inside';
+                if (zoneI === 'before' || zoneI === 'after') {
+                    return {
+                        folderId: itemFolderId,
+                        label: lbl,
+                        zone: zoneI,
+                        targetKind: 'item',
+                        targetItemId: itemId
+                    };
+                }
+                return {
+                    folderId: itemFolderId,
+                    label: lbl,
+                    zone: 'inside',
+                    targetKind: 'item'
+                };
+            }
+            return null;
+        }
+
         node = el;
         while (node && node !== rootNode) {
-            if (node.tagName === 'UL') return this._folderFromUl(node, rootNode);
+            if (node.tagName === 'UL') {
+                var t = this._folderFromUl(node, rootNode);
+                if (t) {
+                    t.zone = 'inside';
+                    t.targetKind = 'container';
+                }
+                return t;
+            }
             node = node.parentNode;
         }
         return null;
@@ -495,15 +571,36 @@
 
         rootNode.addEventListener('dragover', function (e) {
             if (!self._isDragging) return;
-            var target = self._resolveDropTarget(e.target, rootNode);
+            var target = self._resolveDropTarget(e.target, rootNode, e);
             self._clearDropIndicators();
             if (!target) { if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; return; }
 
+            /* ---- Проверки валидности ---- */
+
+            /* Папка тащится на item — запрещаем (только в папку или корень). */
             if (self._dragFolderIds && self._dragFolderIds.length) {
-                var movingF = self._dragFolderIds[0];
-                if (movingF === target.folderId) {
+                if (target.targetKind === 'item') {
                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                     return;
+                }
+                var movingF = self._dragFolderIds[0];
+
+                /* Нельзя в себя (inside). */
+                if (target.zone === 'inside' && target.folderId === movingF) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
+                /* Нельзя вставить "перед/после самой себя". */
+                if (target.targetKind === 'folder' && target.targetFolderId === movingF) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
+                /* Нельзя в потомка. */
+                if (target.targetKind === 'folder' && target.targetFolderId) {
+                    if (self._isFolderDescendant(target.targetFolderId, movingF)) {
+                        if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                        return;
+                    }
                 }
                 if (target.folderId && self._isFolderDescendant(target.folderId, movingF)) {
                     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
@@ -511,14 +608,29 @@
                 }
             }
 
+            /* Item тащится "before/after" самого себя — no-op. */
+            if (self._dragItemIds && self._dragItemIds.length) {
+                if (target.targetKind === 'item' &&
+                    self._dragItemIds.indexOf(target.targetItemId) >= 0) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    return;
+                }
+            }
+
             e.preventDefault();
             try { e.dataTransfer.dropEffect = 'move'; } catch (ex) {}
-            if (target.label) target.label.classList.add('wb-drop-inside');
+
+            /* Подсветка — как в dom-tree. */
+            if (target.label) {
+                if (target.zone === 'before')     target.label.classList.add('wb-drop-before');
+                else if (target.zone === 'after') target.label.classList.add('wb-drop-after');
+                else                              target.label.classList.add('wb-drop-inside');
+            }
         }, false);
 
         rootNode.addEventListener('dragleave', function (e) {
             var lbl = findLabel(e.target);
-            if (lbl) lbl.classList.remove('wb-drop-inside', 'wb-drop-forbidden');
+            if (lbl) lbl.classList.remove('wb-drop-inside', 'wb-drop-before', 'wb-drop-after', 'wb-drop-forbidden');
         }, false);
 
         rootNode.addEventListener('drop', function (e) {
@@ -526,23 +638,50 @@
             e.preventDefault();
             e.stopPropagation();
 
-            var target = self._resolveDropTarget(e.target, rootNode);
+            var target = self._resolveDropTarget(e.target, rootNode, e);
             if (!target) { self._endDrag(); return false; }
 
             var moved = false;
 
+            /* ---------- Items ---------- */
             if (self._dragItemIds && self._dragItemIds.length) {
-                for (var i = 0; i < self._dragItemIds.length; i++) {
-                    if (global.ComponentStorage.setItemPlacement(self._dragItemIds[i], target.folderId)) {
-                        moved = true;
+                if ((target.zone === 'before' || target.zone === 'after') &&
+                    target.targetKind === 'item') {
+                    /* Реордер внутри папки. */
+                    moved = self._reorderItems(
+                        self._dragItemIds,
+                        target.folderId || '',
+                        target.targetItemId,
+                        target.zone
+                    );
+                } else {
+                    /* Перенос в папку / в папку целевого item / в корень. */
+                    for (var i = 0; i < self._dragItemIds.length; i++) {
+                        if (global.ComponentStorage.setItemPlacement(
+                            self._dragItemIds[i], target.folderId)) {
+                            moved = true;
+                        }
                     }
                 }
             }
 
+            /* ---------- Folders ---------- */
             if (self._dragFolderIds && self._dragFolderIds.length) {
-                for (var j = 0; j < self._dragFolderIds.length; j++) {
-                    if (global.ComponentStorage.movePaletteFolder(self._dragFolderIds[j], target.folderId)) {
-                        moved = true;
+                if ((target.zone === 'before' || target.zone === 'after') &&
+                    target.targetKind === 'folder' && target.targetFolderId) {
+                    /* Реордер папок внутри parent. */
+                    moved = self._reorderFolders(
+                        self._dragFolderIds,
+                        target.folderId || '',
+                        target.targetFolderId,
+                        target.zone
+                    );
+                } else {
+                    for (var j = 0; j < self._dragFolderIds.length; j++) {
+                        if (global.ComponentStorage.movePaletteFolder(
+                            self._dragFolderIds[j], target.folderId)) {
+                            moved = true;
+                        }
                     }
                 }
             }
@@ -551,6 +690,119 @@
             if (moved) self._render();
             return false;
         }, false);
+    };
+
+    /* ============================================================
+       Реордер items внутри папки.
+
+       Возвращает true, если что-то изменилось.
+       ============================================================ */
+    PaletteEditor.prototype._reorderItems = function (movingIds, folderId, targetItemId, zone) {
+        if (!movingIds || !movingIds.length) return false;
+        folderId = folderId || '';
+
+        var self = this;
+        var layout = global.ComponentStorage.readPaletteLayout();
+
+        /* Текущий отсортированный список items в целевой папке. */
+        var allIds = [];
+        for (var iid in layout.items) {
+            if (!layout.items.hasOwnProperty(iid)) continue;
+            if ((layout.items[iid].folderId || '') === folderId) allIds.push(iid);
+        }
+        allIds.sort(function (a, b) {
+            var pa = (layout.items[a] && layout.items[a].position) || 0;
+            var pb = (layout.items[b] && layout.items[b].position) || 0;
+            if (pa !== pb) return pa - pb;
+            var ca = self._captionForItemId(a) || '';
+            var cb = self._captionForItemId(b) || '';
+            return ca < cb ? -1 : 1;
+        });
+
+        /* Убираем перемещаемые из списка. */
+        var moving = {};
+        for (var i = 0; i < movingIds.length; i++) moving[movingIds[i]] = true;
+        var filtered = [];
+        for (var j = 0; j < allIds.length; j++) {
+            if (!moving[allIds[j]]) filtered.push(allIds[j]);
+        }
+
+        /* Индекс цели. */
+        var targetIdx = -1;
+        for (var k = 0; k < filtered.length; k++) {
+            if (filtered[k] === targetItemId) { targetIdx = k; break; }
+        }
+        if (targetIdx < 0) targetIdx = filtered.length;
+
+        var insertAt = (zone === 'after') ? targetIdx + 1 : targetIdx;
+
+        var result = filtered.slice(0, insertAt)
+            .concat(movingIds)
+            .concat(filtered.slice(insertAt));
+
+        /* Применяем новые позиции. */
+        for (var n = 0; n < result.length; n++) {
+            var id = result[n];
+            if (!layout.items[id]) layout.items[id] = {};
+            layout.items[id].folderId = folderId;
+            layout.items[id].position = n;
+        }
+        global.ComponentStorage.savePaletteLayout(layout);
+
+        return true;
+    };
+
+    /* ============================================================
+       Реордер folders внутри parent.
+       ============================================================ */
+    PaletteEditor.prototype._reorderFolders = function (movingIds, parentFolderId, targetFolderId, zone) {
+        if (!movingIds || !movingIds.length) return false;
+        parentFolderId = parentFolderId || '';
+
+        var layout = global.ComponentStorage.readPaletteLayout();
+
+        var allIds = [];
+        for (var fid in layout.folders) {
+            if (!layout.folders.hasOwnProperty(fid)) continue;
+            if ((layout.folders[fid].parentId || '') === parentFolderId) allIds.push(fid);
+        }
+        allIds.sort(function (a, b) {
+            var pa = (layout.folders[a] && layout.folders[a].position) || 0;
+            var pb = (layout.folders[b] && layout.folders[b].position) || 0;
+            if (pa !== pb) return pa - pb;
+            var na = layout.folders[a].name || '';
+            var nb = layout.folders[b].name || '';
+            return na < nb ? -1 : 1;
+        });
+
+        var moving = {};
+        for (var i = 0; i < movingIds.length; i++) moving[movingIds[i]] = true;
+        var filtered = [];
+        for (var j = 0; j < allIds.length; j++) {
+            if (!moving[allIds[j]]) filtered.push(allIds[j]);
+        }
+
+        var targetIdx = -1;
+        for (var k = 0; k < filtered.length; k++) {
+            if (filtered[k] === targetFolderId) { targetIdx = k; break; }
+        }
+        if (targetIdx < 0) targetIdx = filtered.length;
+
+        var insertAt = (zone === 'after') ? targetIdx + 1 : targetIdx;
+
+        var result = filtered.slice(0, insertAt)
+            .concat(movingIds)
+            .concat(filtered.slice(insertAt));
+
+        for (var n = 0; n < result.length; n++) {
+            var id = result[n];
+            if (!layout.folders[id]) continue;
+            layout.folders[id].parentId = parentFolderId;
+            layout.folders[id].position = n;
+        }
+        global.ComponentStorage.savePaletteLayout(layout);
+
+        return true;
     };
 
     PaletteEditor.prototype._isFolderDescendant = function (folderId, ancestorId) {
@@ -575,9 +827,11 @@
 
     PaletteEditor.prototype._clearDropIndicators = function () {
         if (!this._treeEl) return;
-        var els = this._treeEl.querySelectorAll('.wb-drop-inside, .wb-drop-forbidden');
+        var els = this._treeEl.querySelectorAll(
+            '.wb-drop-inside, .wb-drop-forbidden, .wb-drop-before, .wb-drop-after');
         for (var i = 0; i < els.length; i++) {
-            els[i].classList.remove('wb-drop-inside', 'wb-drop-forbidden');
+            els[i].classList.remove(
+                'wb-drop-inside', 'wb-drop-forbidden', 'wb-drop-before', 'wb-drop-after');
         }
     };
 
@@ -615,7 +869,6 @@
         }, false);
     };
 
-    /* Общий конструктор кастомного меню с поддержкой темы. */
     PaletteEditor.prototype._buildCtxMenu = function (x, y) {
         var menu = document.createElement('div');
         menu.className = 'wb-palette-ctx';
