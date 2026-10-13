@@ -141,15 +141,43 @@
         return this._confirmSwitchFrom(canvas);
     };
 
+    /* ------------------------------------------------------------------
+       _saveCurrentEdit
+
+       Сохраняет текущий редактируемый HTML-файл.
+
+       ВАЖНО: в файл проекта пишется HTML с уже внедрёнными тегами
+       внешних библиотек user-компонентов (jQuery / jQuery UI / …) и
+       служебных lib/wb-component/*.{js,css}. Раньше этого не делалось —
+       теги существовали только в runtime iframe-сцены (canvas) и
+       помечались data-wb-comp-asset="1", из-за чего cleanHtml() их
+       вырезал, и файл проекта оставался «голым».
+
+       Для сравнения с «чистым» canvas-состоянием initialClean
+       по-прежнему хранит результат canvas.cleanHtml() БЕЗ lib-тегов —
+       так _hasUnsavedChanges корректно детектит правки пользователя.
+       ------------------------------------------------------------------ */
     ProjectManager.prototype._saveCurrentEdit = function (canvas) {
         if (!this.editing || !this.current) return;
         var f = this.current.files[this.editing.path];
         if (!f) return;
         try {
             var clean = canvas.cleanHtml();
-            f.content = clean;
-            f.kind = 'text';
             this.editing.initialClean = clean;
+
+            /* Внедряем теги внешних libs + lib/wb-component/* в сам файл. */
+            var out = clean;
+            if (global.ZipUtils && global.ZipUtils.injectLibTagsIntoHtml) {
+                try {
+                    out = global.ZipUtils.injectLibTagsIntoHtml(clean, this.current);
+                } catch (e) {
+                    console.error('[ProjectManager] injectLibTagsIntoHtml', e);
+                }
+            }
+
+            f.content = out;
+            f.kind = 'text';
+
             this.save();
             bus.emit('project:changed', { project: this.current });
         } catch (e) { /* ignore */ }
@@ -363,10 +391,6 @@
          • App._componentMode === true, ИЛИ
          • this.current.rootType === 'component'.
 
-       Это защищает от ситуации, когда App._componentMode был сброшен
-       (переключение проекта, нестандартный сценарий), но проект всё ещё
-       остаётся компонентным.
-
        Libs (jsLibs / cssLibs) читаются:
          1. через ComponentTab.getFormData();
          2. дополнительно — напрямую через ComponentTab._collectLibs()
@@ -430,7 +454,13 @@
             cd.jsLibs  = normalizeLibs(rawJs);
             cd.cssLibs = normalizeLibs(rawCss);
 
-            if (!cd.previewIdeHtml && canvas && canvas.cleanHtml) {
+            /* ← ИЗМЕНЕНО: подставляем HTML сцены, если previewIdeHtml
+               пуст ИЛИ совпадает с дефолтной заготовкой ComponentTab. */
+            var previewIsDefault = !global.ComponentTab
+                || typeof global.ComponentTab.isDefaultPreview !== 'function'
+                || global.ComponentTab.isDefaultPreview(cd.previewIdeHtml);
+
+            if ((!cd.previewIdeHtml || previewIsDefault) && canvas && canvas.cleanHtml) {
                 try {
                     var codeHtml = canvas.cleanHtml();
                     if (codeHtml && codeHtml.replace(/\s+/g, '')) {
@@ -850,8 +880,15 @@
             return;
         }
 
-        if (!cd.previewIdeHtml && cd.html) cd.previewIdeHtml = cd.html;
-        if (!cd.previewIdeHtml && canvas && canvas.cleanHtml) {
+        /* ← ИЗМЕНЕНО: если previewIdeHtml пуст ИЛИ равен дефолтной
+           заготовке ComponentTab — подставляем HTML сцены. Раньше
+           проверка была только на пустую строку, и placeholder
+           «My Component» уезжал в палитру как «настоящий» HTML. */
+        var previewIsDefault = !global.ComponentTab
+            || typeof global.ComponentTab.isDefaultPreview !== 'function'
+            || global.ComponentTab.isDefaultPreview(cd.previewIdeHtml);
+
+        if ((!cd.previewIdeHtml || previewIsDefault) && canvas && canvas.cleanHtml) {
             try {
                 var codeHtml = canvas.cleanHtml();
                 if (codeHtml && codeHtml.replace(/\s+/g, '')) {

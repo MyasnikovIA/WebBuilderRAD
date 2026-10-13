@@ -148,10 +148,15 @@
     }
 
     /* Вставляет теги библиотек в <head> HTML-строки.
-       Добавляет:
-         1. <link> для CSS библиотек user-компонентов;
-         2. <script> для JS библиотек user-компонентов;
-         3. lib/wb-component/core.js и <cmptype>.{css,js}. */
+     Добавляет:
+       1. <link> для CSS библиотек user-компонентов;
+       2. <script> для JS библиотек user-компонентов;
+       3. lib/wb-component/core.js и <cmptype>.{css,js}.
+
+     Идемпотентность: теги на URL, уже присутствующие в HTML,
+     повторно не добавляются — важно, потому что файл может быть
+     прогнан через функцию несколько раз (автосейв, экспорт, снова
+     автосейв). */
     function injectLibTagsIntoHtml(html, project) {
         if (!html || !project) return html;
 
@@ -180,10 +185,28 @@
             }
         }
 
+        /* ← НОВОЕ: не дублируем теги, которые уже есть в html — при
+           повторном сохранении того же файла (автосейв, экспорт)
+           они бы накапливались. */
+        function dropExisting(list, attrName) {
+            var out = [];
+            for (var k = 0; k < list.length; k++) {
+                var url = list[k];
+                var esc = String(url).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                var re = new RegExp(
+                    '\\b' + attrName + '\\s*=\\s*["\']' + esc + '["\']', 'i'
+                );
+                if (!re.test(html)) out.push(url);
+            }
+            return out;
+        }
+        extCss = dropExisting(extCss, 'href');
+        extJs  = dropExisting(extJs,  'src');
+
         var wbTags = buildLibTagsFor(cmptypes, project);
         var hasLib = hasLibTags(html);
 
-        if (!extCss.length && !extJs.length && !wbTags) return html;
+        if (!extCss.length && !extJs.length && (!wbTags || hasLib)) return html;
 
         var injectParts = [];
         if (extCss.length) {
@@ -227,19 +250,21 @@
         },
 
         /* ------------------------------------------------------------------
-           exportProject
+   exportProject
 
-           При isComponent === true manifest.component формируется так:
-             1. Если IDE в режиме Root: component И открыт тот же проект —
-                берём живой componentTab.getFormData() (пользователь мог
-                добавить libs и не нажать Save Project).
-             2. Иначе — project.componentData.
-             3. Если в обоих пустые jsLibs / cssLibs, но ComponentTab
-                жив — добираем libs из DOM через _collectLibs.
+   При isComponent === true manifest.component формируется так:
+     1. Если IDE в режиме Root: component И открыт тот же проект —
+        берём живой componentTab.getFormData().
+     2. Иначе — project.componentData.
+     3. Если в обоих пустые jsLibs / cssLibs, но ComponentTab
+        жив — добираем libs из DOM через _collectLibs.
+     4. ← ИЗМЕНЕНО: если previewIdeHtml пуст или совпадает
+        с дефолтной заготовкой ComponentTab — берём реальный
+        HTML сцены (canvas.cleanHtml()).
 
-           Это гарантирует, что пользовательские jsLibs / cssLibs
-           попадут в project.json при экспорте, даже если пользователь
-           забыл предварительно сохранить проект. */
+   Это гарантирует, что пользовательские jsLibs / cssLibs
+   и реальный HTML виджета попадут в project.json при экспорте,
+   даже если пользователь забыл предварительно сохранить проект. */
         exportProject: function (project, opts) {
             if (!project) return;
             opts = opts || {};
@@ -266,8 +291,7 @@
                 };
 
                 if (isComponent) {
-                    /* 1. Живые данные из ComponentTab — если открыт
-                          тот же проект и IDE в режиме компонента. */
+                    /* 1. Живые данные из ComponentTab. */
                     var liveCd = null;
                     try {
                         var pm = global.IDE && global.IDE.projectManager;
@@ -280,7 +304,7 @@
                     /* 2. Сохранённый componentData. */
                     var storedCd = project.componentData || {};
 
-                    /* 3. Libs из DOM ComponentTab — как последний резерв. */
+                    /* 3. Libs из DOM ComponentTab. */
                     var domJs = [], domCss = [];
                     try {
                         if (global.componentTab && global.componentTab._collectLibs) {
@@ -318,6 +342,24 @@
                     var effEvents      = (liveCd && liveCd.customEvents)     || storedCd.customEvents     || [];
                     var effNestingMode = (liveCd && liveCd.nestingMode)      || storedCd.nestingMode      || 'all';
                     var effNestingRls  = (liveCd && liveCd.nestingRules)     || storedCd.nestingRules     || [];
+
+                    /* ← ИЗМЕНЕНО: если PreViewIDE пуст или дефолтная
+                       заготовка — берём реальный HTML сцены. */
+                    var isDefault = !global.ComponentTab
+                        || typeof global.ComponentTab.isDefaultPreview !== 'function'
+                        || global.ComponentTab.isDefaultPreview(effPreview);
+
+                    if (isDefault) {
+                        var canvasX = global.IDE && global.IDE._canvas;
+                        if (canvasX && canvasX.cleanHtml) {
+                            try {
+                                var sceneHtmlX = canvasX.cleanHtml();
+                                if (sceneHtmlX && sceneHtmlX.replace(/\s+/g, '')) {
+                                    effPreview = sceneHtmlX;
+                                }
+                            } catch (e) { /* ignore */ }
+                        }
+                    }
 
                     manifest.component = {
                         name:            effName,

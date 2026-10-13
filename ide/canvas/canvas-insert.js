@@ -126,6 +126,16 @@
         el.classList.add(SEL);
         this._addResizeHandles(el);
 
+        /* ← НОВОЕ: если у вставленного компонента есть внешние libs или
+           пользовательский JS (это user-компонент из палитры) — нужно
+           немедленно переинжектить ассеты в iframe. Иначе jQuery и UI
+           не загрузятся до первой перезагрузки сцены, и пользователь
+           увидит компонент «в голом виде». */
+        if (def && (def.jsLibs || def.cssLibs ||
+            (def.userComponent && def.userComponent.js))) {
+            this._injectComponentAssets();
+        }
+
         bus.emit('canvas:changed');
         bus.emit('selection:changed', { element: el });
         return el;

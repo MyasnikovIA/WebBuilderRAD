@@ -295,9 +295,35 @@
 
             'wb-cdata { display: none !important; }' +
             'wb-images, wb-image { display: none !important; }' +
+
+            /* Общая стилизация плейсхолдеров D3/M2 — квадратик с пунктиром. */
             '[data-wb-preview] { display: inline-block; outline: 1px dotted #b0bec5;' +
             '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
             '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
+
+            /* ОБЁРТКА USER-КОМПОНЕНТА.
+               `[data-wb-preview]` выше делает обёртку inline-block’ом с
+               min-width/min-height и пунктиром. Для user-компонента это
+               неверно: обёртка должна занимать всю площадь самого
+               user-компонента, не иметь ни собственной обводки, ни
+               отступов, и не «схлопываться» по размеру контента.
+               Иначе содержимое (часто с position:absolute) позиционируется
+               относительно user-компонента, а рамка предпросмотра остаётся
+               крошечным квадратиком в углу. */
+            '.wb-user-comp-preview[data-wb-preview] {' +
+            '  display: block;' +
+            '  position: relative;' +              /* свой контекст для absolute-детей */
+            '  width: 100%;' +
+            '  height: 100%;' +
+            '  box-sizing: border-box;' +
+            '  margin: 0;' +
+            '  padding: 0;' +
+            '  min-width: 0;' +
+            '  min-height: 0;' +
+            '  outline: none;' +
+            '  overflow: hidden;' +
+            '}' +
+
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
             '.' + HOV + '{outline:1px dotted #90caf9 !important;outline-offset:-1px;}' +
 
@@ -334,25 +360,24 @@
     };
 
     /* ============================================================
-       _injectComponentAssets
+   _injectComponentAssets
 
-       Инжектит в <head> iframe:
-         1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
-         2. CSS / JS всех user-компонентов, реально использованных
-            на сцене ([data-wb-user-comp] с их cmptype).
-         3. Если IDE в режиме Root: component — дополнительно
-            jsLibs / cssLibs и пользовательский JS активной
-            ComponentTab. Это позволяет компоненту на Scene работать
-            с внешними библиотеками (jQuery, jQuery UI, …) без
-            предварительного сохранения в палитру.
+   Инжектит в <head> iframe:
+     1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
+     2. CSS / JS всех user-компонентов, реально использованных
+        на сцене ([data-wb-user-comp] с их cmptype), а также
+        их пользовательский JS (uc.js) — он выполняется после
+        загрузки всех libs.
+     3. Если IDE в режиме Root: component — дополнительно
+        jsLibs / cssLibs и пользовательский JS активной
+        ComponentTab.
 
-       Пользовательский JS выполняется после загрузки всех libs
-       (Promise.all) и в контексте iframe — чтобы $, jQuery UI
-       и прочие символы уже были доступны.
+   Теги libs помечаются data-wb-comp-asset="1" — они не попадают
+   в сериализацию cleanHtml и не видны на вкладке Code.
 
-       Теги libs помечаются data-wb-comp-asset="1" — они не попадают
-       в сериализацию cleanHtml и не видны на вкладке Code.
-       ============================================================ */
+   Дедупликация: URL, уже присутствующие в <head> (например, если
+   HTML-файл проекта уже содержит теги libs — после сохранения),
+   повторно не добавляются. */
     Canvas.prototype._injectComponentAssets = function () {
         var self = this;
         var doc = this.getDoc();
@@ -360,22 +385,37 @@
         var head = this.getOrCreateHead();
         if (!head) return;
 
-        /* Generation-счётчик: если между инжектом и onload-ом libs
-           произошёл новый вызов — старые колбэки игнорируются. */
         var gen = ++this._assetGen;
 
-        /* Удаляем ранее добавленные теги ассетов. */
+        /* Убираем ранее вставленные нами теги. */
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
         var seenCss = {};
         var seenJs  = {};
+
+        /* ← НОВОЕ: если head уже содержит <link>/<script> на libs
+           (например, файл проекта сохранён с внедрёнными тегами),
+           не плодим дубликаты. */
+        var existingHead = doc.head;
+        if (existingHead) {
+            var existLinks = existingHead.querySelectorAll('link[href]');
+            for (var eL = 0; eL < existLinks.length; eL++) {
+                var hv = existLinks[eL].getAttribute('href');
+                if (hv) seenCss[hv] = true;
+            }
+            var existScripts = existingHead.querySelectorAll('script[src]');
+            for (var eS = 0; eS < existScripts.length; eS++) {
+                var sv = existScripts[eS].getAttribute('src');
+                if (sv) seenJs[sv] = true;
+            }
+        }
+
         var pendingJs = [];
+        var userJsQueue = [];
 
         function addCss(url) {
             if (!url) return;
-            /* Защита: URL, заканчивающийся на .js, нельзя подключить
-               как <link>; перенаправляем в addJs. */
             if (/\.js(\?|#|$)/i.test(url)) { addJs(url); return; }
             if (seenCss[url]) return;
             seenCss[url] = true;
@@ -387,9 +427,6 @@
         }
         function addJs(url) {
             if (!url) return;
-            /* Защита: URL, заканчивающийся на .css, нельзя подключить
-               как <script> — браузер попытается выполнить CSS как JS
-               и выдаст Uncaught SyntaxError. Перенаправляем в addCss. */
             if (/\.css(\?|#|$)/i.test(url)) { addCss(url); return; }
             if (seenJs[url]) return;
             seenJs[url] = true;
@@ -435,6 +472,7 @@
                 for (var jj = 0; jj < libs.jsLibs.length; jj++) {
                     addJs(libs.jsLibs[jj].value);
                 }
+                if (uc.js) userJsQueue.push(uc.js);
             }
         }
 
@@ -464,23 +502,35 @@
             } catch (e) { /* ignore */ }
         }
 
-        /* После загрузки всех libs — выполняем пользовательский JS
-           в контексте iframe. Если к моменту onload сменилось
-           поколение (gen) — не выполняем (структура уже устарела). */
         Promise.all(pendingJs).then(function () {
             if (gen !== self._assetGen) return;
-            if (!userJsCode) return;
             var docNow = self.getDoc();
             if (!docNow) return;
             var headNow = self.getOrCreateHead();
             if (!headNow) return;
-            try {
-                var s = docNow.createElement('script');
-                s.setAttribute('data-wb-comp-asset', '1');
-                s.textContent = userJsCode;
-                headNow.appendChild(s);
-            } catch (e) {
-                console.error('[Canvas] execute user component JS', e);
+
+            /* JS всех palette-компонентов на сцене. */
+            for (var qi = 0; qi < userJsQueue.length; qi++) {
+                try {
+                    var sq = docNow.createElement('script');
+                    sq.setAttribute('data-wb-comp-asset', '1');
+                    sq.textContent = userJsQueue[qi];
+                    headNow.appendChild(sq);
+                } catch (e) {
+                    console.error('[Canvas] execute user component JS', e);
+                }
+            }
+
+            /* JS активной ComponentTab (Root: component). */
+            if (userJsCode) {
+                try {
+                    var s = docNow.createElement('script');
+                    s.setAttribute('data-wb-comp-asset', '1');
+                    s.textContent = userJsCode;
+                    headNow.appendChild(s);
+                } catch (e) {
+                    console.error('[Canvas] execute user component JS', e);
+                }
             }
         });
     };
@@ -706,10 +756,6 @@
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'm2Form', 'div'].indexOf(type) < 0) return;
 
-        /* Даже если тип не меняется — переинжектим ассеты, чтобы libs
-           компонента (Root: component) появились в iframe. Это
-           критично, когда после загрузки проекта режим уже стоит
-           'div', а libs добавились позже. */
         if (type === this._rootType) {
             this._injectComponentAssets();
             return;
@@ -902,11 +948,6 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
-        /* Сначала раскрываем самозакрытые стандартные HTML-теги
-           (<div/>, <span/>, …) в <tag></tag>. Если этого не сделать,
-           браузер при парсинге в text/html трактует <div .../> как
-           открывающий и следующий элемент вкладывается внутрь —
-           компоненты «матрёшатся». */
         prepared = expandSelfClosingHtmlTags(prepared);
         prepared = expandSelfClosingCmpTags(prepared);
         prepared = expandSelfClosingComponentTags(prepared);

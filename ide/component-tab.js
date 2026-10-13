@@ -33,12 +33,37 @@
    Подписчик — Canvas (см. canvas-core.js) — перезагружает сцену,
    чтобы libs и пользовательский JS работали на Scene.
 
+   ---- Признак «пустого» PreViewIDE ----
+
+   newComponent() ставит в previewEditor дефолтную заготовку
+   (DEFAULT_PREVIEW_HTML). getFormData() / saveAsComponent() считают
+   её «пустым» значением и подставляют реальный HTML сцены
+   (canvas.cleanHtml()). Это устраняет ситуацию, когда пользователь
+   строит виджет на вкладке Scene, а экспортирует компонент с
+   placeholder'ом «My Component».
+
    Дополнительно: статический хелпер ComponentTab.loadLibsIntoMainDoc()
    позволяет другим модулям (Palette, ProjectManager) подгрузить
    внешние библиотеки компонента в основной документ IDE. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
+
+    /* Стартовая заготовка PreViewIDE — НЕ считается «заполненным»
+       значением: если пользователь не редактировал эту вкладку, в неё
+       нужно подставлять реальный HTML со сцены (canvas.cleanHtml()). */
+    var DEFAULT_PREVIEW_HTML = '<div class="my-component">\n    My Component\n</div>';
+
+    /* Нормализация пробелов для сравнения HTML-строк. */
+    function _normWs(s) {
+        return String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    }
+
+    /* true, если html пуст или совпадает с дефолтной заготовкой. */
+    function isDefaultPreview(html) {
+        if (!html) return true;
+        return _normWs(html) === _normWs(DEFAULT_PREVIEW_HTML);
+    }
 
     var PREDEFINED_EDITORS = [
         { id: '',                   caption: '— не выбрано —' },
@@ -101,8 +126,7 @@
         if (type === 'project') return Promise.resolve('project');
 
         /* Защита: URL, заканчивающийся на .css, не может быть <script>,
-           а URL на .js — не может быть <link>. Такое может прийти из
-           старых project.json / corrupted localStorage. */
+           а URL на .js — не может быть <link>. */
         if (kind === 'js' && /\.css(\?|#|$)/i.test(url)) kind = 'css';
         else if (kind === 'css' && /\.js(\?|#|$)/i.test(url)) kind = 'js';
 
@@ -136,7 +160,6 @@
             el.onload  = function () { finish('ok'); };
             el.onerror = function () { finish('error'); };
 
-            /* Таймаут на случай, если событие не сработает. */
             setTimeout(function () { finish('error'); }, 15000);
 
             try { doc.head.appendChild(el); }
@@ -145,8 +168,7 @@
     };
 
     /* Публичный хелпер: подгрузить массивы jsLibs / cssLibs в основной
-       документ IDE. Формат элемента — { type: 'url'|'project', value }.
-       Также принимает строку в качестве значения. */
+       документ IDE. Формат элемента — { type: 'url'|'project', value }. */
     ComponentTab.loadLibsIntoMainDoc = function (jsLibs, cssLibs) {
         var i;
         jsLibs  = jsLibs  || [];
@@ -225,8 +247,8 @@
     };
 
     /* ============================================================
-   Построение UI.
-   ============================================================ */
+       Построение UI.
+       ============================================================ */
     ComponentTab.prototype._build = function () {
         var self = this;
 
@@ -239,12 +261,6 @@
         form.append(self._field('cmptype',     'cmptype',                    'text'));
         form.append(self._textarea('description', 'Описание компонента'));
 
-        /* ВАЖНО: data-kind должен совпадать с ключами this._libs
-           ('js' / 'css'), которые используют _collectLibs / _setLibs /
-           _checkAllLibs. Раньше здесь было 'jsLibs' / 'cssLibs' —
-           из-за этого this._libs['js'] был пустым jQuery-объектом,
-           и любые libs, добавленные пользователем, не попадали в
-           componentData / project.json. */
         form.append(self._libsField('js',  'JS-ресурсы'));
         form.append(self._libsField('css', 'CSS-ресурсы'));
 
@@ -291,7 +307,6 @@
         this.cssEditor     = new global.CodeEditor({ value: '', language: 'css' });
         this.previewEditor = new global.CodeEditor({ value: '', language: 'xml' });
 
-        /* При вводе в JS-редакторе — обновить сцену (debounce 700 мс). */
         this.jsEditor.ta.addEventListener('input', function () {
             if (self._jsChangeTimer) clearTimeout(self._jsChangeTimer);
             self._jsChangeTimer = setTimeout(function () {
@@ -299,7 +314,6 @@
             }, 700);
         });
 
-        /* При вводе в редакторе PreViewIDE(html) — тоже обновить сцену. */
         this.previewEditor.ta.addEventListener('input', function () {
             if (self._previewChangeTimer) clearTimeout(self._previewChangeTimer);
             self._previewChangeTimer = setTimeout(function () {
@@ -362,7 +376,6 @@
         this._form.nestingMode.change(syncNestingUI);
         this._syncNestingUI = syncNestingUI;
 
-        /* Повторная проверка libs при загрузке проекта. */
         bus.on('project:loaded', function () {
             setTimeout(function () { self._checkAllLibs(); }, 100);
         });
@@ -449,12 +462,6 @@
         return row;
     };
 
-    /* ------------------------------------------------------------------
-       Одна строка lib-а:
-         <select> (URL | Файл проекта) — <input> — <span class=status> — <×>
-
-       При изменении значения или типа запускается проверка и загрузка,
-       плюс эмитится component:libs-changed (Canvas перезагрузит сцену). */
     ComponentTab.prototype._addLib = function (listEl, kind, value, type) {
         var self = this;
         var item = $(
@@ -485,8 +492,6 @@
             self._checkAndLoadLib(valInput.val(), kind, typeSel.val(), statusEl);
         };
 
-        /* `input` — реальное время, debounce, чтобы не дёргать canvas
-           на каждый символ. */
         var libsDebounce = null;
         valInput.bind('input', function () {
             if (libsDebounce) clearTimeout(libsDebounce);
@@ -496,13 +501,11 @@
             }, 500);
         });
 
-        /* `change` — по blur/Enter, тоже перепроверяет + инжект. */
         valInput.bind('change', function () {
             check();
             bus.emit('component:libs-changed');
         });
 
-        /* Смена типа URL ↔ Файл проекта — сразу переинжект. */
         typeSel.bind('change', function () {
             check();
             bus.emit('component:libs-changed');
@@ -510,7 +513,6 @@
 
         listEl.append(item);
 
-        /* Если значение уже есть — сразу проверяем. */
         if (value) setTimeout(check, 0);
     };
 
@@ -656,7 +658,6 @@
         var pdTd = $('<td></td>').append(pdSel);
         tr.append(pdTd);
 
-        /* --- JS onChange function field --- */
         var funcInp = $('<input type="text" class="wb-cp-onchange">')
             .val(data.onChangeFunc || '')
             .attr('placeholder', 'onColorChange');
@@ -845,7 +846,8 @@
 
         var m = new RegExp(
             '(?:function\\s+' + esc + '\\s*\\([^)]*\\)\\s*\\{' +
-            '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)'
+            '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)' +
+            '' /* см. фикс от предыдущей версии */
         ).exec(code);
 
         if (m) {
@@ -873,11 +875,35 @@
 
         this.jsEditor.setValue('// JS\n');
         this.cssEditor.setValue('/* CSS */\n');
-        this.previewEditor.setValue('<div class="my-component">\n    My Component\n</div>');
+        /* ← ИЗМЕНЕНО: используем константу DEFAULT_PREVIEW_HTML. */
+        this.previewEditor.setValue(DEFAULT_PREVIEW_HTML);
         this.statusEl.text('').css('color', '');
     };
 
+    /* ------------------------------------------------------------------
+       getFormData
+
+       ← ИЗМЕНЕНО: если PreViewIDE содержит дефолтную заготовку
+       (DEFAULT_PREVIEW_HTML) или пуст — подставляем реальный HTML сцены
+       (canvas.cleanHtml()). Это устраняет ситуацию, когда пользователь
+       строит виджет на вкладке Scene, но экспортирует компонент с
+       placeholder'ом «My Component».
+       ------------------------------------------------------------------ */
     ComponentTab.prototype.getFormData = function () {
+        var preview = this.previewEditor.getValue();
+
+        if (isDefaultPreview(preview)) {
+            var canvas = global.IDE && global.IDE._canvas;
+            if (canvas && canvas.cleanHtml) {
+                try {
+                    var sceneHtml = canvas.cleanHtml();
+                    if (sceneHtml && sceneHtml.replace(/\s+/g, '')) {
+                        preview = sceneHtml;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        }
+
         return {
             name:        this._form.name.val() || 'Component',
             icon:        this._form.icon.val() || '',
@@ -888,7 +914,7 @@
             cssLibs:     this._collectLibs('css'),
             js:          this.jsEditor.getValue(),
             css:         this.cssEditor.getValue(),
-            previewIdeHtml: this.previewEditor.getValue(),
+            previewIdeHtml: preview,
             customProperties: this._collectProps(),
             customEvents:     this._collectEvents(),
             nestingMode:  this._form.nestingMode.val() || 'all',
@@ -899,13 +925,16 @@
     /* ------------------------------------------------------------------
        saveAsComponent
 
+       ← ИЗМЕНЕНО: вместо `if (!data.previewIdeHtml)` — `isDefaultPreview()`,
+       чтобы сработало и на дефолтной заготовке.
+
        Если PreViewIDE(html) не заполнен — берём HTML со сцены (вкладка
        Code = canvas.cleanHtml()) и используем его как превью компонента. */
     ComponentTab.prototype.saveAsComponent = function () {
         var data = this.getFormData();
         if (!data.name) { alert('Укажите имя компонента.'); return; }
 
-        if (!data.previewIdeHtml) {
+        if (isDefaultPreview(data.previewIdeHtml)) {
             var canvas = global.IDE && global.IDE._canvas;
             if (canvas && canvas.cleanHtml) {
                 try {
@@ -914,7 +943,7 @@
                         data.previewIdeHtml = codeHtml;
                         this.previewEditor.setValue(codeHtml);
                         this.statusEl
-                            .text('PreViewIDE(html) пуст — использован HTML вкладки Code.')
+                            .text('PreViewIDE(html) пуст — использован HTML сцены.')
                             .css('color', '#1565c0');
                     }
                 } catch (e) { /* ignore */ }
@@ -968,7 +997,6 @@
         this.cssEditor.setValue(c.css || '');
         this.previewEditor.setValue(c.previewIdeHtml || c.html || '');
 
-        /* Проверить и загрузить все внешние библиотеки компонента. */
         this._checkAllLibs();
     };
 
@@ -977,6 +1005,10 @@
     ComponentTab.PREDEFINED_EDITORS = PREDEFINED_EDITORS;
     ComponentTab.PROPERTY_TYPES     = PROPERTY_TYPES;
     ComponentTab.NESTING_MODES      = NESTING_MODES;
+
+    /* ← ИЗМЕНЕНО: публичные хелперы и константа для других модулей. */
+    ComponentTab.DEFAULT_PREVIEW_HTML = DEFAULT_PREVIEW_HTML;
+    ComponentTab.isDefaultPreview     = isDefaultPreview;
 
     global.ComponentTab = ComponentTab;
 })(window, jQuery);
