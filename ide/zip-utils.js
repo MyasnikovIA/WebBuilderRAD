@@ -10,8 +10,17 @@
           как ОТКРЫВАЮЩИЙ и вкладывает следующий контент внутрь (первый
           компонент «исчезает», второй наезжает).
        2. В <head> каждого HTML/Frm-файла, использующего пользовательские
-          компоненты ([data-wb-user-comp]), вставляются <link>/<script> на
-          lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}. */
+          компоненты ([data-wb-user-comp]), вставляются:
+            • внешние libs (jsLibs / cssLibs из ComponentStorage);
+            • <link>/<script> на lib/wb-component/{core.js,<cmptype>.js,
+              <cmptype>.css}.
+
+   Компонентный проект (type: 'component', rootType: 'component'):
+     manifest.component формируется из project.componentData. Но если
+     IDE открыта на том же проекте в режиме Root: component —
+     предпочитаются свежие данные из ComponentTab, чтобы не терять
+     только что введённые jsLibs / cssLibs (пользователь мог не
+     нажать Save Project перед экспортом). */
 (function (global) {
     'use strict';
     var JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
@@ -60,32 +69,28 @@
         }
         return out;
     }
+    function normalizeLibs(arr) {
+        var out = [];
+        if (!Array.isArray(arr)) return out;
+        for (var i = 0; i < arr.length; i++) {
+            var e = arr[i];
+            if (!e) continue;
+            if (typeof e === 'string') {
+                out.push({ type: 'url', value: e });
+            } else {
+                out.push({ type: e.type || 'url', value: e.value || '' });
+            }
+        }
+        return out;
+    }
 
     /* ------------------------------------------------------------------
        Нормализация самозакрытых стандартных HTML-тегов.
-
-       В text/html браузер трактует <div .../> как ОТКРЫВАЮЩИЙ — следующий
-       элемент становится вложенным. Это ломает визуализацию
-       user-компонентов: верхний <div data-wb-user-comp …/> «съедает»
-       нижний, получает ребёнка, hasRealContent() возвращает true — и HTML
-       в него не инжектится.
-
-       Разворачиваем <tag …/> в <tag …></tag> для всех стандартных
-       HTML-контейнеров. Void-теги (<br>, <img>, …) не трогаем.
-       Custom-теги (cmp*, component) тоже не трогаем — их обрабатывают
-       expandSelfClosing* в canvas-core.js при загрузке.
-
-       Регулярка написана так, чтобы корректно обрабатывать:
-         • обычные атрибуты;
-         • значения в одинарных / двойных кавычках;
-         • пробелы перед `/>`.
        ------------------------------------------------------------------ */
     var HTML_VOID_TAGS = {
         area:1, base:1, br:1, col:1, embed:1, hr:1, img:1, input:1,
         link:1, meta:1, param:1, source:1, track:1, wbr:1
     };
-    /* <tag ATTRS /> — ATTRS содержит любые символы, кроме <, >, кавычек
-       внутри которых допустимы пробелы/слэши/спецсимволы. */
     var HTML_SELF_CLOSE_RE = /<([a-zA-Z][a-zA-Z0-9]*)((?:\s+(?:[^"'<>\/]|\/(?!>)|"[^"]*"|'[^']*')*?)?)\s*\/>/g;
     function normalizeSelfClosingTags(html) {
         if (!html) return html;
@@ -99,9 +104,8 @@
     }
 
     /* ------------------------------------------------------------------
-       Инжект библиотек в HTML
+       Инжект библиотек в HTML.
        ------------------------------------------------------------------ */
-
     function collectCmptypesInHtml(html) {
         var used = {};
         var m;
@@ -144,19 +148,16 @@
     }
 
     /* Вставляет теги библиотек в <head> HTML-строки.
-   Возвращает изменённую строку либо исходную, если инжект не нужен.
-
-   Добавляет:
-     1. <link> для CSS библиотек user-компонентов;
-     2. <script> для JS библиотек user-компонентов;
-     3. lib/wb-component/core.js и <cmptype>.{css,js} (как раньше). */
+       Добавляет:
+         1. <link> для CSS библиотек user-компонентов;
+         2. <script> для JS библиотек user-компонентов;
+         3. lib/wb-component/core.js и <cmptype>.{css,js}. */
     function injectLibTagsIntoHtml(html, project) {
         if (!html || !project) return html;
 
         var cmptypes = collectCmptypesInHtml(html);
         if (!cmptypes.length) return html;
 
-        /* Внешние библиотеки (https://…) — соберём из ComponentStorage. */
         var extCss = [], extJs = [];
         if (global.ComponentStorage) {
             var seenCss = {}, seenJs = {};
@@ -179,12 +180,9 @@
             }
         }
 
-        /* Теги lib/wb-component/*, которые нужно добавить (если их нет). */
         var wbTags = buildLibTagsFor(cmptypes, project);
-
         var hasLib = hasLibTags(html);
 
-        /* Если ни внешних, ни wb-библиотек нет — выходим. */
         if (!extCss.length && !extJs.length && !wbTags) return html;
 
         var injectParts = [];
@@ -228,13 +226,28 @@
                 });
         },
 
+        /* ------------------------------------------------------------------
+           exportProject
+
+           При isComponent === true manifest.component формируется так:
+             1. Если IDE в режиме Root: component И открыт тот же проект —
+                берём живой componentTab.getFormData() (пользователь мог
+                добавить libs и не нажать Save Project).
+             2. Иначе — project.componentData.
+             3. Если в обоих пустые jsLibs / cssLibs, но ComponentTab
+                жив — добираем libs из DOM через _collectLibs.
+
+           Это гарантирует, что пользовательские jsLibs / cssLibs
+           попадут в project.json при экспорте, даже если пользователь
+           забыл предварительно сохранить проект. */
         exportProject: function (project, opts) {
             if (!project) return;
             opts = opts || {};
 
+            /* Перед экспортом обновляем lib-файлы. */
             if (global.ComponentStorage && global.ComponentStorage.syncProjectLibraries) {
-                var canvas = global.IDE && global.IDE._canvas;
-                global.ComponentStorage.syncProjectLibraries(project, canvas);
+                var canvasForSync = global.IDE && global.IDE._canvas;
+                global.ComponentStorage.syncProjectLibraries(project, canvasForSync);
             }
 
             var isComponent = opts.asComponent === true
@@ -253,23 +266,74 @@
                 };
 
                 if (isComponent) {
-                    var cd = project.componentData;
-                    if (!cd && global.componentTab && global.componentTab.getFormData) {
-                        try { cd = global.componentTab.getFormData(); } catch (e) { cd = null; }
+                    /* 1. Живые данные из ComponentTab — если открыт
+                          тот же проект и IDE в режиме компонента. */
+                    var liveCd = null;
+                    try {
+                        var pm = global.IDE && global.IDE.projectManager;
+                        var sameProject = pm && pm.current && pm.current.name === project.name;
+                        if (global.componentTab && global.componentTab.getFormData && sameProject) {
+                            liveCd = global.componentTab.getFormData();
+                        }
+                    } catch (e) { liveCd = null; }
+
+                    /* 2. Сохранённый componentData. */
+                    var storedCd = project.componentData || {};
+
+                    /* 3. Libs из DOM ComponentTab — как последний резерв. */
+                    var domJs = [], domCss = [];
+                    try {
+                        if (global.componentTab && global.componentTab._collectLibs) {
+                            domJs  = global.componentTab._collectLibs('js')  || [];
+                            domCss = global.componentTab._collectLibs('css') || [];
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    function pickLibs(liveArr, storedArr, domArr) {
+                        if (Array.isArray(liveArr) && liveArr.length)   return liveArr;
+                        if (Array.isArray(domArr) && domArr.length)     return domArr;
+                        if (Array.isArray(storedArr) && storedArr.length) return storedArr;
+                        return [];
                     }
-                    cd = cd || {};
+
+                    var effName        = (liveCd && liveCd.name)        || storedCd.name        || project.name || 'Component';
+                    var effIcon        = (liveCd && liveCd.icon)        || storedCd.icon        || '';
+                    var effTagName     = (liveCd && liveCd.tagName)     || storedCd.tagName     || 'div';
+                    var effCmptype     = (liveCd && liveCd.cmptype)     || storedCd.cmptype     || '';
+                    var effDescription = (liveCd && liveCd.description) || storedCd.description || '';
+                    var effJsLibs      = pickLibs(
+                        liveCd && liveCd.jsLibs,
+                        storedCd.jsLibs,
+                        domJs
+                    );
+                    var effCssLibs     = pickLibs(
+                        liveCd && liveCd.cssLibs,
+                        storedCd.cssLibs,
+                        domCss
+                    );
+                    var effJs          = (liveCd && liveCd.js)          || storedCd.js          || '';
+                    var effCss         = (liveCd && liveCd.css)         || storedCd.css         || '';
+                    var effPreview     = (liveCd && liveCd.previewIdeHtml) || storedCd.previewIdeHtml || '';
+                    var effProps       = (liveCd && liveCd.customProperties) || storedCd.customProperties || [];
+                    var effEvents      = (liveCd && liveCd.customEvents)     || storedCd.customEvents     || [];
+                    var effNestingMode = (liveCd && liveCd.nestingMode)      || storedCd.nestingMode      || 'all';
+                    var effNestingRls  = (liveCd && liveCd.nestingRules)     || storedCd.nestingRules     || [];
+
                     manifest.component = {
-                        name: cd.name || project.name || 'Component',
-                        icon: cd.icon || '', tagName: cd.tagName || 'div',
-                        cmptype: cd.cmptype || '', description: cd.description || '',
-                        jsLibs: Array.isArray(cd.jsLibs) ? cd.jsLibs : [],
-                        cssLibs: Array.isArray(cd.cssLibs) ? cd.cssLibs : [],
-                        js: cd.js || '', css: cd.css || '',
-                        previewIdeHtml: cd.previewIdeHtml || '',
-                        customProperties: normalizeCustomProps(cd.customProperties),
-                        customEvents: Array.isArray(cd.customEvents) ? cd.customEvents : [],
-                        nestingMode: cd.nestingMode || 'all',
-                        nestingRules: Array.isArray(cd.nestingRules) ? cd.nestingRules : []
+                        name:            effName,
+                        icon:            effIcon,
+                        tagName:         effTagName,
+                        cmptype:         effCmptype,
+                        description:     effDescription,
+                        jsLibs:          normalizeLibs(effJsLibs),
+                        cssLibs:         normalizeLibs(effCssLibs),
+                        js:              effJs,
+                        css:             effCss,
+                        previewIdeHtml:  effPreview,
+                        customProperties: normalizeCustomProps(effProps),
+                        customEvents:    Array.isArray(effEvents) ? effEvents : [],
+                        nestingMode:     effNestingMode,
+                        nestingRules:    Array.isArray(effNestingRls) ? effNestingRls : []
                     };
                 }
 
@@ -284,8 +348,6 @@
                     var content = f.content || '';
 
                     if (f.kind === 'text' && /\.(html?|frm)$/i.test(path)) {
-                        /* Сначала раскрываем <tag/> → <tag></tag>,
-                           потом добавляем <link>/<script> на библиотеки. */
                         content = normalizeSelfClosingTags(content);
                         content = injectLibTagsIntoHtml(content, project);
                     }

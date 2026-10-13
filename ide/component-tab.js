@@ -7,7 +7,35 @@
      • пусто  → генерируется имя + шаблон функции, пишется в поле;
      • задано → ищется в JS-коде; если нет — генерируется и дописывается;
      • редактор переключается на подвкладку JS, курсор ставится
-       в начало тела функции (после открывающей {). */
+       в начало тела функции (после открывающей {).
+
+   ---- JS-ресурсы / CSS-ресурсы ----
+
+   Каждая строка ресурса содержит:
+     • <select> — тип: URL или Файл проекта;
+     • <input>  — значение (URL или путь в проекте);
+     • <span>   — статус (… / ✓ / ✕ / ?);
+     • <button> — удалить.
+
+   При каждом изменении URL запускается проверка и загрузка:
+     • элемент (<script> / <link>) с атрибутом data-wb-lib-preview="1"
+       добавляется в <head> основного документа IDE один раз на URL;
+     • успех/ошибка кэшируются в ComponentTab._libCache;
+     • статус отображается рядом со строкой.
+
+   При повторной загрузке компонента (setComponent) — повторная проверка.
+   При переключении проекта (bus 'project:loaded') — повторная проверка.
+
+   При изменении lib-полей и JS-редактора эмитятся события:
+     • component:libs-changed   — после ввода URL / смены типа;
+     • component:js-changed     — после правок JS (debounce 700 мс);
+     • component:preview-changed — после правок PreViewIDE(html).
+   Подписчик — Canvas (см. canvas-core.js) — перезагружает сцену,
+   чтобы libs и пользовательский JS работали на Scene.
+
+   Дополнительно: статический хелпер ComponentTab.loadLibsIntoMainDoc()
+   позволяет другим модулям (Palette, ProjectManager) подгрузить
+   внешние библиотеки компонента в основной документ IDE. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -51,9 +79,154 @@
     function ComponentTab(paneEl) {
         this.pane = $(paneEl);
         this.active = false;
+        this._jsChangeTimer = null;
+        this._previewChangeTimer = null;
         this._build();
     }
 
+    /* ============================================================
+       Статические хелперы: кэш и загрузчик lib-ов.
+
+       Загрузка идёт в <head> основного документа IDE — чтобы внешние
+       библиотеки (jQuery, jQuery UI, …) были доступны в JS-среде
+       редактора: при работе с ComponentTab, в консоли DevTools,
+       в пользовательских обработчиках и т.п.
+
+       Каждый URL загружается один раз (кэш на сессию). */
+    ComponentTab._libCache = {};
+
+    ComponentTab._loadLib = function (url, kind, type) {
+        url = String(url || '').trim();
+        if (!url) return Promise.resolve('empty');
+        if (type === 'project') return Promise.resolve('project');
+
+        /* Защита: URL, заканчивающийся на .css, не может быть <script>,
+           а URL на .js — не может быть <link>. Такое может прийти из
+           старых project.json / corrupted localStorage. */
+        if (kind === 'js' && /\.css(\?|#|$)/i.test(url)) kind = 'css';
+        else if (kind === 'css' && /\.js(\?|#|$)/i.test(url)) kind = 'js';
+
+        var cacheKey = kind + '|' + url;
+        if (ComponentTab._libCache[cacheKey]) {
+            return Promise.resolve(ComponentTab._libCache[cacheKey]);
+        }
+
+        return new Promise(function (resolve) {
+            var doc = global.document;
+            var el;
+            if (kind === 'css') {
+                el = doc.createElement('link');
+                el.rel = 'stylesheet';
+                el.href = url;
+            } else {
+                el = doc.createElement('script');
+                el.src = url;
+                el.async = false;
+            }
+            el.setAttribute('data-wb-lib-preview', '1');
+
+            var done = false;
+            function finish(result) {
+                if (done) return;
+                done = true;
+                ComponentTab._libCache[cacheKey] = result;
+                resolve(result);
+            }
+
+            el.onload  = function () { finish('ok'); };
+            el.onerror = function () { finish('error'); };
+
+            /* Таймаут на случай, если событие не сработает. */
+            setTimeout(function () { finish('error'); }, 15000);
+
+            try { doc.head.appendChild(el); }
+            catch (e) { finish('error'); }
+        });
+    };
+
+    /* Публичный хелпер: подгрузить массивы jsLibs / cssLibs в основной
+       документ IDE. Формат элемента — { type: 'url'|'project', value }.
+       Также принимает строку в качестве значения. */
+    ComponentTab.loadLibsIntoMainDoc = function (jsLibs, cssLibs) {
+        var i;
+        jsLibs  = jsLibs  || [];
+        cssLibs = cssLibs || [];
+        for (i = 0; i < cssLibs.length; i++) {
+            var c  = cssLibs[i];
+            var cu = c && (typeof c === 'string' ? c : c.value);
+            var ct = c && c.type ? c.type : 'url';
+            if (cu) ComponentTab._loadLib(cu, 'css', ct);
+        }
+        for (i = 0; i < jsLibs.length; i++) {
+            var j  = jsLibs[i];
+            var ju = j && (typeof j === 'string' ? j : j.value);
+            var jt = j && j.type ? j.type : 'url';
+            if (ju) ComponentTab._loadLib(ju, 'js', jt);
+        }
+    };
+
+    /* Инстансный метод: проверить и загрузить один lib, отобразить статус. */
+    ComponentTab.prototype._checkAndLoadLib = function (url, kind, type, statusEl) {
+        var setS = function (txt, color, title) {
+            if (!statusEl) return;
+            statusEl.text(txt || '').css('color', color || '').attr('title', title || '');
+        };
+
+        url = String(url || '').trim();
+        if (!url) { setS('', '', ''); return; }
+        if (type === 'project') {
+            setS('?', '#888', 'Файл проекта — проверьте путь вручную');
+            return;
+        }
+
+        var cacheKey = kind + '|' + url;
+        var cached = ComponentTab._libCache[cacheKey];
+        if (cached === 'ok') {
+            setS('\u2713', '#2e7d32', 'Доступен: ' + url);
+            return;
+        }
+        if (cached === 'error') {
+            setS('\u2715', '#c62828', 'Не удалось загрузить: ' + url);
+            return;
+        }
+
+        setS('\u2026', '#888', 'Проверка: ' + url);
+        ComponentTab._loadLib(url, kind, type).then(function (result) {
+            if (result === 'ok') {
+                setS('\u2713', '#2e7d32', 'Доступен: ' + url);
+            } else {
+                setS('\u2715', '#c62828', 'Не удалось загрузить: ' + url);
+            }
+        });
+    };
+
+    /* Проверить и загрузить все JS/CSS libs текущего компонента. */
+    ComponentTab.prototype._checkAllLibs = function () {
+        var self = this;
+        if (!this._libs) return;
+        this._libs['js'].find('.wb-comp-lib').each(function () {
+            var $row = $(this);
+            self._checkAndLoadLib(
+                $row.find('.wb-comp-lib-value').val(),
+                'js',
+                $row.find('.wb-comp-lib-type').val(),
+                $row.find('.wb-comp-lib-status')
+            );
+        });
+        this._libs['css'].find('.wb-comp-lib').each(function () {
+            var $row = $(this);
+            self._checkAndLoadLib(
+                $row.find('.wb-comp-lib-value').val(),
+                'css',
+                $row.find('.wb-comp-lib-type').val(),
+                $row.find('.wb-comp-lib-status')
+            );
+        });
+    };
+
+    /* ============================================================
+   Построение UI.
+   ============================================================ */
     ComponentTab.prototype._build = function () {
         var self = this;
 
@@ -65,8 +238,15 @@
         form.append(self._field('tagName',     'Тег корня',                  'text'));
         form.append(self._field('cmptype',     'cmptype',                    'text'));
         form.append(self._textarea('description', 'Описание компонента'));
-        form.append(self._libsField('jsLibs',  'JS-ресурсы'));
-        form.append(self._libsField('cssLibs', 'CSS-ресурсы'));
+
+        /* ВАЖНО: data-kind должен совпадать с ключами this._libs
+           ('js' / 'css'), которые используют _collectLibs / _setLibs /
+           _checkAllLibs. Раньше здесь было 'jsLibs' / 'cssLibs' —
+           из-за этого this._libs['js'] был пустым jQuery-объектом,
+           и любые libs, добавленные пользователем, не попадали в
+           componentData / project.json. */
+        form.append(self._libsField('js',  'JS-ресурсы'));
+        form.append(self._libsField('css', 'CSS-ресурсы'));
 
         var nestingRow = self._selectField(
             'nestingMode',
@@ -110,6 +290,22 @@
         this.jsEditor      = new global.CodeEditor({ value: '', language: 'javascript' });
         this.cssEditor     = new global.CodeEditor({ value: '', language: 'css' });
         this.previewEditor = new global.CodeEditor({ value: '', language: 'xml' });
+
+        /* При вводе в JS-редакторе — обновить сцену (debounce 700 мс). */
+        this.jsEditor.ta.addEventListener('input', function () {
+            if (self._jsChangeTimer) clearTimeout(self._jsChangeTimer);
+            self._jsChangeTimer = setTimeout(function () {
+                bus.emit('component:js-changed');
+            }, 700);
+        });
+
+        /* При вводе в редакторе PreViewIDE(html) — тоже обновить сцену. */
+        this.previewEditor.ta.addEventListener('input', function () {
+            if (self._previewChangeTimer) clearTimeout(self._previewChangeTimer);
+            self._previewChangeTimer = setTimeout(function () {
+                bus.emit('component:preview-changed');
+            }, 700);
+        });
 
         jsBox.append(this.jsEditor.el);
         cssBox.append(this.cssEditor.el);
@@ -165,6 +361,11 @@
         };
         this._form.nestingMode.change(syncNestingUI);
         this._syncNestingUI = syncNestingUI;
+
+        /* Повторная проверка libs при загрузке проекта. */
+        bus.on('project:loaded', function () {
+            setTimeout(function () { self._checkAllLibs(); }, 100);
+        });
 
         this.newComponent();
     };
@@ -248,7 +449,14 @@
         return row;
     };
 
+    /* ------------------------------------------------------------------
+       Одна строка lib-а:
+         <select> (URL | Файл проекта) — <input> — <span class=status> — <×>
+
+       При изменении значения или типа запускается проверка и загрузка,
+       плюс эмитится component:libs-changed (Canvas перезагрузит сцену). */
     ComponentTab.prototype._addLib = function (listEl, kind, value, type) {
+        var self = this;
         var item = $(
             '<div class="wb-comp-lib">' +
             '<select class="wb-comp-lib-type">' +
@@ -256,13 +464,54 @@
             '<option value="project">Файл проекта</option>' +
             '</select>' +
             '<input type="text" class="wb-comp-lib-value">' +
+            '<span class="wb-comp-lib-status" ' +
+            'style="flex:0 0 18px;text-align:center;font-weight:bold;' +
+            'font-family:Consolas,monospace;font-size:12px;cursor:help;"></span>' +
             '<button type="button" class="wb-row-del" title="Удалить">×</button>' +
             '</div>'
         );
         item.find('.wb-comp-lib-type').val(type || 'url');
         item.find('.wb-comp-lib-value').val(value || '');
-        item.find('.wb-row-del').click(function () { item.remove(); });
+        item.find('.wb-row-del').click(function () {
+            item.remove();
+            bus.emit('component:libs-changed');
+        });
+
+        var valInput  = item.find('.wb-comp-lib-value');
+        var typeSel   = item.find('.wb-comp-lib-type');
+        var statusEl  = item.find('.wb-comp-lib-status');
+
+        var check = function () {
+            self._checkAndLoadLib(valInput.val(), kind, typeSel.val(), statusEl);
+        };
+
+        /* `input` — реальное время, debounce, чтобы не дёргать canvas
+           на каждый символ. */
+        var libsDebounce = null;
+        valInput.bind('input', function () {
+            if (libsDebounce) clearTimeout(libsDebounce);
+            libsDebounce = setTimeout(function () {
+                check();
+                bus.emit('component:libs-changed');
+            }, 500);
+        });
+
+        /* `change` — по blur/Enter, тоже перепроверяет + инжект. */
+        valInput.bind('change', function () {
+            check();
+            bus.emit('component:libs-changed');
+        });
+
+        /* Смена типа URL ↔ Файл проекта — сразу переинжект. */
+        typeSel.bind('change', function () {
+            check();
+            bus.emit('component:libs-changed');
+        });
+
         listEl.append(item);
+
+        /* Если значение уже есть — сразу проверяем. */
+        if (value) setTimeout(check, 0);
     };
 
     ComponentTab.prototype._collectLibs = function (kind) {
@@ -278,7 +527,12 @@
     ComponentTab.prototype._setLibs = function (kind, arr) {
         var list = this._libs[kind]; list.empty();
         arr = arr || [];
-        for (var i = 0; i < arr.length; i++) this._addLib(list, kind, arr[i].value, arr[i].type);
+        for (var i = 0; i < arr.length; i++) {
+            var e = arr[i];
+            if (!e) continue;
+            if (typeof e === 'string') this._addLib(list, kind, e, 'url');
+            else this._addLib(list, kind, e.value || '', e.type || 'url');
+        }
     };
 
     /* ---------- Nesting rules ---------- */
@@ -577,7 +831,6 @@
         var code = this.jsEditor.getValue() || '';
         var esc = String(funcName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        /* Ищем объявление: `function name(` либо `name = function`. */
         var declRe = new RegExp(
             '(?:\\bfunction\\s+' + esc + '\\s*\\(|\\b' + esc + '\\s*=\\s*function\\s*\\()'
         );
@@ -590,7 +843,6 @@
             this.jsEditor.setValue(code);
         }
 
-        /* Ищем начало тела функции: позиция после `{`. */
         var m = new RegExp(
             '(?:function\\s+' + esc + '\\s*\\([^)]*\\)\\s*\\{' +
             '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)'
@@ -648,16 +900,11 @@
        saveAsComponent
 
        Если PreViewIDE(html) не заполнен — берём HTML со сцены (вкладка
-       Code = canvas.cleanHtml()) и используем его как превью компонента.
-       Это избавляет от необходимости дублировать разметку в отдельный
-       редактор: на сцене уже собрана структура компонента, и её
-       достаточно «зафиксировать» в момент сохранения.
-       ------------------------------------------------------------------ */
+       Code = canvas.cleanHtml()) и используем его как превью компонента. */
     ComponentTab.prototype.saveAsComponent = function () {
         var data = this.getFormData();
         if (!data.name) { alert('Укажите имя компонента.'); return; }
 
-        /* Fallback: PreViewIDE(html) → canvas.cleanHtml() (вкладка Code). */
         if (!data.previewIdeHtml) {
             var canvas = global.IDE && global.IDE._canvas;
             if (canvas && canvas.cleanHtml) {
@@ -665,8 +912,6 @@
                     var codeHtml = canvas.cleanHtml();
                     if (codeHtml && codeHtml.replace(/\s+/g, '')) {
                         data.previewIdeHtml = codeHtml;
-                        /* Обновляем редактор, чтобы пользователь видел, что
-                           именно сохранено как превью. */
                         this.previewEditor.setValue(codeHtml);
                         this.statusEl
                             .text('PreViewIDE(html) пуст — использован HTML вкладки Code.')
@@ -721,9 +966,10 @@
 
         this.jsEditor.setValue(c.js || '');
         this.cssEditor.setValue(c.css || '');
-        /* Если previewIdeHtml нет, но есть html (сохранённый ранее) —
-           показываем html в редакторе PreViewIDE. */
         this.previewEditor.setValue(c.previewIdeHtml || c.html || '');
+
+        /* Проверить и загрузить все внешние библиотеки компонента. */
+        this._checkAllLibs();
     };
 
     ComponentTab.prototype.setActive = function (on) { this.active = !!on; };

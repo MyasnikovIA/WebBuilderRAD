@@ -79,8 +79,7 @@
 
        Void-теги (<br>, <img>, …) не трогаем — они самозакрываются корректно.
        Custom-теги (cmp*, component) тоже не трогаем — их обрабатывают
-       отдельные expandSelfClosing* функции.
-       ------------------------------------------------------------------ */
+       отдельные expandSelfClosing* функции. */
     var HTML_VOID_TAGS = {
         area:1, base:1, br:1, col:1, embed:1, hr:1, img:1, input:1,
         link:1, meta:1, param:1, source:1, track:1, wbr:1
@@ -218,6 +217,7 @@
         this._handlesPending = false;
         this._handlers = null;
         this._boundDoc = null;
+        this._assetGen = 0;
         this._init();
     }
 
@@ -333,90 +333,168 @@
         if (head) head.appendChild(style);
     };
 
+    /* ============================================================
+       _injectComponentAssets
+
+       Инжектит в <head> iframe:
+         1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
+         2. CSS / JS всех user-компонентов, реально использованных
+            на сцене ([data-wb-user-comp] с их cmptype).
+         3. Если IDE в режиме Root: component — дополнительно
+            jsLibs / cssLibs и пользовательский JS активной
+            ComponentTab. Это позволяет компоненту на Scene работать
+            с внешними библиотеками (jQuery, jQuery UI, …) без
+            предварительного сохранения в палитру.
+
+       Пользовательский JS выполняется после загрузки всех libs
+       (Promise.all) и в контексте iframe — чтобы $, jQuery UI
+       и прочие символы уже были доступны.
+
+       Теги libs помечаются data-wb-comp-asset="1" — они не попадают
+       в сериализацию cleanHtml и не видны на вкладке Code.
+       ============================================================ */
     Canvas.prototype._injectComponentAssets = function () {
+        var self = this;
         var doc = this.getDoc();
         if (!doc) return;
         var head = this.getOrCreateHead();
         if (!head) return;
 
-        /* Удаляем все старые комп-ассеты (из предыдущей загрузки). */
+        /* Generation-счётчик: если между инжектом и onload-ом libs
+           произошёл новый вызов — старые колбэки игнорируются. */
+        var gen = ++this._assetGen;
+
+        /* Удаляем ранее добавленные теги ассетов. */
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
         var seenCss = {};
         var seenJs  = {};
+        var pendingJs = [];
 
-        /* 1. CSS / JS для built-in компонентов из ComponentRegistry. */
+        function addCss(url) {
+            if (!url) return;
+            /* Защита: URL, заканчивающийся на .js, нельзя подключить
+               как <link>; перенаправляем в addJs. */
+            if (/\.js(\?|#|$)/i.test(url)) { addJs(url); return; }
+            if (seenCss[url]) return;
+            seenCss[url] = true;
+            var lk = doc.createElement('link');
+            lk.rel = 'stylesheet';
+            lk.href = url;
+            lk.setAttribute('data-wb-comp-asset', '1');
+            head.appendChild(lk);
+        }
+        function addJs(url) {
+            if (!url) return;
+            /* Защита: URL, заканчивающийся на .css, нельзя подключить
+               как <script> — браузер попытается выполнить CSS как JS
+               и выдаст Uncaught SyntaxError. Перенаправляем в addCss. */
+            if (/\.css(\?|#|$)/i.test(url)) { addCss(url); return; }
+            if (seenJs[url]) return;
+            seenJs[url] = true;
+            pendingJs.push(new Promise(function (resolve) {
+                var s = doc.createElement('script');
+                s.src = url;
+                s.async = false;
+                s.setAttribute('data-wb-comp-asset', '1');
+                s.onload  = resolve;
+                s.onerror = resolve;
+                head.appendChild(s);
+            }));
+        }
+
+        /* 1. Ассеты из ComponentRegistry (D3 / M2 / HTML). */
         if (global.ComponentRegistry) {
             var list = global.ComponentRegistry.all();
             for (var i = 0; i < list.length; i++) {
                 var comp = list[i];
                 var cssList = comp.previewCssUrls || [];
-                for (var c = 0; c < cssList.length; c++) {
-                    var url = cssList[c];
-                    if (!url || seenCss[url]) continue;
-                    seenCss[url] = true;
-                    var link = doc.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = url;
-                    link.setAttribute('data-wb-comp-asset', '1');
-                    head.appendChild(link);
-                }
+                for (var c = 0; c < cssList.length; c++) addCss(cssList[c]);
                 var jsList = comp.previewJsUrls || [];
-                for (var j = 0; j < jsList.length; j++) {
-                    var src = jsList[j];
-                    if (!src || seenJs[src]) continue;
-                    seenJs[src] = true;
-                    var script = doc.createElement('script');
-                    script.src = src;
-                    script.async = false;
-                    script.setAttribute('data-wb-comp-asset', '1');
-                    head.appendChild(script);
-                }
+                for (var j = 0; j < jsList.length; j++) addJs(jsList[j]);
             }
         }
 
-        /* 2. CSS / JS для user-компонентов. */
+        /* 2. User-компоненты, реально использованные на сцене. */
         if (global.ComponentStorage) {
             var userComps = global.ComponentStorage.listComponents();
-
-            /* Уникальные cmptype, реально присутствующие на сцене. */
             var usedCmptypes = {};
             var userEls = doc.querySelectorAll('[data-wb-user-comp]');
             for (var u = 0; u < userEls.length; u++) {
                 var ct = userEls[u].getAttribute('cmptype');
                 if (ct) usedCmptypes[ct] = true;
             }
-
             for (var k = 0; k < userComps.length; k++) {
                 var uc = userComps[k];
-                if (!uc.cmptype) continue;
-                if (!usedCmptypes[uc.cmptype]) continue;
-
+                if (!uc.cmptype || !usedCmptypes[uc.cmptype]) continue;
                 var libs = global.ComponentStorage.getComponentLibs(uc);
-
                 for (var cc = 0; cc < libs.cssLibs.length; cc++) {
-                    var cURL = libs.cssLibs[cc].value;
-                    if (!cURL || seenCss[cURL]) continue;
-                    seenCss[cURL] = true;
-                    var lk = doc.createElement('link');
-                    lk.rel = 'stylesheet';
-                    lk.href = cURL;
-                    lk.setAttribute('data-wb-comp-asset', '1');
-                    head.appendChild(lk);
+                    addCss(libs.cssLibs[cc].value);
                 }
                 for (var jj = 0; jj < libs.jsLibs.length; jj++) {
-                    var jURL = libs.jsLibs[jj].value;
-                    if (!jURL || seenJs[jURL]) continue;
-                    seenJs[jURL] = true;
-                    var sc = doc.createElement('script');
-                    sc.src = jURL;
-                    sc.async = false;
-                    sc.setAttribute('data-wb-comp-asset', '1');
-                    head.appendChild(sc);
+                    addJs(libs.jsLibs[jj].value);
                 }
             }
         }
+
+        /* 3. Root: component — берём libs и JS из активной ComponentTab. */
+        var userJsCode = '';
+        if (global.App && global.App._componentMode &&
+            global.componentTab && global.componentTab.getFormData) {
+            try {
+                var cd = global.componentTab.getFormData();
+                if (cd) {
+                    var cLibs = cd.cssLibs || [];
+                    for (var ci = 0; ci < cLibs.length; ci++) {
+                        var cle = cLibs[ci];
+                        var cu  = cle && (typeof cle === 'string' ? cle : cle.value);
+                        var cty = cle && cle.type ? cle.type : 'url';
+                        if (cu && cty !== 'project') addCss(cu);
+                    }
+                    var jLibs = cd.jsLibs || [];
+                    for (var ji = 0; ji < jLibs.length; ji++) {
+                        var jle = jLibs[ji];
+                        var ju  = jle && (typeof jle === 'string' ? jle : jle.value);
+                        var jty = jle && jle.type ? jle.type : 'url';
+                        if (ju && jty !== 'project') addJs(ju);
+                    }
+                    userJsCode = cd.js || '';
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /* После загрузки всех libs — выполняем пользовательский JS
+           в контексте iframe. Если к моменту onload сменилось
+           поколение (gen) — не выполняем (структура уже устарела). */
+        Promise.all(pendingJs).then(function () {
+            if (gen !== self._assetGen) return;
+            if (!userJsCode) return;
+            var docNow = self.getDoc();
+            if (!docNow) return;
+            var headNow = self.getOrCreateHead();
+            if (!headNow) return;
+            try {
+                var s = docNow.createElement('script');
+                s.setAttribute('data-wb-comp-asset', '1');
+                s.textContent = userJsCode;
+                headNow.appendChild(s);
+            } catch (e) {
+                console.error('[Canvas] execute user component JS', e);
+            }
+        });
+    };
+
+    /* Перезагружает сцену из текущего DOM — чтобы заново выполнились
+       libs и пользовательский JS компонента. Применяется при правках
+       в ComponentTab (Root: component). */
+    Canvas.prototype._reloadComponentCanvas = function () {
+        try {
+            var html = this.cleanHtml();
+            if (html && html.replace(/\s+/g, '')) {
+                this.loadHtml(html);
+            }
+        } catch (e) { console.error('[Canvas] reload component canvas', e); }
     };
 
     Canvas.prototype._init = function () {
@@ -470,6 +548,27 @@
 
         bus.on('theme:changed', function () {
             self._injectIdeStyle();
+        });
+
+        /* Перезагрузка сцены при изменении данных компонента
+           в активной ComponentTab (Root: component):
+             • js-changed       — пользователь дописал/изменил JS;
+             • libs-changed     — пользователь добавил/удалил lib;
+             • preview-changed  — пользователь правит PreViewIDE(html). */
+        bus.on('component:js-changed', function () {
+            if (global.App && global.App._componentMode) {
+                self._reloadComponentCanvas();
+            }
+        });
+        bus.on('component:libs-changed', function () {
+            if (global.App && global.App._componentMode) {
+                self._reloadComponentCanvas();
+            }
+        });
+        bus.on('component:preview-changed', function () {
+            if (global.App && global.App._componentMode) {
+                self._reloadComponentCanvas();
+            }
         });
 
         bus.emit('canvas:ready', this);
@@ -606,7 +705,15 @@
 
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'm2Form', 'div'].indexOf(type) < 0) return;
-        if (type === this._rootType) return;
+
+        /* Даже если тип не меняется — переинжектим ассеты, чтобы libs
+           компонента (Root: component) появились в iframe. Это
+           критично, когда после загрузки проекта режим уже стоит
+           'div', а libs добавились позже. */
+        if (type === this._rootType) {
+            this._injectComponentAssets();
+            return;
+        }
 
         var doc = this.getDoc();
         var body = this.getBody();
@@ -674,6 +781,7 @@
             }
             this._rootType = type;
             this._renderPreview(existingRoot);
+            this._injectComponentAssets();
             bus.emit('canvas:changed');
             bus.emit('canvas:rootType:changed', { rootType: type });
             bus.emit('selection:changed', { element: existingRoot });
@@ -727,6 +835,7 @@
 
         this._rootType = type;
         if (newRoot) this._renderPreview(newRoot);
+        this._injectComponentAssets();
 
         bus.emit('canvas:changed');
         bus.emit('canvas:rootType:changed', { rootType: type });
@@ -793,10 +902,11 @@
             return CDATA_PH_OPEN + idx + CDATA_PH_CLOSE;
         });
 
-        /* ВАЖНО: сначала раскрываем самозакрытые стандартные HTML-теги
-           (<div/>, <span/>, …) в <tag></tag>. Если этого не сделать, браузер
-           при парсинге в text/html трактует <div .../> как открывающий и
-           следующий элемент вкладывается внутрь — компоненты «матрёшатся». */
+        /* Сначала раскрываем самозакрытые стандартные HTML-теги
+           (<div/>, <span/>, …) в <tag></tag>. Если этого не сделать,
+           браузер при парсинге в text/html трактует <div .../> как
+           открывающий и следующий элемент вкладывается внутрь —
+           компоненты «матрёшатся». */
         prepared = expandSelfClosingHtmlTags(prepared);
         prepared = expandSelfClosingCmpTags(prepared);
         prepared = expandSelfClosingComponentTags(prepared);

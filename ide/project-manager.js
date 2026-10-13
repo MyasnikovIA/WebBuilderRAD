@@ -229,6 +229,7 @@
 
         bus.emit('project:loaded', { project: null, name: '' });
         bus.emit('project:changed', { project: null });
+        bus.emit('project:mode-changed', { mode: 'page', rootType: 'html' });
     };
 
     ProjectManager.prototype._forceSwitchToSceneIfComponentActive = function () {
@@ -242,15 +243,10 @@
 
     ProjectManager.prototype._applyProjectMode = function (p) {
         var canvas = global.IDE && global.IDE._canvas;
-        var $tabs = null;
-        try { $tabs = $('#wb-center-tabs .wb-center-tab[data-pane="component"]'); }
-        catch (e) {}
-
         var rt = (p && p.rootType) || 'html';
 
         if (rt === 'component') {
             if (global.App) global.App._componentMode = true;
-            if ($tabs) $tabs.show();
 
             if (global.componentTab && p) {
                 var cd = p.componentData ? this._cloneObj(p.componentData) : {};
@@ -266,11 +262,14 @@
             }
 
             if (canvas) canvas.setRootType('div');
+
+            bus.emit('project:mode-changed', { mode: 'component', rootType: 'component' });
         } else {
             if (global.App) global.App._componentMode = false;
-            if ($tabs) $tabs.hide();
             if (canvas) canvas.setRootType(rt);
             this._forceSwitchToSceneIfComponentActive();
+
+            bus.emit('project:mode-changed', { mode: 'page', rootType: rt });
         }
     };
 
@@ -355,39 +354,102 @@
         this.refreshCombo();
     };
 
+    /* ------------------------------------------------------------------
+       save
+
+       Сохраняет текущий проект.
+
+       Root: component определяется по ДВУМ признакам:
+         • App._componentMode === true, ИЛИ
+         • this.current.rootType === 'component'.
+
+       Это защищает от ситуации, когда App._componentMode был сброшен
+       (переключение проекта, нестандартный сценарий), но проект всё ещё
+       остаётся компонентным.
+
+       Libs (jsLibs / cssLibs) читаются:
+         1. через ComponentTab.getFormData();
+         2. дополнительно — напрямую через ComponentTab._collectLibs()
+            (работает, даже если getFormData по какой-то причине вернул
+            пустые массивы);
+         3. как последний резерв — из предыдущего componentData.
+
+       Так libs не теряются, если пользователь указал их, но что-то
+       пошло не так в форме.
+       ------------------------------------------------------------------ */
     ProjectManager.prototype.save = function () {
         if (!this.current) return;
         var canvas = global.IDE && global.IDE._canvas;
-        if (canvas && canvas.getRootType) {
-            var isComp = !!(global.App && global.App._componentMode);
-            this.current.rootType = isComp ? 'component' : (canvas.getRootType() || 'html');
 
-            if (isComp && global.componentTab && global.componentTab.getFormData) {
-                try {
-                    var cd = global.componentTab.getFormData();
-                    if (cd) {
-                        /* Fallback: PreViewIDE(html) → canvas.cleanHtml(). */
-                        if (!cd.previewIdeHtml && canvas.cleanHtml) {
-                            try {
-                                var codeHtml = canvas.cleanHtml();
-                                if (codeHtml && codeHtml.replace(/\s+/g, '')) {
-                                    cd.previewIdeHtml = codeHtml;
-                                    cd.html = codeHtml;
-                                }
-                            } catch (e) { /* ignore */ }
-                        }
-                        /* js / css пишутся в отдельные файлы библиотеки;
-                           jsLibs / cssLibs — в componentData, чтобы
-                           сохраняться в project.json и в lib-файлах. */
-                        delete cd.js;
-                        delete cd.css;
-                        /* нормализуем списки (если пришли массивами строк или объектов) */
-                        cd.jsLibs  = normalizeLibs(cd.jsLibs);
-                        cd.cssLibs = normalizeLibs(cd.cssLibs);
-                    }
-                    this.current.componentData = cd;
+        var isComp = !!(global.App && global.App._componentMode)
+            || this.current.rootType === 'component';
+
+        if (canvas && canvas.getRootType) {
+            this.current.rootType = isComp
+                ? 'component'
+                : (canvas.getRootType() || 'html');
+        } else {
+            this.current.rootType = isComp
+                ? 'component'
+                : (this.current.rootType || 'html');
+        }
+
+        if (isComp && global.componentTab) {
+            var cd = null;
+            try { cd = global.componentTab.getFormData(); }
+            catch (e) { cd = null; }
+            cd = cd || {};
+
+            /* Явно читаем libs из DOM. */
+            var rawJs = [];
+            var rawCss = [];
+            try {
+                if (global.componentTab._collectLibs) {
+                    rawJs  = global.componentTab._collectLibs('js')  || [];
+                    rawCss = global.componentTab._collectLibs('css') || [];
                 }
-                catch (e) { /* ignore */ }
+            } catch (e) { /* ignore */ }
+
+            var prev = this.current.componentData || {};
+
+            /* Fallback 1: getFormData() → cd.jsLibs / cd.cssLibs. */
+            if (!rawJs.length && Array.isArray(cd.jsLibs) && cd.jsLibs.length) {
+                rawJs = cd.jsLibs;
+            }
+            if (!rawCss.length && Array.isArray(cd.cssLibs) && cd.cssLibs.length) {
+                rawCss = cd.cssLibs;
+            }
+            /* Fallback 2: предыдущее сохранённое значение. */
+            if (!rawJs.length && Array.isArray(prev.jsLibs) && prev.jsLibs.length) {
+                rawJs = prev.jsLibs;
+            }
+            if (!rawCss.length && Array.isArray(prev.cssLibs) && prev.cssLibs.length) {
+                rawCss = prev.cssLibs;
+            }
+
+            cd.jsLibs  = normalizeLibs(rawJs);
+            cd.cssLibs = normalizeLibs(rawCss);
+
+            if (!cd.previewIdeHtml && canvas && canvas.cleanHtml) {
+                try {
+                    var codeHtml = canvas.cleanHtml();
+                    if (codeHtml && codeHtml.replace(/\s+/g, '')) {
+                        cd.previewIdeHtml = codeHtml;
+                        cd.html = codeHtml;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+
+            delete cd.js;
+            delete cd.css;
+
+            this.current.componentData = cd;
+
+            if (global.console && console.debug) {
+                console.debug('[ProjectManager.save] component libs:',
+                    'js=' + cd.jsLibs.length,
+                    'css=' + cd.cssLibs.length);
             }
         }
 
@@ -397,22 +459,6 @@
         }
         global.ProjectStorage.save(this.current);
     };
-
-    /* Локальный хелпер: нормализует список lib-ов к [{type,value}]. */
-    function normalizeLibs(arr) {
-        var out = [];
-        if (!Array.isArray(arr)) return out;
-        for (var i = 0; i < arr.length; i++) {
-            var e = arr[i];
-            if (!e) continue;
-            if (typeof e === 'string') {
-                out.push({ type: 'url', value: e });
-            } else {
-                out.push({ type: e.type || 'url', value: e.value || '' });
-            }
-        }
-        return out;
-    }
 
     ProjectManager.prototype.stopEditing = function () {
         this.editing = null;
@@ -592,28 +638,8 @@
         inp.click();
     };
 
-    /* ------------------------------------------------------------------
-       NEW: ctxImportProjectFromZip
-
-       Создать НОВЫЙ проект из ZIP-архива (в отличие от ctxUploadZip,
-       который вливает файлы в текущий).
-
-       Последовательность:
-         1. Прочитать манифест (project.json внутри ZIP), чтобы узнать
-            имя проекта и rootType.
-         2. Спросить имя нового проекта (по умолчанию — из манифеста
-            или из имени файла).
-         3. Проверить коллизию имени; при совпадении — подтверждение.
-         4. ProjectStorage.create(name) → новый пустой проект.
-         5. ZipUtils.importInto(project, file) → разложить файлы.
-         6. Применить rootType / mainFile / componentData из манифеста.
-         7. refreshCombo + load(name).
-       ------------------------------------------------------------------ */
     ProjectManager.prototype.ctxImportProjectFromZip = function () {
         var self = this;
-
-        /* Если есть текущий проект с несохранёнными правками файла —
-           спросим про сохранение, прежде чем переключаться на новый. */
         var canvas = global.IDE && global.IDE._canvas;
         if (self.editing && canvas) {
             if (!self._confirmSwitchFrom(canvas)) return;
@@ -626,9 +652,7 @@
             var f = inp.files[0];
             if (!f) return;
 
-            /* 1. Читаем манифест (может быть null — тогда просто ZIP без project.json). */
             global.ZipUtils.readManifest(f).then(function (manifest) {
-                /* 2. Имя проекта по умолчанию. */
                 var defaultName =
                     (manifest && manifest.name) ||
                     String(f.name || '').replace(/\.zip$/i, '') ||
@@ -639,7 +663,6 @@
                 name = String(name).trim();
                 if (!name) return null;
 
-                /* 3. Проверка коллизии. */
                 if (global.ProjectStorage.get(name)) {
                     if (!confirm('Проект "' + name + '" уже существует.\n\n' +
                         'Перезаписать его данными из ZIP?')) {
@@ -648,16 +671,13 @@
                     global.ProjectStorage.remove(name);
                 }
 
-                /* 4. Создаём новый пустой проект. */
                 var p = global.ProjectStorage.create(name);
                 if (!p) {
                     alert('Не удалось создать проект "' + name + '".');
                     return null;
                 }
 
-                /* 5. Импортируем файлы из ZIP. */
                 return global.ZipUtils.importInto(p, f).then(function () {
-                    /* 6. Применяем манифест. */
                     if (manifest) {
                         if (manifest.mainFile && p.files[manifest.mainFile]) {
                             p.mainFile = manifest.mainFile;
@@ -670,7 +690,6 @@
                             p.componentData = manifest.component;
                         }
                     } else {
-                        /* Нет манифеста — попробуем угадать mainFile. */
                         if (!p.mainFile) {
                             if (p.files['index.html']) p.mainFile = 'index.html';
                             else {
@@ -686,11 +705,8 @@
                     }
 
                     global.ProjectStorage.save(p);
-
-                    /* 7. Обновляем combo и загружаем проект. */
                     self.refreshCombo();
                     self.load(name);
-
                     alert('Проект "' + name + '" успешно импортирован из ZIP.');
                     return p;
                 });
@@ -701,8 +717,35 @@
         inp.click();
     };
 
+    /* ------------------------------------------------------------------
+       ctxExportZip
+
+       Перед экспортом принудительно синхронизируем componentData
+       из живой ComponentTab (если мы в режиме компонента или проект —
+       компонент). Это гарантирует, что в project.json попадут
+       актуальные jsLibs / cssLibs. */
     ProjectManager.prototype.ctxExportZip = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
+
+        var isComp = !!(global.App && global.App._componentMode)
+            || this.current.rootType === 'component';
+
+        if (isComp && global.componentTab && global.componentTab.getFormData) {
+            try {
+                var cd = global.componentTab.getFormData() || {};
+                var prev = this.current.componentData || {};
+
+                if (!cd.previewIdeHtml && prev.previewIdeHtml) cd.previewIdeHtml = prev.previewIdeHtml;
+                if (!cd.html && prev.html) cd.html = prev.html;
+                if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+
+                delete cd.js;
+                delete cd.css;
+                this.current.componentData = cd;
+                this.current.rootType = 'component';
+            } catch (e) { /* ignore */ }
+        }
+
         this.save();
         global.ZipUtils.exportProject(this.current);
     };
@@ -768,12 +811,6 @@
         bus.emit('project:changed', { project: this.current });
     };
 
-    /* ------------------------------------------------------------------
-       ctxSaveAsComponent
-
-       Переносит текущий проект в пользовательскую палитру компонентов
-       как компонент. Обратная операция к Palette.userCtxOpenInProject.
-       ------------------------------------------------------------------ */
     ProjectManager.prototype.ctxSaveAsComponent = function () {
         if (!this.current) { alert('Проект не выбран.'); return; }
 
@@ -835,8 +872,8 @@
         cd.name        = cd.name        || cd.cmptype;
         cd.tagName     = cd.tagName     || 'div';
         cd.description = cd.description || '';
-        cd.jsLibs      = Array.isArray(cd.jsLibs)  ? cd.jsLibs  : [];
-        cd.cssLibs     = Array.isArray(cd.cssLibs) ? cd.cssLibs : [];
+        cd.jsLibs      = normalizeLibs(cd.jsLibs  || []);
+        cd.cssLibs     = normalizeLibs(cd.cssLibs || []);
         cd.customProperties = Array.isArray(cd.customProperties) ? cd.customProperties : [];
         cd.customEvents     = Array.isArray(cd.customEvents)     ? cd.customEvents     : [];
         cd.nestingMode      = cd.nestingMode  || 'all';
@@ -859,6 +896,22 @@
 
         bus.emit('palette:refresh');
     };
+
+    /* Хелпер: нормализует список lib-ов к [{type,value}]. */
+    function normalizeLibs(arr) {
+        var out = [];
+        if (!Array.isArray(arr)) return out;
+        for (var i = 0; i < arr.length; i++) {
+            var e = arr[i];
+            if (!e) continue;
+            if (typeof e === 'string') {
+                out.push({ type: 'url', value: e });
+            } else {
+                out.push({ type: e.type || 'url', value: e.value || '' });
+            }
+        }
+        return out;
+    }
 
     global.ProjectManager = ProjectManager;
 

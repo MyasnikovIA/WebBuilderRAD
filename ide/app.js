@@ -6,6 +6,23 @@
 
         mini.parse();
 
+        /* ------------------------------------------------------------------
+           ВАЖНО: заглушка App создаётся ДО ProjectManager.
+
+           ProjectManager._applyProjectMode() при загрузке компонентного
+           проекта устанавливает `global.App._componentMode = true`, но
+           если в этот момент `global.App` ещё не определён, присвоение
+           молча теряется. Из-за этого при F5 вкладка Component пропадала,
+           а Canvas не инжектил libs компонента в iframe.
+
+           Заглушка гарантирует, что флаг будет куда записать; ниже,
+           при определении полноценного App, мы переносим значение
+           флага из заглушки. */
+        if (!global.App) global.App = { _componentMode: false };
+        if (typeof global.App._componentMode === 'undefined') {
+            global.App._componentMode = false;
+        }
+
         var domTree   = new DomTree(document.getElementById('wb-domtree'));
         var palette   = new Palette(document.getElementById('wb-palette'));
         global.palette = palette;
@@ -17,7 +34,6 @@
         var canvas    = new Canvas(document.getElementById('wb-canvas'));
         History.attach(canvas);
 
-        /* Привязка модуля предпросмотра к текущим canvas / codeView. */
         if (global.RunPreview) {
             global.RunPreview.attach({
                 canvas:   canvas,
@@ -30,13 +46,44 @@
         var componentTab = componentPaneEl && global.ComponentTab
             ? new global.ComponentTab(componentPaneEl)
             : null;
-        global.componentTab = componentTab;   /* нужен ProjectManager.save() и MiniUI-eval */
+        global.componentTab = componentTab;
         $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
 
-        /* Роутинг контекстного меню Tool Palette.
-           Тип контекста: 'item' (kind: 'user' | 'builtin'), 'folder' | 'root'.
-           Всю маршрутизацию по меню держим здесь, т.к. MiniUI не даёт
-           контексту указывать меню-идентификатор напрямую. */
+        /* ---------- Хелпер: показать/скрыть вкладку Component ----------
+           Делает это безопасно, вне зависимости от того, каким способом
+           jQuery 1.6.2 применяет inline-стили. Если вкладка должна быть
+           показана — снимает inline display:none (и, на всякий случай,
+           выставляет display:inline-block через cssText). */
+        function setComponentTabVisible(visible, switchIfActive) {
+            var tabs = document.getElementById('wb-center-tabs');
+            if (!tabs) return;
+            var el = tabs.querySelector('.wb-center-tab[data-pane="component"]');
+            if (!el) return;
+
+            if (visible) {
+                el.style.display = 'inline-block';
+                el.removeAttribute('hidden');
+            } else {
+                el.style.display = 'none';
+
+                if (switchIfActive) {
+                    var active = tabs.querySelector('.wb-center-tab.wb-active');
+                    if (active && active.getAttribute('data-pane') === 'component') {
+                        var sceneTab = tabs.querySelector('.wb-center-tab[data-pane="scene"]');
+                        if (sceneTab) sceneTab.click();
+                    }
+                }
+            }
+        }
+
+        /* ---------- Реакция на смену режима проекта ---------- */
+        EventBus.on('project:mode-changed', function (e) {
+            if (!e) return;
+            var isComponent = (e.mode === 'component');
+            setComponentTabVisible(isComponent, /* switchIfActive */ true);
+        });
+
+        /* Контекстное меню пользовательской палитры. */
         EventBus.on('palette:contextmenu', function (ctx) {
             if (!palette) return;
             var menuId;
@@ -54,7 +101,8 @@
         /* Двойной клик по user-компоненту — открыть вкладку Component. */
         EventBus.on('component:edit-request', function (e) {
             if (!componentTab) return;
-            $('#wb-center-tabs .wb-center-tab[data-pane="component"]').show().click();
+            setComponentTabVisible(true, false);
+            $('#wb-center-tabs .wb-center-tab[data-pane="component"]').click();
             componentTab.setComponent(e.component);
         });
 
@@ -68,6 +116,15 @@
             });
             if (global.IDE) global.IDE.projectManager = projectManager;
             global.ProjectManagerInstance = projectManager;
+
+            /* Страховка: после того как ProjectManager восстановил
+               последний проект, ещё раз синхронизируем видимость
+               вкладки Component с текущим режимом. Сработает даже если
+               событие 'project:mode-changed' было пропущено. */
+            setTimeout(function () {
+                var isComp = !!(global.App && global.App._componentMode);
+                setComponentTabVisible(isComp, !isComp);
+            }, 0);
         }
 
         /* ---------- Panel splitter (project panel / palette) ---------- */
@@ -112,9 +169,35 @@
             }
 
             if (componentTab) componentTab.setActive(paneName === 'component');
+
+            /* При переключении на Scene в режиме Root: component —
+               гарантированно переинжектить libs и заново выполнить
+               пользовательский JS (даже если canvas не перезагружался). */
+            if (paneName === 'scene' && canvas &&
+                global.App && global.App._componentMode) {
+                setTimeout(function () {
+                    if (canvas._injectComponentAssets) {
+                        canvas._injectComponentAssets();
+                    }
+                }, 0);
+            }
         });
 
-        EventBus.on('palette:selected', function (e) { canvas.setPending(e.component); });
+        /* Клик по компоненту в палитре → готовим его к вставке на сцену.
+           Если это пользовательский компонент с внешними библиотеками —
+           подгружаем их в основной документ IDE. */
+        EventBus.on('palette:selected', function (e) {
+            canvas.setPending(e.component);
+
+            if (e && e.component && (e.component.jsLibs || e.component.cssLibs)) {
+                if (global.ComponentTab && global.ComponentTab.loadLibsIntoMainDoc) {
+                    global.ComponentTab.loadLibsIntoMainDoc(
+                        e.component.jsLibs || [],
+                        e.component.cssLibs || []
+                    );
+                }
+            }
+        });
 
         EventBus.on('command:delete', function () { App.cmd('delete'); });
         EventBus.on('command:move',   function (e) { moveSel(e.dx, e.dy, e.resize); });
@@ -169,13 +252,13 @@
 
             if (e.ctrlKey && e.keyCode === 90) { History.undo(); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 89) { History.redo(); e.preventDefault(); }
-            else if (e.ctrlKey && e.keyCode === 83) { App.cmd('saveProject'); e.preventDefault(); }  /* Ctrl+S */
+            else if (e.ctrlKey && e.keyCode === 83) { App.cmd('saveProject'); e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 67) { App.cmd('copy');  e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 88) { App.cmd('cut');   e.preventDefault(); }
             else if (e.ctrlKey && e.keyCode === 86) { App.cmd('paste'); e.preventDefault(); }
             else if (e.keyCode === 46) { App.cmd('delete'); }
-            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }         /* F9 — форма */
-            else if (e.keyCode === 121) { App.cmd('runProject'); e.preventDefault(); }  /* F10 — проект */
+            else if (e.keyCode === 120) { App.cmd('run'); e.preventDefault(); }
+            else if (e.keyCode === 121) { App.cmd('runProject'); e.preventDefault(); }
         });
 
         function moveSel(dx, dy, resize) {
@@ -337,7 +420,6 @@
             cmprepeaterstyler:      'json'
         };
 
-        /* ------- Тост-уведомление (используется App.saveProject) ------- */
         function showToast(text) {
             var el = document.getElementById('wb-toast');
             if (!el) {
@@ -359,6 +441,9 @@
         }
 
         var App = {
+            /* Флаг переносим из заглушки, созданной в начале ready-блока. */
+            _componentMode: (global.App && global.App._componentMode) || false,
+
             cmd: function (action) { if (App[action]) App[action](); },
 
             run: function () {
@@ -401,7 +486,6 @@
                 App.setTheme(App.getTheme() === 'dark' ? 'light' : 'dark');
             },
 
-            /* ---- New — с проверкой несохранённых правок проекта ---- */
             new: function () {
                 var pm = global.ProjectManagerInstance;
                 if (pm && pm.editing) {
@@ -413,7 +497,6 @@
                 canvas.reset();
             },
 
-            /* ---- Load HTML — с проверкой несохранённых правок проекта ---- */
             load: function () {
                 var pm = global.ProjectManagerInstance;
                 if (pm && pm.editing) {
@@ -455,12 +538,6 @@
                 });
             },
 
-            /* ---- Save Project — сохраняет проект целиком (Ctrl+S) ----
-               Сохраняет:
-                 • редактируемый файл (если есть несохранённые правки);
-                 • rootType текущего проекта (html/cmpForm/m2Form/div/component);
-                 • componentData (без js/css — они в lib-файлах);
-                 • lib/wb-component/<cmptype>.js и .css при Root: component. */
             saveProject: function () {
                 var pm = global.ProjectManagerInstance;
                 if (!pm || !pm.current) {
@@ -702,31 +779,31 @@
 
             setRootHtml:    function () {
                 App._componentMode = false;
-                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                setComponentTabVisible(false, true);
                 canvas.setRootType('html');
             },
             setRootCmpForm: function () {
                 App._componentMode = false;
-                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                setComponentTabVisible(false, true);
                 canvas.setRootType('cmpForm');
             },
             setRootM2Form:  function () {
                 App._componentMode = false;
-                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                setComponentTabVisible(false, true);
                 canvas.setRootType('m2Form');
             },
             setRootDiv:     function () {
                 App._componentMode = false;
-                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').hide();
+                setComponentTabVisible(false, true);
                 canvas.setRootType('div');
             },
             setRootComponent: function () {
                 App._componentMode = true;
+                setComponentTabVisible(true, false);
                 canvas.setRootType('div');
-                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').show().click();
+                $('#wb-center-tabs .wb-center-tab[data-pane="component"]').click();
             },
 
-            /* Выгрузить текущий проект как ZIP-архив компонента. */
             exportProjectAsComponent: function () {
                 var pm = global.ProjectManagerInstance;
                 if (!pm || !pm.current) {
@@ -739,7 +816,6 @@
                 if (global.componentTab && global.componentTab.getFormData) {
                     try {
                         var cd = global.componentTab.getFormData();
-                        /* js/css уходят в lib-файлы; в манифест — не дублируем. */
                         if (cd) { delete cd.js; delete cd.css; }
                         p.componentData = cd;
                     } catch (e) {}
@@ -790,6 +866,13 @@
         };
 
         global.App = App;
+
+        /* После замены объекта App — пересинхронизируем видимость вкладки
+           Component, используя финальный флаг _componentMode. */
+        try {
+            var isCompNow = !!App._componentMode;
+            setComponentTabVisible(isCompNow, !isCompNow);
+        } catch (e) { /* ignore */ }
 
         try {
             var savedTheme = localStorage.getItem('wb.theme') || 'light';

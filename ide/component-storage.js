@@ -23,6 +23,21 @@
    jsLibs / cssLibs — core.js подгружает их лениво (один раз на URL).
 
    ------------------------------------------------------------------
+   Автокоррекция libs:
+
+     При нормализации компонента (normalizeComponent) автоматически
+     проверяется соответствие URL и его массива:
+       • если URL заканчивается на .css и лежит в jsLibs → переносится
+         в cssLibs;
+       • если URL заканчивается на .js и лежит в cssLibs → переносится
+         в jsLibs.
+
+     Это защита от старых project.json / corrupted localStorage, где
+     CSS и JS были смешаны. Без неё <link href="…jquery-ui.js"> или
+     <script src="…jquery-ui.css"> ломают runtime (браузер пытается
+     выполнить CSS как JS: "Uncaught SyntaxError: Unexpected token '.'").
+
+   ------------------------------------------------------------------
    Palette Layout (localStorage 'wb.paletteLayout', version 1):
 
      {
@@ -99,6 +114,7 @@
         '            var url = lib && (typeof lib === "string" ? lib : lib.value);',
         '            var typ = lib && lib.type ? lib.type : "url";',
         '            if(!url || typ === "project") continue;',
+        '            if(/\\.js(\\?|#|$)/i.test(url)) continue;',
         '            if(this._libsLoaded["css:"+url]) continue;',
         '            this._libsLoaded["css:"+url] = true;',
         '            var link = document.createElement("link");',
@@ -113,6 +129,7 @@
         '            var urlj = libj && (typeof libj === "string" ? libj : libj.value);',
         '            var typj = libj && libj.type ? libj.type : "url";',
         '            if(!urlj || typj === "project") continue;',
+        '            if(/\\.css(\\?|#|$)/i.test(urlj)) continue;',
         '            if(this._libsLoaded["js:"+urlj]) continue;',
         '            this._libsLoaded["js:"+urlj] = true;',
         '            var script = document.createElement("script");',
@@ -316,6 +333,10 @@
         return max;
     }
 
+    /* ------------------------------------------------------------------
+       Нормализация одной записи lib-а.
+         • строка → { type: 'url', value };
+         • объект → { type, value } (все прочие поля отбрасываются). */
     function normalizeLibEntry(entry) {
         if (!entry) return null;
         if (typeof entry === 'string') {
@@ -334,6 +355,36 @@
             if (e && e.value) out.push(e);
         }
         return out;
+    }
+
+    /* ------------------------------------------------------------------
+       Разносим libs по правильным массивам:
+         • URL, заканчивающийся на .css, не может быть <script> —
+           переносим в cssLibs;
+         • URL, заканчивающийся на .js, не может быть <link> —
+           переносим в jsLibs.
+
+       Возвращает { jsLibs, cssLibs } в каноническом виде.
+       Защищает от старых project.json / corrupted localStorage, где
+       CSS и JS были смешаны. */
+    function splitLibsByUrl(jsLibs, cssLibs) {
+        var inJs  = normalizeLibsArray(jsLibs);
+        var inCss = normalizeLibsArray(cssLibs);
+        var outJs  = [];
+        var outCss = [];
+        var i, e;
+
+        for (i = 0; i < inJs.length; i++) {
+            e = inJs[i];
+            if (/\.css(\?|#|$)/i.test(e.value)) outCss.push(e);
+            else outJs.push(e);
+        }
+        for (i = 0; i < inCss.length; i++) {
+            e = inCss[i];
+            if (/\.js(\?|#|$)/i.test(e.value)) outJs.push(e);
+            else outCss.push(e);
+        }
+        return { jsLibs: outJs, cssLibs: outCss };
     }
 
     function normalizeProp(p) {
@@ -373,6 +424,10 @@
         if (mode !== 'none' && mode !== 'list' && mode !== 'all') mode = 'all';
 
         var previewHtml = src.previewIdeHtml || src.html || '';
+
+        /* Автокоррекция jsLibs / cssLibs по расширению URL. */
+        var split = splitLibsByUrl(src.jsLibs, src.cssLibs);
+
         return {
             id:             src.id || uid('cmp'),
             name:           src.name || 'Component',
@@ -384,8 +439,8 @@
             previewIdeHtml: previewHtml,
             js:             src.js || '',
             css:            src.css || '',
-            jsLibs:         normalizeLibsArray(src.jsLibs),
-            cssLibs:        normalizeLibsArray(src.cssLibs),
+            jsLibs:         split.jsLibs,
+            cssLibs:        split.cssLibs,
             customProperties: outProps,
             customEvents:     outEvs,
             nestingMode:      mode,
@@ -481,10 +536,8 @@
         getComponentLibs: function (compOrId) {
             var c = typeof compOrId === 'string' ? this.getComponent(compOrId) : compOrId;
             if (!c) return { jsLibs: [], cssLibs: [] };
-            return {
-                jsLibs:  normalizeLibsArray(c.jsLibs),
-                cssLibs: normalizeLibsArray(c.cssLibs)
-            };
+            var split = splitLibsByUrl(c.jsLibs, c.cssLibs);
+            return split;
         },
 
         createComponent: function (def) {
@@ -515,7 +568,8 @@
             if (!m.components[id]) return false;
             var merged = Object.assign({}, m.components[id], patch);
             /* patch может содержать jsLibs / cssLibs — normalizeComponent
-               приведёт их к канонической форме. */
+               приведёт их к канонической форме и разложит по правильным
+               массивам. */
             var norm = normalizeComponent(merged);
             norm.id = id;
             m.components[id] = norm;
@@ -637,14 +691,14 @@
            Генерация per-cmptype .js. */
         _buildCmptypeJs: function (c) {
             var html = c.previewIdeHtml || c.html || '';
+            var split = splitLibsByUrl(c.jsLibs, c.cssLibs);
             var def = {
                 id: c.id,
                 cmptype: c.cmptype,
                 name: c.name,
                 html: html,
-                /* jsLibs / cssLibs — для ленивой загрузки в браузере. */
-                jsLibs:  normalizeLibsArray(c.jsLibs),
-                cssLibs: normalizeLibsArray(c.cssLibs),
+                jsLibs:  split.jsLibs,
+                cssLibs: split.cssLibs,
                 customProperties: c.customProperties || [],
                 customEvents:     c.customEvents     || []
             };
@@ -669,9 +723,10 @@
         _buildCmptypeCss: function (c) {
             var parts = [];
             parts.push('/* WbComponent: ' + c.name + ' (' + c.cmptype + ') — автогенерация. */');
-            if (c.cssLibs && c.cssLibs.length) {
-                for (var i = 0; i < c.cssLibs.length; i++) {
-                    var lib = c.cssLibs[i];
+            var split = splitLibsByUrl(c.jsLibs, c.cssLibs);
+            if (split.cssLibs && split.cssLibs.length) {
+                for (var i = 0; i < split.cssLibs.length; i++) {
+                    var lib = split.cssLibs[i];
                     if (lib && lib.value) parts.push('@import url("' + lib.value + '");');
                 }
             }
@@ -691,10 +746,7 @@
 
            Обновляет lib/wb-component/{core.js,<cmptype>.js,<cmptype>.css}.
            jsLibs / cssLibs попадают в <cmptype>.js — рантайм подгружает
-           их лениво в браузере через WbComponent.applyLibs().
-
-           ВАЖНО: при сборе из активной ComponentTab теперь читаются
-           jsLibs / cssLibs из getFormData() и переносятся в деф. */
+           их лениво в браузере через WbComponent.applyLibs(). */
         syncProjectLibraries: function (project, canvas) {
             if (!project) return;
             if (!project.files) project.files = {};
@@ -724,14 +776,15 @@
                     var cd = global.componentTab.getFormData();
                     if (cd && cd.cmptype) {
                         var html = cd.previewIdeHtml || cd.html || '';
+                        var split = splitLibsByUrl(cd.jsLibs, cd.cssLibs);
                         used[cd.cmptype] = {
                             id: cd.id || ('inline:' + cd.cmptype),
                             name: cd.name || cd.cmptype,
                             cmptype: cd.cmptype,
                             html: html,
                             previewIdeHtml: html,
-                            jsLibs:  normalizeLibsArray(cd.jsLibs),
-                            cssLibs: normalizeLibsArray(cd.cssLibs),
+                            jsLibs:  split.jsLibs,
+                            cssLibs: split.cssLibs,
                             customProperties: cd.customProperties || [],
                             customEvents:     cd.customEvents || [],
                             js:   cd.js  || '',
@@ -810,7 +863,6 @@
             var seenJs = {}, seenCss = {};
             if (!project) return out;
 
-            /* 1. Уникальные cmptype из сцены. */
             var used = {};
             var canvas = global.IDE && global.IDE._canvas;
             if (canvas && canvas.getDoc) {
@@ -824,16 +876,13 @@
                     }
                 }
             }
-            /* 2. Из active ComponentTab. */
             if (global.App && global.App._componentMode &&
                 global.componentTab && global.componentTab.getFormData) {
                 try {
                     var cd = global.componentTab.getFormData();
                     if (cd && cd.cmptype) {
-                        used[cd.cmptype] = {
-                            jsLibs:  normalizeLibsArray(cd.jsLibs),
-                            cssLibs: normalizeLibsArray(cd.cssLibs)
-                        };
+                        var split = splitLibsByUrl(cd.jsLibs, cd.cssLibs);
+                        used[cd.cmptype] = split;
                     }
                 } catch (e) { /* ignore */ }
             }
@@ -877,6 +926,8 @@
                 }
             }
 
+            var split = splitLibsByUrl(c.jsLibs, c.cssLibs);
+
             return {
                 id: 'user:' + c.id,
                 caption: c.name || c.id,
@@ -888,9 +939,8 @@
                 nestingMode:  c.nestingMode  || 'all',
                 nestingRules: c.nestingRules || [],
                 iconUrl: c.icon || '',
-                /* jsLibs / cssLibs — для _injectComponentAssets в Canvas. */
-                jsLibs:  normalizeLibsArray(c.jsLibs),
-                cssLibs: normalizeLibsArray(c.cssLibs),
+                jsLibs:  split.jsLibs,
+                cssLibs: split.cssLibs,
 
                 create: function (doc) {
                     var el = doc.createElement(tagName);
