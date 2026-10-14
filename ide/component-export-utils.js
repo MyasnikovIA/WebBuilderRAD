@@ -135,6 +135,7 @@
                         tagName:         c.tagName || 'div',
                         cmptype:         c.cmptype || '',
                         description:     c.description || '',
+                        visible:         c.visible !== false,
                         js:              c.js || '',
                         css:             c.css || '',
                         previewIdeHtml:  c.previewIdeHtml || '',

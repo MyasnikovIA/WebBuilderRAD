@@ -100,21 +100,48 @@
 
     Canvas.prototype._purgeServiceNodes = function (el) {
         if (!el || el.nodeType !== 1) return;
+
+        /* User-компонент: все его дети — рантайм-контент. Это либо
+           preview-узел .wb-user-comp-preview (от Canvas._renderPreview),
+           либо результат WbComponent.attach → el.innerHTML = def.html.
+           В обоих случаях эти узлы восстанавливаются автоматически при
+           загрузке HTML (canvas._renderPreview + WbComponent.attach).
+           Удаляем их все, чтобы в файле остался только сам контейнер
+           <div data-wb-user-comp="…" cmptype="…" style="…">. */
+        if (el.getAttribute && el.getAttribute('data-wb-user-comp') != null) {
+            while (el.firstChild) el.removeChild(el.firstChild);
+            return;
+        }
+
         var kids = el.children;
         for (var i = kids.length - 1; i >= 0; i--) {
             var child = kids[i];
+
             if (child.getAttribute && child.getAttribute('data-wb-ide') === '1') {
                 child.parentNode.removeChild(child); continue;
             }
             if (child.getAttribute && child.getAttribute('data-wb-preview') === '1') {
                 child.parentNode.removeChild(child); continue;
             }
+
+            /* ← НОВОЕ: сервисные lib-теги, добавленные _injectComponentAssets
+               (jQuery / jQuery UI / lib/wb-component/*.js|css). Помечены
+               data-wb-comp-asset="1" — скрыты от Code/Structure, но
+               раньше всё равно попадали в сохранённый HTML, потому что
+               _purgeServiceNodes их не отсеивал. Удаляем — при экспорте
+               в ZIP они восстанавливаются заново через
+               ZipUtils.injectLibTagsIntoHtml. */
+            if (child.getAttribute && child.getAttribute('data-wb-comp-asset') === '1') {
+                child.parentNode.removeChild(child); continue;
+            }
+
             if (child.tagName && child.tagName.toLowerCase() === 'wb-cdata') {
                 child.parentNode.removeChild(child); continue;
             }
             if (isUserCompServiceNode(child)) {
                 child.parentNode.removeChild(child); continue;
             }
+
             this._stripServiceClasses(child);
             if (child.hasAttribute && child.hasAttribute('data-cmptype')) {
                 child.removeAttribute('data-cmptype');

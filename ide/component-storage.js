@@ -428,6 +428,9 @@
         /* Автокоррекция jsLibs / cssLibs по расширению URL. */
         var split = splitLibsByUrl(src.jsLibs, src.cssLibs);
 
+        /* visible: bool, default true. Явный false → false, всё прочее → true. */
+        var visible = (src.visible === false) ? false : true;
+
         return {
             id:             src.id || uid('cmp'),
             name:           src.name || 'Component',
@@ -435,6 +438,7 @@
             tagName:        src.tagName || 'div',
             icon:           src.icon || '',
             description:    src.description || '',
+            visible:        visible,
             html:           previewHtml,
             previewIdeHtml: previewHtml,
             js:             src.js || '',

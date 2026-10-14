@@ -65,31 +65,21 @@
     };
 
     /* ------------------------------------------------------------------
-       _fitUserComponentToContent
+   _fitUserComponentToContent
 
-       Замеряет extents содержимого user-компонента (previewIdeHtml)
-       внутри .wb-user-comp-preview[data-wb-preview="1"] и:
+   Вычисляет натуральные размеры содержимого user-компонента и
+   либо сразу подгоняет под них сам контейнер (preserveSize=false —
+   при вставке из палитры), либо только запоминает их и применяет
+   transform: scale() к обёртке (preserveSize=true — при загрузке
+   HTML, где размер уже задан пользователем).
 
-         1. Кэширует на el:
-              el.__wbNaturalW/H   — ширина/высота содержимого;
-              el.__wbNaturalLeft  — левый отступ содержимого от (0,0)
-                                    обёртки;
-              el.__wbNaturalTop   — верхний отступ.
-
-         2. Если !preserveSize — выставляет el.style.width/height
-            в размеры natural. Это режим «вставка из палитры»:
-            компонент сразу получает правильный размер.
-
-            Если preserveSize — НЕ трогает размеры: используется при
-            загрузке HTML, чтобы не затирать пользовательский ресайз.
-
-         3. Вызывает _applyUserComponentTransform(el) — тот ставит
-            preview в natural-размер и применяет transform: scale()
-            в соответствии с фактическим размером контейнера.
-
-       Дополнительно (не входит в фиттинг): отложенные повторы до 8 раз
-       с шагом 60 мс — ждём jQuery UI .button() и ProjectResolver.
-       ------------------------------------------------------------------ */
+   КЛЮЧЕВОЙ МОМЕНТ: перед замером размеры el временно обнуляются.
+   Без этого .wb-user-comp-preview (width:100%/height:100%) и
+   .formBackground (width:100%) растянутся по текущему — большому —
+   размеру контейнера, и замер вернёт extents родителя, а не
+   фактический размер содержимого. Обнуление заставляет обёртку
+   сжаться до контента, position:absolute кнопки дают корректные
+   extents. */
     Canvas.prototype._fitUserComponentToContent = function (el, attempt, preserveSize) {
         if (!el || el.nodeType !== 1) return;
         if (!el.getAttribute) return;
@@ -108,7 +98,8 @@
             return;
         }
 
-        /* Сброс предыдущего transform, чтобы замер был от «чистой» обёртки. */
+        /* 1. Снимаем предыдущий transform и размеры обёртки —
+              иначе замер идёт по искажённому состоянию. */
         wrap.style.transform = '';
         wrap.style.transformOrigin = '';
         wrap.style.marginLeft = '';
@@ -116,10 +107,19 @@
         wrap.style.width  = '';
         wrap.style.height = '';
 
-        void wrap.offsetWidth;   /* форсим layout */
+        /* 2. ← НОВОЕ: временно обнуляем размер контейнера. См. шапку. */
+        var savedW = el.style.width;
+        var savedH = el.style.height;
+        el.style.width  = '0px';
+        el.style.height = '0px';
+
+        void el.offsetWidth;   /* форсим layout */
 
         var wrapRect = wrap.getBoundingClientRect();
         if (!wrapRect || (wrapRect.width === 0 && wrapRect.height === 0)) {
+            /* Не удалось обнулить — восстанавливаем и ретраим. */
+            el.style.width  = savedW;
+            el.style.height = savedH;
             if (attempt < 8) {
                 var s2 = this;
                 setTimeout(function () {
@@ -149,6 +149,9 @@
         if (!isFinite(minTop))  minTop  = 0;
 
         if (maxRight < 8 || maxBottom < 8) {
+            /* Ничего не нашли — восстанавливаем и ретраим. */
+            el.style.width  = savedW;
+            el.style.height = savedH;
             if (attempt < 8) {
                 var s3 = this;
                 setTimeout(function () {
@@ -158,10 +161,14 @@
             return;
         }
 
+        /* 3. Восстанавливаем размеры контейнера — дальше перезапишем
+              их правильно или оставим как было (preserveSize=true). */
+        el.style.width  = savedW;
+        el.style.height = savedH;
+
         var newW = Math.max(50, Math.ceil(maxRight  - minLeft));
         var newH = Math.max(30, Math.ceil(maxBottom - minTop));
 
-        /* Кэш natural-размеров. */
         el.__wbNaturalW    = newW;
         el.__wbNaturalH    = newH;
         el.__wbNaturalLeft = minLeft;
@@ -258,6 +265,15 @@
             if (newName) el.setAttribute('name', newName);
         }
 
+        /* Признак видимости: если компонент объявлен невидимым —
+           помечаем элемент. CSS (см. _injectIdeStyle в canvas-core.js)
+           скроет его на сцене (visibility:hidden) и отключит приём
+           кликов (pointer-events:none). В дереве Structure он остаётся
+           доступен и выделяется через неё. */
+        if (def && def.userComponent && def.userComponent.visible === false) {
+            el.setAttribute('data-wb-user-comp-hidden', '1');
+        }
+
         var parentOnly = def.parentOnly;
         if (!parentOnly && def.tagName) parentOnly = PARENT_FALLBACK[String(def.tagName).toLowerCase()];
 
@@ -291,20 +307,15 @@
         el.classList.add(SEL);
         this._addResizeHandles(el);
 
-        /* user-компонент: сразу overflow:hidden на контейнер, чтобы
-           transform-сдвинутая обёртка не выходила за рамку. */
         if (def && def.userComponent && el.getAttribute('data-wb-user-comp')) {
             el.style.overflow = 'hidden';
         }
 
-        /* Инжектим внешние libs и служебные скрипты. */
         if (def && (def.jsLibs || def.cssLibs ||
             (def.userComponent && def.userComponent.js))) {
             this._injectComponentAssets();
         }
 
-        /* Автоподгонка размера под содержимое — preserveSize=false,
-           значит el.style.width/height перезапишутся в natural. */
         if (def && def.userComponent && el.getAttribute('data-wb-user-comp')) {
             var self = this;
             setTimeout(function () {

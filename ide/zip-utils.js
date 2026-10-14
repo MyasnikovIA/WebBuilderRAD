@@ -367,6 +367,11 @@
                         tagName:         effTagName,
                         cmptype:         effCmptype,
                         description:     effDescription,
+                        /* ← НОВОЕ: признак видимости. Приоритет — как у libs:
+                           liveCd, потом storedCd, иначе true. */
+                        visible: (liveCd && liveCd.visible != null)
+                            ? liveCd.visible
+                            : ((storedCd.visible != null) ? storedCd.visible : true),
                         jsLibs:          normalizeLibs(effJsLibs),
                         cssLibs:         normalizeLibs(effCssLibs),
                         js:              effJs,

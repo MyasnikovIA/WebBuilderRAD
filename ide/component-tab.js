@@ -42,9 +42,18 @@
    строит виджет на вкладке Scene, а экспортирует компонент с
    placeholder'ом «My Component».
 
-   Дополнительно: статический хелпер ComponentTab.loadLibsIntoMainDoc()
-   позволяет другим модулям (Palette, ProjectManager) подгрузить
-   внешние библиотеки компонента в основной документ IDE. */
+   ---- Признак видимости ----
+
+   Компонент может быть видимым или невидимым на сцене. Флаг хранится
+   в componentData.visible (boolean, по умолчанию true) и едет в
+   project.json. На сцене невидимый компонент получает атрибут
+   data-wb-user-comp-hidden="1" — CSS делает его невидимым и
+   неинтерактивным, но он остаётся в дереве и доступен через Structure.
+
+   Если при создании компонента стоит галка «Видимый компонент»,
+   автоматически генерируется JS-заготовка с ResizeObserver, который
+   вызывает пользовательскую функцию on<ComponentName>Resize({...})
+   при каждом изменении размера контейнера. */
 (function (global, $) {
     'use strict';
     var bus = global.EventBus;
@@ -110,14 +119,7 @@
     }
 
     /* ============================================================
-       Статические хелперы: кэш и загрузчик lib-ов.
-
-       Загрузка идёт в <head> основного документа IDE — чтобы внешние
-       библиотеки (jQuery, jQuery UI, …) были доступны в JS-среде
-       редактора: при работе с ComponentTab, в консоли DevTools,
-       в пользовательских обработчиках и т.п.
-
-       Каждый URL загружается один раз (кэш на сессию). */
+       Статические хелперы: кэш и загрузчик lib-ов. */
     ComponentTab._libCache = {};
 
     ComponentTab._loadLib = function (url, kind, type) {
@@ -125,8 +127,6 @@
         if (!url) return Promise.resolve('empty');
         if (type === 'project') return Promise.resolve('project');
 
-        /* Защита: URL, заканчивающийся на .css, не может быть <script>,
-           а URL на .js — не может быть <link>. */
         if (kind === 'js' && /\.css(\?|#|$)/i.test(url)) kind = 'css';
         else if (kind === 'css' && /\.js(\?|#|$)/i.test(url)) kind = 'js';
 
@@ -167,8 +167,6 @@
         });
     };
 
-    /* Публичный хелпер: подгрузить массивы jsLibs / cssLibs в основной
-       документ IDE. Формат элемента — { type: 'url'|'project', value }. */
     ComponentTab.loadLibsIntoMainDoc = function (jsLibs, cssLibs) {
         var i;
         jsLibs  = jsLibs  || [];
@@ -187,7 +185,6 @@
         }
     };
 
-    /* Инстансный метод: проверить и загрузить один lib, отобразить статус. */
     ComponentTab.prototype._checkAndLoadLib = function (url, kind, type, statusEl) {
         var setS = function (txt, color, title) {
             if (!statusEl) return;
@@ -222,7 +219,6 @@
         });
     };
 
-    /* Проверить и загрузить все JS/CSS libs текущего компонента. */
     ComponentTab.prototype._checkAllLibs = function () {
         var self = this;
         if (!this._libs) return;
@@ -260,6 +256,7 @@
         form.append(self._field('tagName',     'Тег корня',                  'text'));
         form.append(self._field('cmptype',     'cmptype',                    'text'));
         form.append(self._textarea('description', 'Описание компонента'));
+        form.append(self._checkboxField('visible', 'Видимый компонент', true));
 
         form.append(self._libsField('js',  'JS-ресурсы'));
         form.append(self._libsField('css', 'CSS-ресурсы'));
@@ -355,6 +352,7 @@
             tagName:     form.find('[name="wbcomp-tagName"]'),
             cmptype:     form.find('[name="wbcomp-cmptype"]'),
             description: form.find('[name="wbcomp-description"]'),
+            visible:     form.find('[name="wbcomp-visible"]'),
             nestingMode: form.find('[name="wbcomp-nestingMode"]')
         };
         this._libs = {
@@ -400,6 +398,21 @@
             '</div>'
         ).find('.wb-row-name').text(label).end()
             .find('input').attr('name', 'wbcomp-' + name).end();
+    };
+
+    /* Чекбокс — используется для признака «Видимый компонент». */
+    ComponentTab.prototype._checkboxField = function (name, label, defChecked) {
+        var row = $(
+            '<div class="wb-row">' +
+            '<div class="wb-row-name"></div>' +
+            '<div class="wb-row-value">' +
+            '<input type="checkbox" name="wbcomp-' + name + '">' +
+            '</div>' +
+            '</div>'
+        );
+        row.find('.wb-row-name').text(label);
+        if (defChecked) row.find('input').prop('checked', true);
+        return row;
     };
 
     ComponentTab.prototype._selectField = function (name, label, options, defVal) {
@@ -846,8 +859,7 @@
 
         var m = new RegExp(
             '(?:function\\s+' + esc + '\\s*\\([^)]*\\)\\s*\\{' +
-            '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)' +
-            '' /* см. фикс от предыдущей версии */
+            '|' + esc + '\\s*=\\s*function\\s*\\([^)]*\\)\\s*\\{)'
         ).exec(code);
 
         if (m) {
@@ -858,6 +870,89 @@
         }
     };
 
+    /* ------------------------------------------------------------------
+       _buildDefaultJs
+
+       Автогенерация шаблона JS для только что созданного компонента.
+
+       Если visible = true — генерируется ResizeObserver-обвязка:
+       она следит за изменением размеров контейнеров [data-wb-user-comp]
+       и при каждом изменении вызывает пользовательскую функцию
+       on<ComponentName>Resize({ component, el, width, height }).
+
+       Имя функции берётся от form.name (или cmptype), чтобы
+       несколько разных компонентов на одной странице не конфликтовали.
+       ------------------------------------------------------------------ */
+    ComponentTab.prototype._buildDefaultJs = function (visible) {
+        var cName = safeIdent(this._form.name.val() || 'Component');
+        var cType = String(this._form.cmptype.val() || 'my.component')
+            .replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+        var fnName = 'on' + capitalize(cName) + 'Resize';
+
+        var lines = [
+            '// JS',
+            ''
+        ];
+
+        if (visible) {
+            lines.push(
+                '/* Автогенерация: обработчик изменения размера контейнера',
+                '   [data-wb-user-comp]. Использует ResizeObserver — если он',
+                '   отсутствует в браузере (IE), слежение просто не работает. */',
+                '(function (g) {',
+                "    'use strict';",
+                '',
+                '    function initAll() {',
+                '        var els = document.querySelectorAll(\'[data-wb-user-comp][cmptype="' + cType + '"]\');',
+                '        if (!g.ResizeObserver) return;',
+                '        for (var i = 0; i < els.length; i++) {',
+                '            (function (el) {',
+                '                if (el.__wbResizeObserver) return;',
+                '                var ro = new g.ResizeObserver(function (entries) {',
+                '                    for (var j = 0; j < entries.length; j++) {',
+                '                        var r = entries[j].contentRect;',
+                '                        if (typeof g.' + fnName + ' === "function") {',
+                '                            g.' + fnName + '({',
+                '                                component: el._wbComponent || null,',
+                '                                el: el,',
+                '                                width: Math.round(r.width),',
+                '                                height: Math.round(r.height)',
+                '                            });',
+                '                        }',
+                '                    }',
+                '                });',
+                '                ro.observe(el);',
+                '                el.__wbResizeObserver = ro;',
+                '            })(els[i]);',
+                '        }',
+                '    }',
+                '',
+                '    g.' + fnName + ' = function (ctx) {',
+                '        // ctx.width  — новая ширина',
+                '        // ctx.height — новая высота',
+                '        // ctx.el     — корневой DOM-элемент компонента',
+                '    };',
+                '',
+                "    if (document.readyState === 'loading') {",
+                "        document.addEventListener('DOMContentLoaded', initAll, false);",
+                '    } else {',
+                '        initAll();',
+                '    }',
+                '',
+                '    /* Отслеживаем динамически добавленные компоненты. */',
+                '    if (g.MutationObserver) {',
+                '        var mo = new g.MutationObserver(function () { setTimeout(initAll, 0); });',
+                '        mo.observe(document.documentElement, { childList: true, subtree: true });',
+                '    }',
+                '})(window);',
+                ''
+            );
+        }
+
+        return lines.join('\n');
+    };
+
     /* ---------- Форма ---------- */
     ComponentTab.prototype.newComponent = function () {
         this._form.name.val('MyComponent');
@@ -865,6 +960,7 @@
         this._form.tagName.val('div');
         this._form.cmptype.val('my.component');
         this._form.description.val('');
+        this._form.visible.prop('checked', true);   /* видимый по умолчанию */
         this._form.nestingMode.val('all');
         this._setLibs('js', []);
         this._setLibs('css', []);
@@ -873,9 +969,12 @@
         this._setNestingRules([]);
         if (this._syncNestingUI) this._syncNestingUI();
 
-        this.jsEditor.setValue('// JS\n');
+        /* Если компонент создаётся видимым — генерируем JS-шаблон
+           с ResizeObserver (см. _buildDefaultJs). */
+        var visible = this._form.visible.prop('checked');
+        this.jsEditor.setValue(this._buildDefaultJs(visible));
+
         this.cssEditor.setValue('/* CSS */\n');
-        /* ← ИЗМЕНЕНО: используем константу DEFAULT_PREVIEW_HTML. */
         this.previewEditor.setValue(DEFAULT_PREVIEW_HTML);
         this.statusEl.text('').css('color', '');
     };
@@ -883,11 +982,8 @@
     /* ------------------------------------------------------------------
        getFormData
 
-       ← ИЗМЕНЕНО: если PreViewIDE содержит дефолтную заготовку
-       (DEFAULT_PREVIEW_HTML) или пуст — подставляем реальный HTML сцены
-       (canvas.cleanHtml()). Это устраняет ситуацию, когда пользователь
-       строит виджет на вкладке Scene, но экспортирует компонент с
-       placeholder'ом «My Component».
+       Возвращает полный снимок формы. Поле visible (boolean) уезжает
+       в project.json как componentData.visible.
        ------------------------------------------------------------------ */
     ComponentTab.prototype.getFormData = function () {
         var preview = this.previewEditor.getValue();
@@ -910,6 +1006,7 @@
             tagName:     this._form.tagName.val() || 'div',
             cmptype:     this._form.cmptype.val() || '',
             description: this._form.description.val() || '',
+            visible:     this._form.visible.prop('checked') !== false,
             jsLibs:      this._collectLibs('js'),
             cssLibs:     this._collectLibs('css'),
             js:          this.jsEditor.getValue(),
@@ -925,11 +1022,8 @@
     /* ------------------------------------------------------------------
        saveAsComponent
 
-       ← ИЗМЕНЕНО: вместо `if (!data.previewIdeHtml)` — `isDefaultPreview()`,
-       чтобы сработало и на дефолтной заготовке.
-
-       Если PreViewIDE(html) не заполнен — берём HTML со сцены (вкладка
-       Code = canvas.cleanHtml()) и используем его как превью компонента. */
+       Если PreViewIDE(html) не заполнен — берём HTML со сцены
+       (вкладка Code = canvas.cleanHtml()) как превью компонента. */
     ComponentTab.prototype.saveAsComponent = function () {
         var data = this.getFormData();
         if (!data.name) { alert('Укажите имя компонента.'); return; }
@@ -985,6 +1079,7 @@
         this._form.tagName.val(c.tagName || 'div');
         this._form.cmptype.val(c.cmptype || '');
         this._form.description.val(c.description || '');
+        this._form.visible.prop('checked', c.visible !== false); /* default true */
         this._form.nestingMode.val(c.nestingMode || 'all');
         this._setLibs('js',  c.jsLibs || []);
         this._setLibs('css', c.cssLibs || []);
@@ -1006,7 +1101,6 @@
     ComponentTab.PROPERTY_TYPES     = PROPERTY_TYPES;
     ComponentTab.NESTING_MODES      = NESTING_MODES;
 
-    /* ← ИЗМЕНЕНО: публичные хелперы и константа для других модулей. */
     ComponentTab.DEFAULT_PREVIEW_HTML = DEFAULT_PREVIEW_HTML;
     ComponentTab.isDefaultPreview     = isDefaultPreview;
 

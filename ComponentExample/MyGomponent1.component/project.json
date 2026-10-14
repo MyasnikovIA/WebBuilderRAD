@@ -1,0 +1,55 @@
+{
+  "name": "MyGomponent1",
+  "mainFile": "index.html",
+  "version": 4,
+  "type": "component",
+  "rootType": "component",
+  "component": {
+    "name": "MyComponent",
+    "icon": "",
+    "tagName": "div",
+    "cmptype": "my.component",
+    "description": "",
+    "jsLibs": [
+      {
+        "type": "url",
+        "value": "https://code.jquery.com/jquery-3.7.1.js"
+      },
+      {
+        "type": "url",
+        "value": "https://code.jquery.com/ui/1.14.2/jquery-ui.js"
+      }
+    ],
+    "cssLibs": [
+      {
+        "type": "url",
+        "value": "https://code.jquery.com/ui/1.14.2/themes/base/jquery-ui.css"
+      }
+    ],
+    "js": "(function (g) {\n    'use strict';\n\n    /* ------------------------------------------------------------------\n       Утилиты\n       ------------------------------------------------------------------ */\n\n    /* Целевая кнопка — единственный .ui-button внутри компонента. */\n    function findButton(el) {\n        if (!el) return null;\n        return el.querySelector('button.ui-button')\n            || el.querySelector('.ui-button')\n            || el.querySelector('button');\n    }\n\n    /* Применяем подпись к кнопке компонента.\n       cap === undefined → берём значение атрибута caption с корня. */\n    function applyCaption(el, cap) {\n        if (!el) return;\n        if (cap == null) cap = el.getAttribute('caption') || '';\n\n        var btn = findButton(el);\n        if (!btn) return;\n\n        /* Если кнопка инициализирована как jQuery UI button —\n           используем штатный API (сохраняет иконки и пр.). */\n        var $ = g.jQuery;\n        if ($ && $.fn && $.fn.button && $(btn).data('ui-button')) {\n            try {\n                $(btn).button('option', 'label', cap);\n                return;\n            } catch (e) { /* fall-through */ }\n        }\n\n        /* Fallback: обычная замена текста. */\n        if (btn.textContent !== cap) btn.textContent = cap;\n    }\n\n    /* ------------------------------------------------------------------\n       Property onChangeFunc — вызывается ядром WbComponent при каждом\n       изменении атрибута caption (WbComponent.attach → MutationObserver).\n\n       Помимо применения подписи, диспатчим кастомное DOM-событие\n       'captionchange' на корне компонента, чтобы подписчики\n       (в т.ч. onMyComponentOnChangeCaption) могли на него среагировать.\n       ------------------------------------------------------------------ */\n    g.onMyComponentCaptionChange = function (ctx) {\n        if (!ctx || !ctx.el) return;\n\n        applyCaption(ctx.el, ctx.value);\n\n        try {\n            var ce = new CustomEvent('captionchange', {\n                detail: {\n                    value:    ctx.value,\n                    oldValue: ctx.oldValue\n                },\n                bubbles: false\n            });\n            ctx.el.dispatchEvent(ce);\n        } catch (e) { /* IE11 и старше — игнорируем */ }\n    };\n\n    /* ------------------------------------------------------------------\n       Custom event handler — вызывается ядром WbComponent по событию\n       'captionchange' (WbComponent.attach → el.addEventListener(ev.name)).\n\n       ctx.type          — 'captionchange'\n       ctx.originalEvent — CustomEvent\n       ctx.data          — e.detail = { value, oldValue }\n       ctx.component     — экземпляр WbComponent\n       ctx.el            — корневой DOM-элемент компонента\n       ------------------------------------------------------------------ */\n    g.onMyComponentOnChangeCaption = function (ctx) {\n        if (!ctx || !ctx.el) return;\n\n        var newValue = (ctx.data && ctx.data.value != null)\n            ? ctx.data.value\n            : ctx.el.getAttribute('caption');\n\n        applyCaption(ctx.el, newValue);\n    };\n\n    /* ------------------------------------------------------------------\n       Начальный рендер: применяем сохранённый caption ко всем уже\n       существующим экземплярам и тем, что появятся позже.\n       (MutationObserver в core.js срабатывает только на ИЗМЕНЕНИЕ\n       атрибута, но не на его первоначальное значение.)\n       ------------------------------------------------------------------ */\n    function applyAll() {\n        var els = document.querySelectorAll(\n            '[data-wb-user-comp][cmptype=\"my.component\"]'\n        );\n        for (var i = 0; i < els.length; i++) {\n            if (els[i].getAttribute('caption') != null) {\n                applyCaption(els[i]);\n            }\n        }\n    }\n\n    if (document.readyState === 'loading') {\n        document.addEventListener('DOMContentLoaded', applyAll, false);\n    } else {\n        applyAll();\n    }\n\n    /* Ловим компоненты, добавленные на сцену после загрузки\n       (перетаскивание из палитры, paste, дубликат). */\n    if (g.MutationObserver) {\n        var mo = new g.MutationObserver(function () {\n            setTimeout(applyAll, 0);\n        });\n        mo.observe(document.documentElement, { childList: true, subtree: true });\n    }\n})(window);",
+    "css": "/* CSS */\n",
+    "previewIdeHtml": "<div class=\"formBackground\">\n    <button class=\"ui-button ui-widget ui-corner-all\" style=\"position: absolute; left: 47px; top: 98px; width: 342px; height: 65px;\">A button element</button>\n</div>",
+    "customProperties": [
+      {
+        "name": "caption",
+        "caption": "caption",
+        "type": "string",
+        "values": "",
+        "unit": "",
+        "fieldType": "none",
+        "fieldUrl": "",
+        "fieldPredefined": "",
+        "onChangeFunc": "onMyComponentCaptionChange"
+      }
+    ],
+    "customEvents": [
+      {
+        "name": "captionchange",
+        "caption": "Caption Change",
+        "handlerFunc": "onMyComponentOnChangeCaption"
+      }
+    ],
+    "nestingMode": "all",
+    "nestingRules": []
+  }
+}

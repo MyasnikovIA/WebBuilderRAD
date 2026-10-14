@@ -353,7 +353,7 @@
             /* Обёртка user-компонента.
                position: relative — контекст для position:absolute у детей
                (кнопки jQuery UI и пр.). overflow у неё самой — visible:
-               сдвиг через margin-left/top (см. _fitUserComponentToContent)
+               сдвиг через transform (см. _applyUserComponentTransform)
                может увести часть содержимого левее/выше нуля — обрезка
                делается на самом el через inline overflow:hidden. */
             '.wb-user-comp-preview[data-wb-preview] {' +
@@ -370,9 +370,20 @@
             '}' +
 
             /* Сам контейнер user-компонента обрезает содержимое —
-               иначе сдвинутая обёртка «вылезет» за рамку. */
+               иначе transform-сдвинутая обёртка «вылезет» за рамку. */
             '[data-wb-user-comp] {' +
             '  overflow: hidden;' +
+            '}' +
+
+            /* ← НОВОЕ: невидимый user-компонент.
+               Компонент, помеченный как невидимый (visible=false в
+               palette-описании), скрывается на сцене, но остаётся в DOM
+               (размеры измеримы — autofit продолжает работать).
+               pointer-events:none — не мешает другим элементам;
+               выделение возможно только через дерево Structure. */
+            '[data-wb-user-comp-hidden="1"] {' +
+            '  visibility: hidden !important;' +
+            '  pointer-events: none !important;' +
             '}' +
 
             '.' + SEL + '{outline:1px dashed #1e88e5 !important;outline-offset:-1px;}' +
@@ -411,16 +422,7 @@
     };
 
     /* ------------------------------------------------------------------
-       _collectKnownLibUrls
-
-       Возвращает { js: {url:1}, css: {url:1} } — все внешние URL
-       библиотек, которые считаются «сервисными»:
-         • jsLibs / cssLibs всех palette-компонентов;
-         • jsLibs / cssLibs активной ComponentTab (Root: component).
-
-       Используется в _injectComponentAssets, чтобы пометить «голые»
-       lib-теги, уже находящиеся в <head> iframe (например, из файла
-       проекта), как сервисные. */
+       _collectKnownLibUrls */
     Canvas.prototype._collectKnownLibUrls = function () {
         var out = { js: {}, css: {} };
         if (!global.ComponentStorage) return out;
@@ -461,13 +463,7 @@
     };
 
     /* ------------------------------------------------------------------
-       _injectInlineScript
-
-       Вставляет inline-<script> в <head> iframe. Тег помечается
-       data-wb-comp-asset="1" и data-wb-comp-owned="1", чтобы:
-         • он не сериализовался cleanHtml() и не появлялся в Structure/Code;
-         • при следующем вызове _injectComponentAssets удалялся только он
-           (а не adopted-теги из файла проекта). */
+       _injectInlineScript */
     Canvas.prototype._injectInlineScript = function (head, doc, code) {
         if (!head || !doc || !code) return;
         var s = doc.createElement('script');
@@ -478,40 +474,7 @@
     };
 
     /* ============================================================
-       _injectComponentAssets
-
-       Инжектит в <head> iframe:
-
-         1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
-
-         2. Для каждого user-компонента, реально присутствующего
-            на сцене ([data-wb-user-comp]):
-
-              • внешние jsLibs / cssLibs (jQuery, jQuery UI) — как
-                <script src> / <link href>;
-
-              • после их загрузки:
-
-                  – CORE_SOURCE            — inline <script>;
-                  – пользовательский CSS   — inline <style>;
-                  – <cmptype>.js           — inline <script>, но
-                                             с УРЕЗАННЫМ дефом
-                                             (jsLibs/cssLibs пустые,
-                                             т.к. уже подгружены выше —
-                                             иначе WbComponent.applyLibs
-                                             начнёт грузить их второй раз);
-                  – пользовательский JS    — inline <script>.
-
-         3. Root: component — дополнительно из активной ComponentTab
-            (jsLibs / cssLibs / js).
-
-       Всё, что мы создаём, помечается двумя маркерами:
-         • data-wb-comp-asset="1"  — скрыто из Code и Structure;
-         • data-wb-comp-owned="1"  — «наш» тег, удаляем только его.
-
-       Теги, «принятые» из файла проекта (jQuery / jQuery UI / …),
-       остаются в head нетронутыми — благодаря этому jQuery и jQuery UI
-       гарантированно сохраняют порядок загрузки и не перезагружаются. */
+       _injectComponentAssets */
     Canvas.prototype._injectComponentAssets = function () {
         var self = this;
         var doc = this.getDoc();
@@ -521,11 +484,9 @@
 
         var gen = ++this._assetGen;
 
-        /* 1. Удаляем ТОЛЬКО наши теги (owned). Adopted — не трогаем. */
         var old = doc.querySelectorAll('[data-wb-comp-asset="1"][data-wb-comp-owned="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
-        /* 2. Помечаем «голые» lib-теги (из файла проекта). */
         var known = this._collectKnownLibUrls();
 
         var headLinks = head.querySelectorAll('link[href]');
@@ -553,7 +514,6 @@
             }
         }
 
-        /* 3. Собираем URL, уже присутствующие в head (и blob, и оригинал). */
         var seenCss = {};
         var seenJs  = {};
         var linkNow = head.querySelectorAll('link[href]');
@@ -575,7 +535,7 @@
 
         var pendingJs = [];
         var userJsQueue = [];
-        var cmptypeComponents = {};   /* cmptype → component */
+        var cmptypeComponents = {};
         var coreNeeded = false;
 
         function addCss(url) {
@@ -607,7 +567,6 @@
             }));
         }
 
-        /* 1. Ассеты из ComponentRegistry (D3 / M2 / HTML). */
         if (global.ComponentRegistry) {
             var list = global.ComponentRegistry.all();
             for (var i = 0; i < list.length; i++) {
@@ -619,7 +578,6 @@
             }
         }
 
-        /* 2. User-компоненты, реально использованные на сцене. */
         if (global.ComponentStorage) {
             var userEls = doc.querySelectorAll('[data-wb-user-comp]');
             for (var u = 0; u < userEls.length; u++) {
@@ -644,7 +602,6 @@
             }
         }
 
-        /* 3. Root: component — libs и JS из активной ComponentTab. */
         var userJsCode = '';
         if (global.App && global.App._componentMode &&
             global.componentTab && global.componentTab.getFormData) {
@@ -670,9 +627,6 @@
             } catch (e) { /* ignore */ }
         }
 
-        /* 4. После загрузки внешних libs — инжектим служебные скрипты
-              (core.js, per-cmptype JS/CSS) и пользовательский JS.
-              Порядок: core.js → <cmptype>.js → user JS. */
         Promise.all(pendingJs).then(function () {
             if (gen !== self._assetGen) return;
             var docNow = self.getDoc();
@@ -682,12 +636,10 @@
 
             var Comp = global.ComponentStorage;
 
-            /* 4a. CORE_SOURCE — один раз, если на сцене есть user-comps. */
             if (coreNeeded && Comp && Comp.CORE_SOURCE) {
                 self._injectInlineScript(headNow, docNow, Comp.CORE_SOURCE);
             }
 
-            /* 4b. Пользовательский CSS каждого cmptype — inline <style>. */
             for (var ctCss in cmptypeComponents) {
                 if (!cmptypeComponents.hasOwnProperty(ctCss)) continue;
                 var cCss = cmptypeComponents[ctCss];
@@ -701,10 +653,6 @@
                 headNow.appendChild(st);
             }
 
-            /* 4c. Per-cmptype JS — inline, с урезанным деф-ом:
-                   jsLibs/cssLibs уже загружены выше, повторно их
-                   подгружать не нужно. Иначе WbComponent.applyLibs()
-                   начнёт грузить jQuery второй раз. */
             for (var ctJs in cmptypeComponents) {
                 if (!cmptypeComponents.hasOwnProperty(ctJs)) continue;
                 var cJs = cmptypeComponents[ctJs];
@@ -730,21 +678,16 @@
                 }
             }
 
-            /* 4d. Пользовательский JS palette-компонентов. */
             for (var qi = 0; qi < userJsQueue.length; qi++) {
                 self._injectInlineScript(headNow, docNow, userJsQueue[qi]);
             }
 
-            /* 4e. JS активной ComponentTab (Root: component). */
             if (userJsCode) {
                 self._injectInlineScript(headNow, docNow, userJsCode);
             }
         });
     };
 
-    /* Перезагружает сцену из текущего DOM — чтобы заново выполнились
-       libs и пользовательский JS компонента. Применяется при правках
-       в ComponentTab (Root: component). */
     Canvas.prototype._reloadComponentCanvas = function () {
         try {
             var html = this.cleanHtml();
@@ -807,11 +750,6 @@
             self._injectIdeStyle();
         });
 
-        /* Перезагрузка сцены при изменении данных компонента
-           в активной ComponentTab (Root: component):
-             • js-changed       — пользователь дописал/изменил JS;
-             • libs-changed     — пользователь добавил/удалил lib;
-             • preview-changed  — пользователь правит PreViewIDE(html). */
         bus.on('component:js-changed', function () {
             if (global.App && global.App._componentMode) {
                 self._reloadComponentCanvas();
@@ -1158,10 +1096,6 @@
         prepared = expandSelfClosingCmpTags(prepared);
         prepared = expandSelfClosingComponentTags(prepared);
 
-        /* Разрешаем lib/wb-component/* в blob-URL ДО doc.write().
-           Иначе браузер попытается загрузить их по HTTP из корня IDE
-           (404), и, поскольку смена src уже после старта загрузки не
-           перезапускает её, скрипты не будут исполнены. */
         prepared = this._preResolveLibPaths(prepared);
 
         var isFullDoc = /<!DOCTYPE/i.test(prepared)
@@ -1291,8 +1225,6 @@
             bus.emit('canvas:changed');
         }, 0);
 
-        /* Автоподгонка user-компонентов — применяем размеры по
-           фактическому содержимому. См. _fitAllUserComponents ниже. */
         this._fitAllUserComponents();
     };
 
@@ -1317,16 +1249,18 @@
        _fitAllUserComponents
 
        Прогоняет автоподгонку по всем user-компонентам сцены:
-         • ставит inline overflow:hidden на контейнер (см. _injectIdeStyle
-           — там продублировано глобально, здесь страхуемся на случай
-           приоритетов пользовательских стилей);
+         • восстанавливает признак видимости (data-wb-user-comp-hidden)
+           из palette-описания компонента;
+         • ставит inline overflow:hidden на контейнер;
          • отложенно вызывает _fitUserComponentToContent (определён в
-           canvas-insert.js) — он замеряет extents содержимого, ставит
-           размеры el и сдвигает обёртку так, чтобы содержимое
-           прижалось к (0,0) контейнера.
+           canvas-insert.js) с preserveSize=true — размер контейнера
+           берётся из HTML, а обёртка подгоняется через transform.
 
-       Вызывается из loadHtml — чтобы уже сохранённые в проекте
-       компоненты при загрузке тоже пришли к правильному виду. */
+       Признак видимости восстанавливается здесь, потому что атрибут
+       data-wb-user-comp-hidden удаляется при сериализации cleanHtml
+       (см. canvas-format.js — сервисные маркеры срезаются). Значит,
+       после loadHtml его нужно выставить заново из живого описания
+       palette-компонента (ComponentStorage). */
     Canvas.prototype._fitAllUserComponents = function () {
         var doc = this.getDoc();
         if (!doc) return;
@@ -1336,9 +1270,24 @@
         var self = this;
         for (var i = 0; i < els.length; i++) {
             (function (el) {
+                /* Восстанавливаем признак видимости. */
+                if (global.ComponentStorage) {
+                    var cid = el.getAttribute('data-wb-user-comp');
+                    var comp = cid ? global.ComponentStorage.getComponent(cid) : null;
+                    if (!comp) {
+                        var ct = el.getAttribute('cmptype');
+                        if (ct) comp = global.ComponentStorage.findByCmptype(ct);
+                    }
+                    if (comp && comp.visible === false) {
+                        el.setAttribute('data-wb-user-comp-hidden', '1');
+                    } else {
+                        el.removeAttribute('data-wb-user-comp-hidden');
+                    }
+                }
+
                 el.style.overflow = 'hidden';
                 setTimeout(function () {
-                    self._fitUserComponentToContent(el, 1);
+                    self._fitUserComponentToContent(el, 1, true);
                 }, 120);
             })(els[i]);
         }
