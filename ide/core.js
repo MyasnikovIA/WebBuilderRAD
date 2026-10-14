@@ -225,6 +225,27 @@
     /* ---------- History ---------- */
     var History = (function () {
         var MAX = 100, stack = [], idx = -1, suspended = false, canvas = null;
+
+        /* ------------------------------------------------------------------
+           Внутренний хелпер: безопасно получить текущее body iframe-сцены.
+
+           Проблема: Canvas.loadHtml()/reset() эмитят 'canvas:changed' сразу
+           после doc.open()/write()/close(). Если HTML содержит блокирующие
+           <script src="…"> в <head> (например, lib/wb-component/*.js из
+           файла проекта), парсер приостанавливается, и document.body может
+           быть ещё null в момент прихода события. Обращение к
+           body.innerHTML тогда бросает «Cannot read properties of null».
+
+           Хелпер возвращает body либо null — вызывающий код должен просто
+           пропустить операцию, если body ещё не готов. При следующем
+           'canvas:changed' (или 'canvas:refreshed' из setTimeout) снапшот
+           попадёт в стек нормально. */
+        function _getCanvasBody() {
+            if (!canvas || typeof canvas.getBody !== 'function') return null;
+            try { return canvas.getBody(); }
+            catch (e) { return null; }
+        }
+
         return {
             attach: function (c) {
                 canvas = c;
@@ -233,8 +254,10 @@
             },
             reset: function () { stack = []; idx = -1; History.push(); },
             push: function () {
-                if (suspended || !canvas) return;
-                var html = canvas.getBody().innerHTML;
+                if (suspended) return;
+                var body = _getCanvasBody();
+                if (!body) return;
+                var html = body.innerHTML;
                 if (idx >= 0 && stack[idx] === html) return;
                 stack = stack.slice(0, idx + 1);
                 stack.push(html);
@@ -246,8 +269,10 @@
             redo: function () { if (idx >= stack.length - 1) return; idx++; History._apply(stack[idx]); },
             state: function () { return { canUndo: idx > 0, canRedo: idx < stack.length - 1 }; },
             _apply: function (html) {
+                var body = _getCanvasBody();
+                if (!body) return;
                 suspended = true;
-                canvas.getBody().innerHTML = html;
+                body.innerHTML = html;
                 suspended = false;
                 bus.emit('canvas:refreshed');
                 bus.emit('canvas:changed');

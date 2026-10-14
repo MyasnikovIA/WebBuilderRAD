@@ -260,6 +260,56 @@
         }
     };
 
+    /* ------------------------------------------------------------------
+       _preResolveLibPaths
+
+       Заменяет пути `lib/wb-component/*` в src/href тегов <script> /
+       <link> на blob-URL ДО того, как HTML будет записан в iframe
+       через document.write().
+
+       Зачем: по HTML-спецификации, если у <script> уже началась
+       загрузка, смена src НЕ перезапускает её. Если оставить
+       src="lib/wb-component/core.js", браузер начнёт грузить его
+       по HTTP из корня IDE, получит 404 и не перезапустит загрузку
+       по blob-URL, который подставляет ProjectResolver.
+
+       Одновременно перед src/href вставляется атрибут
+       data-wb-orig-<attr>="…", чтобы последующая сериализация
+       (cleanHtml) и ProjectResolver могли восстановить исходный путь. */
+    Canvas.prototype._preResolveLibPaths = function (html) {
+        if (!html) return html;
+        if (!global.ProjectResolver ||
+            !global.ProjectResolver.resolve ||
+            !global.ProjectResolver.isProjectPath) {
+            return html;
+        }
+        return String(html).replace(
+            /<(script|link)\b([^>]*?)\b(src|href)\s*=\s*(["'])([^"']+)\4([^>]*)>/gi,
+            function (m, tag, before, attr, quote, url, after) {
+                if (url.indexOf('lib/wb-component/') !== 0) return m;
+                try {
+                    if (!global.ProjectResolver.isProjectPath(url)) return m;
+                } catch (e) { return m; }
+
+                var resolved;
+                try { resolved = global.ProjectResolver.resolve(url); }
+                catch (e) { return m; }
+                if (resolved === url) return m;
+
+                if (/\bdata-wb-orig-/i.test(before) ||
+                    /\bdata-wb-orig-/i.test(after)) {
+                    return '<' + tag + before +
+                        attr + '=' + quote + resolved + quote +
+                        after + '>';
+                }
+                return '<' + tag + before +
+                    'data-wb-orig-' + attr + '=' + quote + url + quote +
+                    ' ' + attr + '=' + quote + resolved + quote +
+                    after + '>';
+            }
+        );
+    };
+
     Canvas.prototype._injectIdeStyle = function () {
         var doc = this.getDoc();
         if (!doc) return;
@@ -296,23 +346,13 @@
             'wb-cdata { display: none !important; }' +
             'wb-images, wb-image { display: none !important; }' +
 
-            /* Общая стилизация плейсхолдеров D3/M2 — квадратик с пунктиром. */
             '[data-wb-preview] { display: inline-block; outline: 1px dotted #b0bec5;' +
             '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
             '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
 
-            /* ОБЁРТКА USER-КОМПОНЕНТА.
-               `[data-wb-preview]` выше делает обёртку inline-block’ом с
-               min-width/min-height и пунктиром. Для user-компонента это
-               неверно: обёртка должна занимать всю площадь самого
-               user-компонента, не иметь ни собственной обводки, ни
-               отступов, и не «схлопываться» по размеру контента.
-               Иначе содержимое (часто с position:absolute) позиционируется
-               относительно user-компонента, а рамка предпросмотра остаётся
-               крошечным квадратиком в углу. */
             '.wb-user-comp-preview[data-wb-preview] {' +
             '  display: block;' +
-            '  position: relative;' +              /* свой контекст для absolute-детей */
+            '  position: relative;' +
             '  width: 100%;' +
             '  height: 100%;' +
             '  box-sizing: border-box;' +
@@ -359,25 +399,108 @@
         if (head) head.appendChild(style);
     };
 
+    /* ------------------------------------------------------------------
+       _collectKnownLibUrls
+
+       Возвращает { js: {url:1}, css: {url:1} } — все внешние URL
+       библиотек, которые считаются «сервисными»:
+         • jsLibs / cssLibs всех palette-компонентов;
+         • jsLibs / cssLibs активной ComponentTab (Root: component).
+
+       Используется в _injectComponentAssets, чтобы пометить «голые»
+       lib-теги, уже находящиеся в <head> iframe (например, из файла
+       проекта), как сервисные. */
+    Canvas.prototype._collectKnownLibUrls = function () {
+        var out = { js: {}, css: {} };
+        if (!global.ComponentStorage) return out;
+
+        var comps = global.ComponentStorage.listComponents();
+        for (var i = 0; i < comps.length; i++) {
+            var libs = global.ComponentStorage.getComponentLibs(comps[i]);
+            for (var j = 0; j < libs.jsLibs.length; j++) {
+                var ju = libs.jsLibs[j].value;
+                if (ju) out.js[ju] = 1;
+            }
+            for (var k = 0; k < libs.cssLibs.length; k++) {
+                var cu = libs.cssLibs[k].value;
+                if (cu) out.css[cu] = 1;
+            }
+        }
+
+        if (global.App && global.App._componentMode &&
+            global.componentTab && global.componentTab.getFormData) {
+            try {
+                var cd = global.componentTab.getFormData();
+                var cLibs = cd.cssLibs || [];
+                for (var ci = 0; ci < cLibs.length; ci++) {
+                    var ce = cLibs[ci];
+                    var cu2 = ce && (typeof ce === 'string' ? ce : ce.value);
+                    if (cu2) out.css[cu2] = 1;
+                }
+                var jLibs = cd.jsLibs || [];
+                for (var ji = 0; ji < jLibs.length; ji++) {
+                    var je = jLibs[ji];
+                    var ju2 = je && (typeof je === 'string' ? je : je.value);
+                    if (ju2) out.js[ju2] = 1;
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        return out;
+    };
+
+    /* ------------------------------------------------------------------
+       _injectInlineScript
+
+       Вставляет inline-<script> в <head> iframe. Тег помечается
+       data-wb-comp-asset="1" и data-wb-comp-owned="1", чтобы:
+         • он не сериализовался cleanHtml() и не появлялся в Structure/Code;
+         • при следующем вызове _injectComponentAssets удалялся только он
+           (а не adopted-теги из файла проекта). */
+    Canvas.prototype._injectInlineScript = function (head, doc, code) {
+        if (!head || !doc || !code) return;
+        var s = doc.createElement('script');
+        s.setAttribute('data-wb-comp-asset', '1');
+        s.setAttribute('data-wb-comp-owned', '1');
+        s.textContent = code;
+        head.appendChild(s);
+    };
+
     /* ============================================================
-   _injectComponentAssets
+       _injectComponentAssets
 
-   Инжектит в <head> iframe:
-     1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
-     2. CSS / JS всех user-компонентов, реально использованных
-        на сцене ([data-wb-user-comp] с их cmptype), а также
-        их пользовательский JS (uc.js) — он выполняется после
-        загрузки всех libs.
-     3. Если IDE в режиме Root: component — дополнительно
-        jsLibs / cssLibs и пользовательский JS активной
-        ComponentTab.
+       Инжектит в <head> iframe:
 
-   Теги libs помечаются data-wb-comp-asset="1" — они не попадают
-   в сериализацию cleanHtml и не видны на вкладке Code.
+         1. CSS / JS из ComponentRegistry (D3 / M2 / HTML).
 
-   Дедупликация: URL, уже присутствующие в <head> (например, если
-   HTML-файл проекта уже содержит теги libs — после сохранения),
-   повторно не добавляются. */
+         2. Для каждого user-компонента, реально присутствующего
+            на сцене ([data-wb-user-comp]):
+
+              • внешние jsLibs / cssLibs (jQuery, jQuery UI) — как
+                <script src> / <link href>;
+
+              • после их загрузки:
+
+                  – CORE_SOURCE            — inline <script>;
+                  – пользовательский CSS   — inline <style>;
+                  – <cmptype>.js           — inline <script>, но
+                                             с УРЕЗАННЫМ дефом
+                                             (jsLibs/cssLibs пустые,
+                                             т.к. уже подгружены выше —
+                                             иначе WbComponent.applyLibs
+                                             начнёт грузить их второй раз);
+                  – пользовательский JS    — inline <script>.
+
+         3. Root: component — дополнительно из активной ComponentTab
+            (jsLibs / cssLibs / js).
+
+       Всё, что мы создаём, помечается двумя маркерами:
+         • data-wb-comp-asset="1"  — скрыто из Code и Structure;
+         • data-wb-comp-owned="1"  — «наш» тег, удаляем только его.
+
+       Теги, «принятые» из файла проекта (jQuery / jQuery UI / …),
+       остаются в head нетронутыми — благодаря этому jQuery и jQuery UI
+       гарантированно сохраняют порядок загрузки и не перезагружаются. */
     Canvas.prototype._injectComponentAssets = function () {
         var self = this;
         var doc = this.getDoc();
@@ -387,32 +510,62 @@
 
         var gen = ++this._assetGen;
 
-        /* Убираем ранее вставленные нами теги. */
-        var old = doc.querySelectorAll('[data-wb-comp-asset="1"]');
+        /* 1. Удаляем ТОЛЬКО наши теги (owned). Adopted — не трогаем. */
+        var old = doc.querySelectorAll('[data-wb-comp-asset="1"][data-wb-comp-owned="1"]');
         for (var r = old.length - 1; r >= 0; r--) old[r].parentNode.removeChild(old[r]);
 
+        /* 2. Помечаем «голые» lib-теги (из файла проекта). */
+        var known = this._collectKnownLibUrls();
+
+        var headLinks = head.querySelectorAll('link[href]');
+        for (var li = 0; li < headLinks.length; li++) {
+            var lEl = headLinks[li];
+            if (lEl.getAttribute('data-wb-comp-asset') === '1') continue;
+            var hv    = lEl.getAttribute('href') || '';
+            var hOrig = lEl.getAttribute('data-wb-orig-href') || '';
+            if (known.css[hv] || known.css[hOrig] ||
+                hv.indexOf('lib/wb-component/') === 0 ||
+                hOrig.indexOf('lib/wb-component/') === 0) {
+                lEl.setAttribute('data-wb-comp-asset', '1');
+            }
+        }
+        var headScripts = head.querySelectorAll('script[src]');
+        for (var si = 0; si < headScripts.length; si++) {
+            var sEl = headScripts[si];
+            if (sEl.getAttribute('data-wb-comp-asset') === '1') continue;
+            var sv    = sEl.getAttribute('src') || '';
+            var sOrig = sEl.getAttribute('data-wb-orig-src') || '';
+            if (known.js[sv] || known.js[sOrig] ||
+                sv.indexOf('lib/wb-component/') === 0 ||
+                sOrig.indexOf('lib/wb-component/') === 0) {
+                sEl.setAttribute('data-wb-comp-asset', '1');
+            }
+        }
+
+        /* 3. Собираем URL, уже присутствующие в head (и blob, и оригинал). */
         var seenCss = {};
         var seenJs  = {};
-
-        /* ← НОВОЕ: если head уже содержит <link>/<script> на libs
-           (например, файл проекта сохранён с внедрёнными тегами),
-           не плодим дубликаты. */
-        var existingHead = doc.head;
-        if (existingHead) {
-            var existLinks = existingHead.querySelectorAll('link[href]');
-            for (var eL = 0; eL < existLinks.length; eL++) {
-                var hv = existLinks[eL].getAttribute('href');
-                if (hv) seenCss[hv] = true;
-            }
-            var existScripts = existingHead.querySelectorAll('script[src]');
-            for (var eS = 0; eS < existScripts.length; eS++) {
-                var sv = existScripts[eS].getAttribute('src');
-                if (sv) seenJs[sv] = true;
-            }
+        var linkNow = head.querySelectorAll('link[href]');
+        for (var L = 0; L < linkNow.length; L++) {
+            var lL = linkNow[L];
+            var hh  = lL.getAttribute('href') || '';
+            var hho = lL.getAttribute('data-wb-orig-href') || '';
+            if (hh)  seenCss[hh]  = true;
+            if (hho) seenCss[hho] = true;
+        }
+        var scriptNow = head.querySelectorAll('script[src]');
+        for (var S = 0; S < scriptNow.length; S++) {
+            var sS = scriptNow[S];
+            var ss  = sS.getAttribute('src') || '';
+            var sso = sS.getAttribute('data-wb-orig-src') || '';
+            if (ss)  seenJs[ss]  = true;
+            if (sso) seenJs[sso] = true;
         }
 
         var pendingJs = [];
         var userJsQueue = [];
+        var cmptypeComponents = {};   /* cmptype → component */
+        var coreNeeded = false;
 
         function addCss(url) {
             if (!url) return;
@@ -423,6 +576,7 @@
             lk.rel = 'stylesheet';
             lk.href = url;
             lk.setAttribute('data-wb-comp-asset', '1');
+            lk.setAttribute('data-wb-comp-owned', '1');
             head.appendChild(lk);
         }
         function addJs(url) {
@@ -435,6 +589,7 @@
                 s.src = url;
                 s.async = false;
                 s.setAttribute('data-wb-comp-asset', '1');
+                s.setAttribute('data-wb-comp-owned', '1');
                 s.onload  = resolve;
                 s.onerror = resolve;
                 head.appendChild(s);
@@ -455,28 +610,30 @@
 
         /* 2. User-компоненты, реально использованные на сцене. */
         if (global.ComponentStorage) {
-            var userComps = global.ComponentStorage.listComponents();
-            var usedCmptypes = {};
             var userEls = doc.querySelectorAll('[data-wb-user-comp]');
             for (var u = 0; u < userEls.length; u++) {
                 var ct = userEls[u].getAttribute('cmptype');
-                if (ct) usedCmptypes[ct] = true;
+                if (!ct || cmptypeComponents[ct]) continue;
+                var found = global.ComponentStorage.findByCmptype(ct);
+                if (found) cmptypeComponents[ct] = found;
             }
-            for (var k = 0; k < userComps.length; k++) {
-                var uc = userComps[k];
-                if (!uc.cmptype || !usedCmptypes[uc.cmptype]) continue;
-                var libs = global.ComponentStorage.getComponentLibs(uc);
+
+            for (var ctName in cmptypeComponents) {
+                if (!cmptypeComponents.hasOwnProperty(ctName)) continue;
+                var cData = cmptypeComponents[ctName];
+                var libs = global.ComponentStorage.getComponentLibs(cData);
                 for (var cc = 0; cc < libs.cssLibs.length; cc++) {
                     addCss(libs.cssLibs[cc].value);
                 }
                 for (var jj = 0; jj < libs.jsLibs.length; jj++) {
                     addJs(libs.jsLibs[jj].value);
                 }
-                if (uc.js) userJsQueue.push(uc.js);
+                if (cData.js) userJsQueue.push(cData.js);
+                coreNeeded = true;
             }
         }
 
-        /* 3. Root: component — берём libs и JS из активной ComponentTab. */
+        /* 3. Root: component — libs и JS из активной ComponentTab. */
         var userJsCode = '';
         if (global.App && global.App._componentMode &&
             global.componentTab && global.componentTab.getFormData) {
@@ -502,6 +659,9 @@
             } catch (e) { /* ignore */ }
         }
 
+        /* 4. После загрузки внешних libs — инжектим служебные скрипты
+              (core.js, per-cmptype JS/CSS) и пользовательский JS.
+              Порядок: core.js → <cmptype>.js → user JS. */
         Promise.all(pendingJs).then(function () {
             if (gen !== self._assetGen) return;
             var docNow = self.getDoc();
@@ -509,28 +669,64 @@
             var headNow = self.getOrCreateHead();
             if (!headNow) return;
 
-            /* JS всех palette-компонентов на сцене. */
-            for (var qi = 0; qi < userJsQueue.length; qi++) {
+            var Comp = global.ComponentStorage;
+
+            /* 4a. CORE_SOURCE — один раз, если на сцене есть user-comps. */
+            if (coreNeeded && Comp && Comp.CORE_SOURCE) {
+                self._injectInlineScript(headNow, docNow, Comp.CORE_SOURCE);
+            }
+
+            /* 4b. Пользовательский CSS каждого cmptype — inline <style>. */
+            for (var ctCss in cmptypeComponents) {
+                if (!cmptypeComponents.hasOwnProperty(ctCss)) continue;
+                var cCss = cmptypeComponents[ctCss];
+                if (!cCss.css) continue;
+                var st = docNow.createElement('style');
+                st.setAttribute('data-wb-comp-asset', '1');
+                st.setAttribute('data-wb-comp-owned', '1');
+                st.textContent =
+                    '/* WbComponent: ' + (cCss.name || ctCss) +
+                    ' (' + ctCss + ') — user css */\n' + cCss.css;
+                headNow.appendChild(st);
+            }
+
+            /* 4c. Per-cmptype JS — inline, с урезанным деф-ом:
+                   jsLibs/cssLibs уже загружены выше, повторно их
+                   подгружать не нужно. Иначе WbComponent.applyLibs()
+                   начнёт грузить jQuery второй раз. */
+            for (var ctJs in cmptypeComponents) {
+                if (!cmptypeComponents.hasOwnProperty(ctJs)) continue;
+                var cJs = cmptypeComponents[ctJs];
+                if (!cJs || !Comp || typeof Comp._buildCmptypeJs !== 'function') continue;
+
+                var stripped = {
+                    id: cJs.id,
+                    cmptype: cJs.cmptype,
+                    name: cJs.name,
+                    html: cJs.previewIdeHtml || cJs.html || '',
+                    jsLibs: [],
+                    cssLibs: [],
+                    customProperties: cJs.customProperties || [],
+                    customEvents: cJs.customEvents || [],
+                    js: cJs.js || '',
+                    css: cJs.css || ''
+                };
                 try {
-                    var sq = docNow.createElement('script');
-                    sq.setAttribute('data-wb-comp-asset', '1');
-                    sq.textContent = userJsQueue[qi];
-                    headNow.appendChild(sq);
+                    var jsCode = Comp._buildCmptypeJs(stripped);
+                    if (jsCode) self._injectInlineScript(headNow, docNow, jsCode);
                 } catch (e) {
-                    console.error('[Canvas] execute user component JS', e);
+                    console.error('[Canvas] build cmptype JS', ctJs, e);
                 }
             }
 
-            /* JS активной ComponentTab (Root: component). */
+            /* 4d. Пользовательский JS palette-компонентов. */
+            for (var qi = 0; qi < userJsQueue.length; qi++) {
+                self._injectInlineScript(headNow, docNow, userJsQueue[qi]);
+            }
+
+            /* 4e. JS активной ComponentTab (Root: component). */
             if (userJsCode) {
-                try {
-                    var s = docNow.createElement('script');
-                    s.setAttribute('data-wb-comp-asset', '1');
-                    s.textContent = userJsCode;
-                    headNow.appendChild(s);
-                } catch (e) {
-                    console.error('[Canvas] execute user component JS', e);
-                }
+                self._injectInlineScript(headNow, docNow, userJsCode);
             }
         });
     };
@@ -821,9 +1017,6 @@
                 if (!existingRoot.getAttribute('data-cmptype')) {
                     existingRoot.setAttribute('data-cmptype', 'd3.rootdiv');
                 }
-                if (!existingRoot.getAttribute('class')) {
-                    existingRoot.setAttribute('class', 'formBackground');
-                }
             }
             this._rootType = type;
             this._renderPreview(existingRoot);
@@ -869,7 +1062,6 @@
             newRoot = doc.createElement('div');
             newRoot.setAttribute('data-cmptype', 'd3.rootdiv');
             newRoot.setAttribute('data-wb-root', '1');
-            newRoot.setAttribute('class', 'formBackground');
         }
 
         if (newRoot) {
@@ -951,6 +1143,12 @@
         prepared = expandSelfClosingHtmlTags(prepared);
         prepared = expandSelfClosingCmpTags(prepared);
         prepared = expandSelfClosingComponentTags(prepared);
+
+        /* Разрешаем lib/wb-component/* в blob-URL ДО doc.write().
+           Иначе браузер попытается загрузить их по HTTP из корня IDE
+           (404), и, поскольку смена src уже после старта загрузки не
+           перезапускает её, скрипты не будут исполнены. */
+        prepared = this._preResolveLibPaths(prepared);
 
         var isFullDoc = /<!DOCTYPE/i.test(prepared)
             || /<html[\s>]/i.test(prepared)
