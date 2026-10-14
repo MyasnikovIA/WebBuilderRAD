@@ -64,6 +64,171 @@
         return { ok: false, uc: uc };
     };
 
+    /* ------------------------------------------------------------------
+       _fitUserComponentToContent
+
+       Замеряет extents содержимого user-компонента (previewIdeHtml)
+       внутри .wb-user-comp-preview[data-wb-preview="1"] и:
+
+         1. Кэширует на el:
+              el.__wbNaturalW/H   — ширина/высота содержимого;
+              el.__wbNaturalLeft  — левый отступ содержимого от (0,0)
+                                    обёртки;
+              el.__wbNaturalTop   — верхний отступ.
+
+         2. Если !preserveSize — выставляет el.style.width/height
+            в размеры natural. Это режим «вставка из палитры»:
+            компонент сразу получает правильный размер.
+
+            Если preserveSize — НЕ трогает размеры: используется при
+            загрузке HTML, чтобы не затирать пользовательский ресайз.
+
+         3. Вызывает _applyUserComponentTransform(el) — тот ставит
+            preview в natural-размер и применяет transform: scale()
+            в соответствии с фактическим размером контейнера.
+
+       Дополнительно (не входит в фиттинг): отложенные повторы до 8 раз
+       с шагом 60 мс — ждём jQuery UI .button() и ProjectResolver.
+       ------------------------------------------------------------------ */
+    Canvas.prototype._fitUserComponentToContent = function (el, attempt, preserveSize) {
+        if (!el || el.nodeType !== 1) return;
+        if (!el.getAttribute) return;
+        if (!el.getAttribute('data-wb-user-comp')) return;
+
+        attempt = attempt || 1;
+
+        var wrap = el.querySelector('.wb-user-comp-preview[data-wb-preview="1"]');
+        if (!wrap) {
+            if (attempt < 8) {
+                var s1 = this;
+                setTimeout(function () {
+                    s1._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
+            }
+            return;
+        }
+
+        /* Сброс предыдущего transform, чтобы замер был от «чистой» обёртки. */
+        wrap.style.transform = '';
+        wrap.style.transformOrigin = '';
+        wrap.style.marginLeft = '';
+        wrap.style.marginTop  = '';
+        wrap.style.width  = '';
+        wrap.style.height = '';
+
+        void wrap.offsetWidth;   /* форсим layout */
+
+        var wrapRect = wrap.getBoundingClientRect();
+        if (!wrapRect || (wrapRect.width === 0 && wrapRect.height === 0)) {
+            if (attempt < 8) {
+                var s2 = this;
+                setTimeout(function () {
+                    s2._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
+            }
+            return;
+        }
+
+        var minLeft = Infinity, minTop = Infinity;
+        var maxRight = 0, maxBottom = 0;
+        var kids = wrap.querySelectorAll('*');
+        for (var i = 0; i < kids.length; i++) {
+            var kr = kids[i].getBoundingClientRect();
+            if (kr.width === 0 && kr.height === 0) continue;
+            var left   = kr.left   - wrapRect.left;
+            var top    = kr.top    - wrapRect.top;
+            var right  = kr.right  - wrapRect.left;
+            var bottom = kr.bottom - wrapRect.top;
+            if (left   < minLeft)   minLeft   = left;
+            if (top    < minTop)    minTop    = top;
+            if (right  > maxRight)  maxRight  = right;
+            if (bottom > maxBottom) maxBottom = bottom;
+        }
+
+        if (!isFinite(minLeft)) minLeft = 0;
+        if (!isFinite(minTop))  minTop  = 0;
+
+        if (maxRight < 8 || maxBottom < 8) {
+            if (attempt < 8) {
+                var s3 = this;
+                setTimeout(function () {
+                    s3._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
+            }
+            return;
+        }
+
+        var newW = Math.max(50, Math.ceil(maxRight  - minLeft));
+        var newH = Math.max(30, Math.ceil(maxBottom - minTop));
+
+        /* Кэш natural-размеров. */
+        el.__wbNaturalW    = newW;
+        el.__wbNaturalH    = newH;
+        el.__wbNaturalLeft = minLeft;
+        el.__wbNaturalTop  = minTop;
+
+        if (!preserveSize) {
+            el.style.width  = newW + 'px';
+            el.style.height = newH + 'px';
+        }
+        el.removeAttribute('width');
+        el.removeAttribute('height');
+
+        this._applyUserComponentTransform(el);
+
+        if (typeof this._positionResizeHandles === 'function') {
+            this._positionResizeHandles(el);
+        }
+    };
+
+    /* ------------------------------------------------------------------
+       _applyUserComponentTransform
+
+       Ставит preview user-компонента в natural-размер и применяет
+       transform: scale(sx, sy) translate(-minLeft, -minTop), где
+       sx = containerW / naturalW, sy = containerH / naturalH.
+
+       Благодаря transform-origin: 0 0 и порядку операций
+       scale × translate:
+
+         точка (minLeft, minTop)  → (0, 0)             — верхний левый угол содержимого
+         точка (naturalW, naturalH) → (containerW, containerH) — нижний правый
+
+       То есть содержимое визуально заполняет контейнер и
+       масштабируется вместе с изменением его размера.
+       ------------------------------------------------------------------ */
+    Canvas.prototype._applyUserComponentTransform = function (el) {
+        if (!el || !el.getAttribute) return;
+        if (!el.getAttribute('data-wb-user-comp')) return;
+
+        var natW = el.__wbNaturalW;
+        var natH = el.__wbNaturalH;
+        var minL = el.__wbNaturalLeft || 0;
+        var minT = el.__wbNaturalTop  || 0;
+        if (!natW || !natH) return;
+
+        var wrap = el.querySelector('.wb-user-comp-preview[data-wb-preview="1"]');
+        if (!wrap) return;
+
+        var w = parseFloat(el.style.width);
+        var h = parseFloat(el.style.height);
+        if (!w) w = el.offsetWidth  || natW;
+        if (!h) h = el.offsetHeight || natH;
+
+        var sx = w / natW;
+        var sy = h / natH;
+
+        wrap.style.width  = natW + 'px';
+        wrap.style.height = natH + 'px';
+        wrap.style.boxSizing = 'border-box';
+        wrap.style.marginLeft = '';
+        wrap.style.marginTop  = '';
+        wrap.style.transformOrigin = '0 0';
+        wrap.style.transform =
+            'scale(' + sx + ',' + sy + ') ' +
+            'translate(' + (-minL) + 'px,' + (-minT) + 'px)';
+    };
+
     Canvas.prototype.insertComponent = function (def, target, zone) {
         var doc  = this.getDoc();
         var html = this.getHtml();
@@ -126,14 +291,25 @@
         el.classList.add(SEL);
         this._addResizeHandles(el);
 
-        /* ← НОВОЕ: если у вставленного компонента есть внешние libs или
-           пользовательский JS (это user-компонент из палитры) — нужно
-           немедленно переинжектить ассеты в iframe. Иначе jQuery и UI
-           не загрузятся до первой перезагрузки сцены, и пользователь
-           увидит компонент «в голом виде». */
+        /* user-компонент: сразу overflow:hidden на контейнер, чтобы
+           transform-сдвинутая обёртка не выходила за рамку. */
+        if (def && def.userComponent && el.getAttribute('data-wb-user-comp')) {
+            el.style.overflow = 'hidden';
+        }
+
+        /* Инжектим внешние libs и служебные скрипты. */
         if (def && (def.jsLibs || def.cssLibs ||
             (def.userComponent && def.userComponent.js))) {
             this._injectComponentAssets();
+        }
+
+        /* Автоподгонка размера под содержимое — preserveSize=false,
+           значит el.style.width/height перезапишутся в natural. */
+        if (def && def.userComponent && el.getAttribute('data-wb-user-comp')) {
+            var self = this;
+            setTimeout(function () {
+                self._fitUserComponentToContent(el, 1, false);
+            }, 100);
         }
 
         bus.emit('canvas:changed');

@@ -350,6 +350,12 @@
             '  outline-offset: 2px; padding: 1px 2px; margin: 1px; min-width: 12px; min-height: 12px; }' +
             '[data-wb-preview]:empty::before { content: "?"; color: #b0bec5; font-size: 10px; }' +
 
+            /* Обёртка user-компонента.
+               position: relative — контекст для position:absolute у детей
+               (кнопки jQuery UI и пр.). overflow у неё самой — visible:
+               сдвиг через margin-left/top (см. _fitUserComponentToContent)
+               может увести часть содержимого левее/выше нуля — обрезка
+               делается на самом el через inline overflow:hidden. */
             '.wb-user-comp-preview[data-wb-preview] {' +
             '  display: block;' +
             '  position: relative;' +
@@ -361,6 +367,11 @@
             '  min-width: 0;' +
             '  min-height: 0;' +
             '  outline: none;' +
+            '}' +
+
+            /* Сам контейнер user-компонента обрезает содержимое —
+               иначе сдвинутая обёртка «вылезет» за рамку. */
+            '[data-wb-user-comp] {' +
             '  overflow: hidden;' +
             '}' +
 
@@ -1017,6 +1028,9 @@
                 if (!existingRoot.getAttribute('data-cmptype')) {
                     existingRoot.setAttribute('data-cmptype', 'd3.rootdiv');
                 }
+                if (!existingRoot.getAttribute('class')) {
+                    existingRoot.setAttribute('class', 'formBackground');
+                }
             }
             this._rootType = type;
             this._renderPreview(existingRoot);
@@ -1276,6 +1290,10 @@
             self._cleanClass(self.getBody());
             bus.emit('canvas:changed');
         }, 0);
+
+        /* Автоподгонка user-компонентов — применяем размеры по
+           фактическому содержимому. См. _fitAllUserComponents ниже. */
+        this._fitAllUserComponents();
     };
 
     Canvas.prototype._renderAllPreviews = function (root) {
@@ -1292,6 +1310,37 @@
             if (c.getAttribute && c.getAttribute('data-wb-preview') === '1') continue;
             if (c.getAttribute && c.getAttribute('data-wb-ide') === '1') continue;
             this._renderAllPreviews(c);
+        }
+    };
+
+    /* ------------------------------------------------------------------
+       _fitAllUserComponents
+
+       Прогоняет автоподгонку по всем user-компонентам сцены:
+         • ставит inline overflow:hidden на контейнер (см. _injectIdeStyle
+           — там продублировано глобально, здесь страхуемся на случай
+           приоритетов пользовательских стилей);
+         • отложенно вызывает _fitUserComponentToContent (определён в
+           canvas-insert.js) — он замеряет extents содержимого, ставит
+           размеры el и сдвигает обёртку так, чтобы содержимое
+           прижалось к (0,0) контейнера.
+
+       Вызывается из loadHtml — чтобы уже сохранённые в проекте
+       компоненты при загрузке тоже пришли к правильному виду. */
+    Canvas.prototype._fitAllUserComponents = function () {
+        var doc = this.getDoc();
+        if (!doc) return;
+        if (typeof this._fitUserComponentToContent !== 'function') return;
+
+        var els = doc.querySelectorAll('[data-wb-user-comp]');
+        var self = this;
+        for (var i = 0; i < els.length; i++) {
+            (function (el) {
+                el.style.overflow = 'hidden';
+                setTimeout(function () {
+                    self._fitUserComponentToContent(el, 1);
+                }, 120);
+            })(els[i]);
         }
     };
 

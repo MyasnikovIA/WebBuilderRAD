@@ -946,6 +946,16 @@
                     var el = doc.createElement(tagName);
                     el.setAttribute('data-wb-user-comp', c.id);
                     if (c.cmptype) el.setAttribute('cmptype', c.cmptype);
+
+                    /* Дефолтные размеры. Без них пустой <div> рендерится
+                       как блок с width=auto (на всю ширину body) и
+                       height=0. Рамка ресайза вокруг такого элемента
+                       вырождается в «полоску», а содержимое preview
+                       обрезается. Пользователь может потом тянуть за
+                       углы — _makeAbsolute + _applyBox перезапишут стиль. */
+                    if (!el.style.width)  el.style.width  = '200px';
+                    if (!el.style.height) el.style.height = '100px';
+
                     return el;
                 },
 

@@ -41,6 +41,17 @@
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
+        /* Для user-компонента — не меняем размер preview напрямую.
+           Вместо этого применяем transform: scale() к обёртке, чтобы
+           содержимое визуально масштабировалось вместе с контейнером.
+           См. Canvas._applyUserComponentTransform (canvas-insert.js). */
+        if (el.getAttribute && el.getAttribute('data-wb-user-comp') &&
+            typeof this._applyUserComponentTransform === 'function' &&
+            el.__wbNaturalW && el.__wbNaturalH) {
+            this._applyUserComponentTransform(el);
+            return;
+        }
+
         var preview = null;
         for (var k = 0; k < el.children.length; k++) {
             var ch = el.children[k];
