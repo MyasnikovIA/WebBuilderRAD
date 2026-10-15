@@ -118,7 +118,12 @@
                 });
                 if (parts.length === 0) continue;
                 attrs[name] = parts.join(' ');
-            } else {
+            }
+            /* ← Пустой style в JSON не пишем. */
+            else if (name === 'style' && val.trim() === '') {
+                continue;
+            }
+            else {
                 attrs[name] = val;
             }
         }
@@ -126,6 +131,7 @@
             if (attrs.hasOwnProperty(k)) { node.attrs = attrs; break; }
         }
 
+        /* ... остальная часть функции без изменений ... */
         /* CDATA-контейнеры: сохраняем тело CDATA. */
         if (CDATA_CONTAINERS[tagLower]) {
             var raw = el.textContent || '';

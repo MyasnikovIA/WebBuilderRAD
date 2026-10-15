@@ -9,7 +9,20 @@
      5. canvas-format.js    — сериализация HTML (cleanHtml и т.п.)
 
    Все файлы дополняют один и тот же global.Canvas, определённый в этом
-   (первом) файле. Загружать строго в указанном порядке. */
+   (первом) файле. Загружать строго в указанном порядке.
+
+   ------------------------------------------------------------------
+   Root: component (App._componentMode === true)
+
+   Корневой контейнер — это сам <body>. Никакой обёртки <div
+   data-wb-root="1"> или <div class="formBackground"> не создаётся.
+   Это значит:
+     • на пустом компоненте холст пуст;
+     • Code (cleanHtml) отдаёт только прямых детей body (т.е. то,
+       что пользователь реально добавил);
+     • в Structure виден единственный корневой узел body — через ПКМ
+       по нему можно переключить тип проекта на любой другой.
+   ------------------------------------------------------------------ */
 (function (global) {
     'use strict';
     var bus = global.EventBus;
@@ -818,10 +831,27 @@
 
     Canvas.prototype.getRootType = function () { return this._rootType; };
 
+    /* ------------------------------------------------------------------
+       getRootContainer
+
+       Возвращает корневой контейнер в зависимости от текущего режима:
+         • html     → <html>
+         • cmpForm  → <cmpform …> внутри <body>
+         • m2Form   → <div cmptype="Form"> внутри <body>
+         • div      → <div data-wb-root="1"> внутри <body>
+         • component (App._componentMode) → сам <body>.
+           В режиме компонента обёртка <div data-wb-root="1"> НЕ создаётся:
+           корнем считается body, и вся работа (Structure, insert,
+           selection, cleanHtml) идёт относительно body. */
     Canvas.prototype.getRootContainer = function () {
         if (this._rootType === 'html') return this.getHtml();
+
         var body = this.getBody();
         if (!body) return null;
+
+        /* Root: component — корень это сам body. */
+        if (global.App && global.App._componentMode) return body;
+
         var kids = body.children;
         for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
@@ -838,8 +868,17 @@
         return null;
     };
 
+    /* ------------------------------------------------------------------
+       _ensureRootDivMarkers
+
+       В режиме Root: div (НЕ component) гарантирует наличие <div
+       data-wb-root="1"> в body. Если в body ровно один div, ему
+       проставляются маркеры. В режиме Root: component обёртки нет,
+       поэтому функция сразу возвращает null. */
     Canvas.prototype._ensureRootDivMarkers = function () {
         if (this._rootType !== 'div') return null;
+        if (global.App && global.App._componentMode) return null;
+
         var body = this.getBody();
         if (!body) return null;
 
@@ -898,9 +937,80 @@
         return 'html';
     };
 
+    /* ------------------------------------------------------------------
+       setRootType
+
+       Переключение корневого типа. Особые случаи:
+
+       1. Root: component (type='div' + App._componentMode).
+          Обёртка <div> НЕ создаётся. Корень — сам <body>.
+          Если был прежний корень (cmpForm / m2Form / div[data-wb-root]),
+          его дети переносятся в body, а сам контейнер удаляется.
+
+       2. Root: div (без componentMode).
+          Стандартное поведение: создаётся <div data-wb-root="1">.
+
+       Остальное — как раньше.
+       ------------------------------------------------------------------ */
     Canvas.prototype.setRootType = function (type) {
         if (['html', 'cmpForm', 'm2Form', 'div'].indexOf(type) < 0) return;
 
+        var isComponentMode = !!(global.App && global.App._componentMode);
+
+        /* ============================================================
+           1. Root: component — без обёртки div.
+           ============================================================ */
+        if (isComponentMode && type === 'div') {
+            var bodyC = this.getBody();
+            if (!bodyC) return;
+
+            /* Найти «старый» корневой элемент (если он был). */
+            var oldRootEl = null;
+            var bKidsC = bodyC.children;
+            for (var i = 0; i < bKidsC.length; i++) {
+                var bk = bKidsC[i];
+                var bTag = bk.tagName ? bk.tagName.toLowerCase() : '';
+                var bWb  = bk.getAttribute && bk.getAttribute('data-wb-tag');
+                var bCt  = bk.getAttribute && bk.getAttribute('cmptype');
+                if (this._rootType === 'cmpForm' && (bTag === 'cmpform' || bWb === 'cmpForm')) {
+                    oldRootEl = bk; break;
+                }
+                if (this._rootType === 'm2Form' && bTag === 'div' && bCt === 'Form') {
+                    oldRootEl = bk; break;
+                }
+                if (this._rootType === 'div' && bTag === 'div' &&
+                    bk.getAttribute('data-wb-root') === '1') {
+                    oldRootEl = bk; break;
+                }
+            }
+
+            /* Развернуть старый контейнер в body. */
+            if (oldRootEl && oldRootEl.parentNode === bodyC) {
+                var moved = [];
+                for (var m = 0; m < oldRootEl.children.length; m++) {
+                    moved.push(oldRootEl.children[m]);
+                }
+                for (var n = 0; n < moved.length; n++) {
+                    bodyC.insertBefore(moved[n], oldRootEl);
+                }
+                bodyC.removeChild(oldRootEl);
+            }
+
+            var wasType = this._rootType;
+            this._rootType = type;
+            this._injectComponentAssets();
+
+            bus.emit('canvas:changed');
+            if (wasType !== type) {
+                bus.emit('canvas:rootType:changed', { rootType: type });
+                bus.emit('canvas:selection:reset');
+            }
+            return;
+        }
+
+        /* ============================================================
+           2. Стандартная логика для остальных режимов.
+           ============================================================ */
         if (type === this._rootType) {
             this._injectComponentAssets();
             return;
@@ -914,22 +1024,22 @@
         var bKids0 = body.children;
         for (var e = 0; e < bKids0.length; e++) {
             var be = bKids0[e];
-            var bTag = be.tagName.toLowerCase();
+            var bTag2 = be.tagName.toLowerCase();
             var bWbTag = be.getAttribute && be.getAttribute('data-wb-tag');
             var bCmptype = be.getAttribute && be.getAttribute('cmptype');
             if (type === 'cmpForm') {
-                if (bTag === 'cmpform' || bWbTag === 'cmpForm' ||
-                    (bTag === 'div' && bCmptype === 'Form')) {
+                if (bTag2 === 'cmpform' || bWbTag === 'cmpForm' ||
+                    (bTag2 === 'div' && bCmptype === 'Form')) {
                     existingRoot = be;
                     break;
                 }
             }
             if (type === 'm2Form' &&
-                bTag === 'div' && bCmptype === 'Form') {
+                bTag2 === 'div' && bCmptype === 'Form') {
                 existingRoot = be;
                 break;
             }
-            if (type === 'div' && bTag === 'div' &&
+            if (type === 'div' && bTag2 === 'div' &&
                 be.getAttribute('data-wb-root') === '1') {
                 existingRoot = be;
                 break;
@@ -981,23 +1091,23 @@
 
         var oldRoot = (this._rootType === 'html') ? null : this.getRootContainer();
         var source = oldRoot || body;
-        var moved = [];
+        var moved2 = [];
         var kids = source.children;
-        for (var i = 0; i < kids.length; i++) {
-            var k = kids[i];
-            if (k.getAttribute && k.getAttribute('data-wb-ide') === '1') continue;
-            if (k.getAttribute && k.getAttribute('data-wb-preview') === '1') continue;
-            moved.push(k);
+        for (var i2 = 0; i2 < kids.length; i2++) {
+            var k2 = kids[i2];
+            if (k2.getAttribute && k2.getAttribute('data-wb-ide') === '1') continue;
+            if (k2.getAttribute && k2.getAttribute('data-wb-preview') === '1') continue;
+            moved2.push(k2);
         }
-        for (var j = 0; j < moved.length; j++) {
-            if (moved[j].parentNode) moved[j].parentNode.removeChild(moved[j]);
+        for (var j2 = 0; j2 < moved2.length; j2++) {
+            if (moved2[j2].parentNode) moved2[j2].parentNode.removeChild(moved2[j2]);
         }
         if (oldRoot && oldRoot.parentNode) oldRoot.parentNode.removeChild(oldRoot);
         var bKids = body.children;
-        for (var m = bKids.length - 1; m >= 0; m--) {
-            var bk = bKids[m];
-            if (bk.getAttribute && bk.getAttribute('data-wb-ide') === '1') continue;
-            bk.parentNode.removeChild(bk);
+        for (var m2 = bKids.length - 1; m2 >= 0; m2--) {
+            var bk2 = bKids[m2];
+            if (bk2.getAttribute && bk2.getAttribute('data-wb-ide') === '1') continue;
+            bk2.parentNode.removeChild(bk2);
         }
 
         var newRoot = null;
@@ -1018,9 +1128,9 @@
 
         if (newRoot) {
             body.appendChild(newRoot);
-            for (var n = 0; n < moved.length; n++) newRoot.appendChild(moved[n]);
+            for (var n2 = 0; n2 < moved2.length; n2++) newRoot.appendChild(moved2[n2]);
         } else {
-            for (var p = 0; p < moved.length; p++) body.appendChild(moved[p]);
+            for (var p2 = 0; p2 < moved2.length; p2++) body.appendChild(moved2[p2]);
         }
 
         this._rootType = type;
@@ -1046,6 +1156,13 @@
         });
     };
 
+    /* ------------------------------------------------------------------
+       reset
+
+       Полная очистка iframe. В режиме Root: component холст пустой —
+       никаких шаблонов <div class="formBackground"> не создаётся.
+       Соответственно и _rootType выставляется в 'div', но фактический
+       корневой контейнер — это body (см. getRootContainer). */
     Canvas.prototype.reset = function () {
         var doc = this.getDoc();
         this._removeResizeHandles();
@@ -1058,7 +1175,10 @@
         this._bind();
         this.pending = null;
         this.designMode = false;
-        this._rootType = 'html';
+
+        /* Root: component — корень это body. Остальные — html. */
+        this._rootType = (global.App && global.App._componentMode) ? 'div' : 'html';
+
         this._handles = null;
         this._handlesPending = false;
         $(this.iframe).removeClass('wb-design-mode');
@@ -1077,6 +1197,18 @@
         }, 0);
     };
 
+    /* ------------------------------------------------------------------
+       loadHtml
+
+       Загружает HTML в iframe.
+
+       Если HTML — фрагмент (не полный документ), он оборачивается
+       в _templateHtml(). После записи:
+         • в обычных режимах, если rootType='div', вызывается
+           _ensureRootDivMarkers() — восстанавливает <div data-wb-root="1">,
+           если в body ровно один div;
+         • в режиме Root: component _ensureRootDivMarkers() НЕ вызывается —
+           обёртка не создаётся, содержимое грузится прямо в body. */
     Canvas.prototype.loadHtml = function (html, opts) {
         var self = this;
         var doc = this.getDoc();
@@ -1197,7 +1329,10 @@
         this.designMode = false;
         this._rootType = this._detectRootType();
 
-        if (this._rootType === 'div') {
+        /* Root: component — не создавать обёртку div.
+           Иначе — восстановить маркеры корневого div, если он есть. */
+        if (this._rootType === 'div' &&
+            !(global.App && global.App._componentMode)) {
             this._ensureRootDivMarkers();
         }
 
@@ -1252,15 +1387,7 @@
          • восстанавливает признак видимости (data-wb-user-comp-hidden)
            из palette-описания компонента;
          • ставит inline overflow:hidden на контейнер;
-         • отложенно вызывает _fitUserComponentToContent (определён в
-           canvas-insert.js) с preserveSize=true — размер контейнера
-           берётся из HTML, а обёртка подгоняется через transform.
-
-       Признак видимости восстанавливается здесь, потому что атрибут
-       data-wb-user-comp-hidden удаляется при сериализации cleanHtml
-       (см. canvas-format.js — сервисные маркеры срезаются). Значит,
-       после loadHtml его нужно выставить заново из живого описания
-       palette-компонента (ComponentStorage). */
+         • отложенно вызывает _fitUserComponentToContent с preserveSize=true. */
     Canvas.prototype._fitAllUserComponents = function () {
         var doc = this.getDoc();
         if (!doc) return;
@@ -1270,7 +1397,6 @@
         var self = this;
         for (var i = 0; i < els.length; i++) {
             (function (el) {
-                /* Восстанавливаем признак видимости. */
                 if (global.ComponentStorage) {
                     var cid = el.getAttribute('data-wb-user-comp');
                     var comp = cid ? global.ComponentStorage.getComponent(cid) : null;

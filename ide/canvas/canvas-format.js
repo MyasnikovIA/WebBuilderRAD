@@ -57,6 +57,7 @@
             var a = attrs[i];
             var name = a.name;
 
+            /* --- служебные атрибуты IDE: не сериализуем --- */
             if (name.indexOf('data-wb-orig-') === 0) continue;
             if (name === 'data-cmptype') continue;
             if (name === 'data-wb-editable') continue;
@@ -65,7 +66,6 @@
             if (name === 'data-wb-preview') continue;
             if (name === 'data-wb-root') continue;
             if (name === 'data-wb-comp-asset') continue;
-            /* Все сервисные маркеры user-компонента. */
             if (name.indexOf('data-wb-user-comp-') === 0) continue;
 
             if (name === 'cmptype' && hasWbTag) continue;
@@ -74,13 +74,22 @@
             var orig = el.getAttribute && el.getAttribute('data-wb-orig-' + name);
             if (orig != null) val = String(orig);
 
+            /* --- class: срезаем служебные wb-selected / wb-hover / wb-moving --- */
             if (name === 'class') {
                 var parts = val.split(/\s+/).filter(function (c) {
                     return c && c !== 'wb-selected' && c !== 'wb-hover' && c !== 'wb-moving';
                 });
-                if (parts.length === 0) continue;
+                if (parts.length === 0) continue;   // пустой class не пишем
                 val = parts.join(' ');
             }
+
+            /* --- style: пустой style не пишем ---
+               Если после всех манипуляций значение пустое (или только пробелы),
+               атрибут style в разметку не попадает. Это лечит случаи
+               <body style="">, <div style=""> и т.п., которые появляются
+               после loadHtml или из внешних источников. */
+            if (name === 'style' && val.trim() === '') continue;
+
             val = val.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             out += ' ' + name + '="' + val + '"';
         }
@@ -330,6 +339,28 @@
     Canvas.prototype.cleanHtml = function () {
         var htmlEl = this.getHtml();
         if (!htmlEl) return '';
+
+        /* ============================================================
+           Root: component — обёртки нет. Сериализуем ТОЛЬКО прямых
+           детей <body>, без самого body и без «шаблонного» <div>.
+           Это гарантирует, что в Code и в project.json попадёт только
+           то, что создал пользователь.
+           ============================================================ */
+        if (global.App && global.App._componentMode && this._rootType === 'div') {
+            var body = this.getBody();
+            if (!body) return '';
+            var bodyClone = body.cloneNode(true);
+            this._purgeServiceNodes(bodyClone);
+
+            var out = '';
+            var kids = bodyClone.childNodes;
+            for (var i = 0; i < kids.length; i++) {
+                out += this._formatNode(kids[i], 0);
+            }
+            return out.replace(/\n$/, '');
+        }
+
+        /* Стандартная логика для остальных режимов. */
         var clone = htmlEl.cloneNode(true);
         this._purgeServiceNodes(clone);
         var root = this._findRootInClone(clone);
