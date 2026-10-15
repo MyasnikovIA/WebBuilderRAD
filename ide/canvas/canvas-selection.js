@@ -35,23 +35,15 @@
         el.style.width  = width  + 'px';
         el.style.height = height + 'px';
 
-        /* Форсируем reflow немедленно.
-
-           Без этого следующее чтение el.offsetWidth / el.offsetHeight
-           могло вернуть значение из ПРЕДЫДУЩЕГО кадра — особенно
-           заметно в iframe при быстром mousemove. Тогда _applyUserComponentTransform
-           считал sx по старому размеру, и ширина визуально не росла,
-           хотя inline style уже был установлен.
-
-           void el.offsetWidth заставляет браузер синхронно пересчитать
-           layout — все последующие чтения геометрии (offsetWidth,
-           getBoundingClientRect, offsetParent) отдают актуальные
-           значения. */
+        /* Форсируем reflow немедленно. Без этого последующее чтение
+           offsetWidth/offsetHeight внутри _applyUserComponentTransform
+           может вернуть значение из ПРЕДЫДУЩЕГО кадра — особенно
+           заметно в iframe при быстром mousemove. Тогда sx/sy считаются
+           по устаревшему размеру, и ширина/высота визуально не растёт. */
         void el.offsetWidth;
 
         /* Для user-компонентов НЕ пишем HTML-атрибуты width/height:
-           иначе они попадают в сохранённый файл, и при следующей загрузке
-           размер будет «вычисляться» дважды. Inline style достаточно. */
+           они бы попали в сохранённый HTML. */
         var isUserComp = el.getAttribute && el.getAttribute('data-wb-user-comp') != null;
 
         if (!isUserComp && setAttrs && el.getAttribute &&
@@ -63,29 +55,33 @@
         /* ============================================================
            User-component.
 
-           Быстрый путь: natural-размер уже посчитан → только
-           _applyUserComponentTransform. Она мгновенно пересчитает
-           scale(sx, sy) по фактическому размеру контейнера.
-           Никаких обнулений / повторных замеров / reflow — при
-           перетаскивании мышкой это критично для плавности.
+           Всегда вызываем _applyUserComponentTransform. Она сама:
+             • найдёт обёртку;
+             • возьмёт natural-размер (el.__wbNaturalW/H);
+             • если natural-размера нет — вызовет _fitUserComponentToContent,
+               которая его замерит и заполнит;
+             • пересчитает scale(sx, sy) по актуальным offsetWidth/Height
+               контейнера и применит transform на обёртке.
 
-           Если natural-размер ещё не посчитан (первый resize до
-           первого замера) — один раз вызываем
-           _fitUserComponentToContent; она замерит содержимое,
-           закэширует __wbNaturalW/H/Left/Top и применит transform.
+           Раньше здесь стоял fast-path с проверкой el.__wbNaturalW &&
+           el.__wbNaturalH. Если по какой-то причине эти значения
+           оказывались не установлены (или были равны 0), управление
+           уходило в fallback _fitUserComponentToContent, которая на
+           каждом кадре сбрасывала transform обёртки — и до повторного
+           применения дело не доходило. Визуально это выглядело как
+           «рамка растёт, а содержимое — нет». Теперь такой сценарий
+           невозможен: transform применяется всегда.
            ============================================================ */
         if (isUserComp) {
-            if (el.__wbNaturalW && el.__wbNaturalH &&
-                typeof this._applyUserComponentTransform === 'function') {
+            if (typeof this._applyUserComponentTransform === 'function') {
                 this._applyUserComponentTransform(el);
             } else if (typeof this._fitUserComponentToContent === 'function') {
                 this._fitUserComponentToContent(el, 1, true);
-            } else if (typeof this._applyUserComponentTransform === 'function') {
-                this._applyUserComponentTransform(el);
             }
             return;
         }
 
+        /* --- не user-компонент: обычный preview-узел --- */
         var preview = null;
         for (var k = 0; k < el.children.length; k++) {
             var ch = el.children[k];

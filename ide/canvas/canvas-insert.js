@@ -205,55 +205,60 @@
     };
 
     /* ------------------------------------------------------------------
-   _applyUserComponentTransform
+    _applyUserComponentTransform
 
-   Ставит preview user-компонента в natural-размер и применяет
-   transform: scale(sx, sy) translate(-minLeft, -minTop), где
-   sx = containerW / naturalW, sy = containerH / naturalH.
+    Ставит preview user-компонента в natural-размер и применяет
+    transform: scale(sx, sy) translate(-minLeft, -minTop), где
+    sx = containerW / naturalW, sy = containerH / naturalH.
 
-   Размер контейнера читаем из offsetWidth / offsetHeight, а НЕ из
-   строки inline-style. Это важно, когда на элементе есть
-   min-width / max-width: строка может говорить 800px, а браузер
-   реально отрендерит 600px — при расчёте sx = 800/natW получим
-   transform шире контейнера, и overflow: hidden обрежет содержимое.
+    Размер контейнера берём из РЕНДЕРА (offsetWidth / offsetHeight),
+    а не из строки inline-style. Это важно, когда на элементе есть
+    min-width / max-width — строка может говорить 800px, а браузер
+    реально отрендерит 600px.
 
-   Перед чтением offsetWidth — принудительный reflow. Дело в том,
-   что _applyBox только что установил el.style.width/height, но
-   layout в iframe может ещё не пересчитаться: чтение offsetWidth
-   без принудительного flush иногда возвращает значение из
-   предыдущего кадра — тогда scale(sx) уходит на старое значение,
-   и ширина визуально не увеличивается.
-
-   Если natural-размер ещё не посчитан — вызываем
-   _fitUserComponentToContent; она заполнит __wbNaturalW/H и сама
-   же повторно вызовет _applyUserComponentTransform.
-   ------------------------------------------------------------------ */
+    Функция обязана быть работоспособной в ЛЮБОМ состоянии:
+      1. Если обёртки нет — вызываем _fitUserComponentToContent,
+         она сама создаст/подготовит её.
+      2. Если natural-размер неизвестен (0, NaN, undefined) —
+         вызываем _fitUserComponentToContent; она замерит содержимое,
+         заполнит el.__wbNaturalW/H и повторно вызовет нас.
+      3. Перед чтением offsetWidth делаем void el.offsetWidth —
+         гарантированный flush layout.
+    ------------------------------------------------------------------ */
     Canvas.prototype._applyUserComponentTransform = function (el) {
         if (!el || !el.getAttribute) return;
         if (!el.getAttribute('data-wb-user-comp')) return;
 
+        /* Ищем обёртку по классу. Атрибут data-wb-preview на ней
+           ставится автоматически при создании, но если по какой-то
+           причине его сейчас нет — не критично: класс присутствует
+           всегда. */
+        var wrap = el.querySelector('.wb-user-comp-preview');
+        if (!wrap) {
+            /* Обёртка ещё не создана — запускаем полный пересчёт. */
+            if (typeof this._fitUserComponentToContent === 'function') {
+                this._fitUserComponentToContent(el, 1, true);
+            }
+            return;
+        }
+
         var natW = el.__wbNaturalW;
         var natH = el.__wbNaturalH;
 
-        if (!natW || !natH) {
+        /* Natural-размер неизвестен → полный пересчёт. */
+        if (!natW || !natH || natW < 1 || natH < 1) {
             if (typeof this._fitUserComponentToContent === 'function') {
                 this._fitUserComponentToContent(el, 1, true);
                 natW = el.__wbNaturalW;
                 natH = el.__wbNaturalH;
             }
-            if (!natW || !natH) return;
+            if (!natW || !natH || natW < 1 || natH < 1) return;
         }
 
         var minL = el.__wbNaturalLeft || 0;
         var minT = el.__wbNaturalTop  || 0;
 
-        var wrap = el.querySelector('.wb-user-comp-preview[data-wb-preview="1"]');
-        if (!wrap) return;
-
-        /* Принудительный reflow ПЕРЕД чтением offsetWidth/Height.
-           Без этого браузер может вернуть старую геометрию
-           (актуально при быстром mousemove в iframe) — тогда ширина
-           перестаёт визуально расти при перетаскивании. */
+        /* Форсируем reflow — читаем именно текущую геометрию. */
         void el.offsetWidth;
 
         var w = el.offsetWidth  || parseFloat(el.style.width)  || natW;
