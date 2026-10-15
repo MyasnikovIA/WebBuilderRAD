@@ -40,40 +40,127 @@
         return /^on/i.test(last) ? 0 : 1;
     }
 
+    /* ------------------------------------------------------------------
+   collectFormFunctions
+
+   Возвращает список функций, которые пользователь может назначить
+   обработчику события: { name, args, call }.
+
+   Источники:
+     • <cmpscript> и component[cmptype="Script"] — код формы;
+     • inline <script> без src — пользовательский HTML-скрипт страницы.
+
+   Исключения (НЕ разбираем):
+     • <script src="…">                              — внешние скрипты;
+     • inline <script data-wb-comp-owned="1">        — служебные скрипты,
+       которые Canvas._injectInlineScript вставляет в <head> сцены:
+       ядро WbComponent (core.js) и бандл определения компонента
+       (<cmptype>.js, включая user code из вкладки JS ComponentTab).
+       Из этих скриптов, в частности, приходят onMyComponentResize,
+       onMyComponentPositionChange и прочие внутренние колбэки —
+       они не являются обработчиками элементов формы и не должны
+       попадать в Events-инспектор.
+     • inline <script data-wb-comp-kind="core">      — страховка на будущее;
+     • inline <script data-wb-ide="1">               — служебные узлы IDE;
+     • inline-скрипт ядра WbComponent по маркеру
+       "/* WbComponent core"                         — дублирующая страховка.
+
+   Дополнительный runtime-фильтр: функция обязана быть доступна как
+   глобальная в окне сцены (win.<name> или win.<a>.<b>…, с
+   пропуском ведущего g./window.). Это отсекает локальные функции
+   внутри IIFE (initAll, initResize, eachComponent, …).
+   ------------------------------------------------------------------ */
     function collectFormFunctions(canvas) {
         var out = [];
         if (!canvas || !canvas.getDoc) return out;
         var doc = canvas.getDoc();
         if (!doc) return out;
 
+        var win = doc.defaultView || (canvas.iframe && canvas.iframe.contentWindow) || null;
+        if (!win) return out;
+
         var sources = [];
         var scripts = doc.querySelectorAll('cmpscript, component[cmptype="Script"], script');
         for (var i = 0; i < scripts.length; i++) {
             var s = scripts[i];
             var tag = s.tagName.toLowerCase();
-            if (tag === 'script' && s.getAttribute('src')) continue;
+
+            if (tag === 'script') {
+                /* Внешние скрипты. */
+                if (s.getAttribute('src')) continue;
+
+                var rawText = s.textContent || '';
+
+                /* Ядро WbComponent — по маркеру начала исходника. */
+                if (rawText.replace(/^\s+/, '').indexOf('/* WbComponent core') === 0) continue;
+
+                /* Служебные inline-скрипты, которые вставляет
+                   Canvas._injectInlineScript (и core.js, и <cmptype>.js).
+                   Признак — data-wb-comp-owned="1". Именно отсюда приходят
+                   onMyComponentResize / onMyComponentPositionChange и
+                   прочие внутренние колбэки определения компонента. */
+                if (s.getAttribute('data-wb-comp-owned') === '1') continue;
+
+                /* Страховочные маркеры. */
+                if (s.getAttribute('data-wb-comp-kind') === 'core') continue;
+                if (s.getAttribute('data-wb-ide') === '1') continue;
+            }
+
             var raw = s.textContent || '';
-            var m = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-            sources.push(m ? m[1] : raw);
+            var cm = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+            sources.push(cm ? cm[1] : raw);
         }
         if (!sources.length) return out;
 
         var combined = sources.join('\n');
-        var seen = {};
 
-        function add(name, argsRaw) {
-            if (!name || seen[name]) return;
-            seen[name] = 1;
-            var args = parseArgsList(argsRaw);
-            out.push({ name: name, args: args, call: buildCallSignature(name, args) });
+        /* Собираем «сырых» кандидатов: { name, argsRaw }. */
+        var candidates = [];
+        var seenCandidate = {};
+        function addCandidate(name, argsRaw) {
+            if (!name) return;
+            if (seenCandidate[name]) return;
+            seenCandidate[name] = 1;
+            candidates.push({ name: name, argsRaw: argsRaw || '' });
         }
 
+        /* Присваивания: a.b.c = function(…) */
         var reAssign = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*=\s*function\s*\(([^)]*)\)/g;
-        var m;
-        while ((m = reAssign.exec(combined)) !== null) add(m[1], m[2]);
+        var mm;
+        while ((mm = reAssign.exec(combined)) !== null) addCandidate(mm[1], mm[2]);
 
+        /* Объявления: function name(…) */
         var reFunc = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g;
-        while ((m = reFunc.exec(combined)) !== null) add(m[1], m[2]);
+        while ((mm = reFunc.exec(combined)) !== null) addCandidate(mm[1], mm[2]);
+
+        /* Runtime-фильтр: только функции, доступные как глобальные
+           в окне сцены. См. шапку функции. */
+        function resolveInWindow(name) {
+            if (!name) return null;
+            var parts = String(name).split('.');
+            var startIdx = 0;
+            if (parts[0] === 'g' || parts[0] === 'window') startIdx = 1;
+            var obj = win;
+            for (var k = startIdx; k < parts.length; k++) {
+                if (obj == null) return null;
+                try { obj = obj[parts[k]]; }
+                catch (e) { return null; }
+            }
+            return obj;
+        }
+
+        for (var ci = 0; ci < candidates.length; ci++) {
+            var c = candidates[ci];
+            var fn = resolveInWindow(c.name);
+            if (typeof fn !== 'function') continue;
+
+            var args = parseArgsList(c.argsRaw);
+            out.push({
+                name: c.name,
+                args: args,
+                call: buildCallSignature(c.name, args)
+            });
+        }
 
         out.sort(function (a, b) {
             var pa = eventNamePriority(a.name);
