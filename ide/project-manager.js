@@ -142,21 +142,18 @@
     };
 
     /* ------------------------------------------------------------------
-       _saveCurrentEdit
+   _saveCurrentEdit
 
-       Сохраняет текущий редактируемый HTML-файл.
+   Сохраняет текущий редактируемый HTML-файл.
 
-       ВАЖНО: в файл проекта пишется HTML с уже внедрёнными тегами
-       внешних библиотек user-компонентов (jQuery / jQuery UI / …) и
-       служебных lib/wb-component/*.{js,css}. Раньше этого не делалось —
-       теги существовали только в runtime iframe-сцены (canvas) и
-       помечались data-wb-comp-asset="1", из-за чего cleanHtml() их
-       вырезал, и файл проекта оставался «голым».
+   ВАЖНО: в файл проекта пишется HTML БЕЗ тегов внешних библиотек
+   и БЕЗ lib/wb-component/*.js|css. Эти теги добавляются только
+   при выгрузке проекта в ZIP (ZipUtils.exportProject). Если
+   добавить их здесь, они попадут в index.html и при следующей
+   загрузке окажутся видимыми в <head> в Structure/Code.
 
-       Для сравнения с «чистым» canvas-состоянием initialClean
-       по-прежнему хранит результат canvas.cleanHtml() БЕЗ lib-тегов —
-       так _hasUnsavedChanges корректно детектит правки пользователя.
-       ------------------------------------------------------------------ */
+   initialClean по-прежнему хранит результат canvas.cleanHtml() —
+   так _hasUnsavedChanges корректно ловит правки пользователя. */
     ProjectManager.prototype._saveCurrentEdit = function (canvas) {
         if (!this.editing || !this.current) return;
         var f = this.current.files[this.editing.path];
@@ -165,17 +162,10 @@
             var clean = canvas.cleanHtml();
             this.editing.initialClean = clean;
 
-            /* Внедряем теги внешних libs + lib/wb-component/* в сам файл. */
-            var out = clean;
-            if (global.ZipUtils && global.ZipUtils.injectLibTagsIntoHtml) {
-                try {
-                    out = global.ZipUtils.injectLibTagsIntoHtml(clean, this.current);
-                } catch (e) {
-                    console.error('[ProjectManager] injectLibTagsIntoHtml', e);
-                }
-            }
-
-            f.content = out;
+            /* ← ИЗМЕНЕНО: убран вызов ZipUtils.injectLibTagsIntoHtml.
+               Теги lib/wb-component/* будут добавлены только при экспорте
+               в ZIP. В файле проекта их быть не должно. */
+            f.content = clean;
             f.kind = 'text';
 
             this.save();
@@ -841,97 +831,148 @@
         bus.emit('project:changed', { project: this.current });
     };
 
-    ProjectManager.prototype.ctxSaveAsComponent = function () {
-        if (!this.current) { alert('Проект не выбран.'); return; }
+    /* ------------------------------------------------------------------
+   _fitUserComponentToContent
 
-        var canvas = global.IDE && global.IDE._canvas;
-        var rt = this.current.rootType || 'html';
+   Вычисляет натуральные размеры содержимого user-компонента и
+   либо сразу подгоняет под них сам контейнер (preserveSize=false —
+   при вставке из палитры), либо только запоминает их и применяет
+   transform: scale() к обёртке (preserveSize=true — при загрузке
+   HTML).
 
-        try { this.save(); } catch (e) { /* ignore */ }
+   КЛЮЧЕВОЙ МОМЕНТ №1: перед замером размеры el временно обнуляются
+   — иначе .wb-user-comp-preview (width:100%) и .formBackground
+   (width:100%) растянутся по текущему размеру контейнера, и замер
+   вернёт extents родителя вместо extents содержимого. Обнуление
+   заставляет обёртку сжаться до контента, position:absolute дети
+   дают корректные extents.
 
-        var cd;
+   КЛЮЧЕВОЙ МОМЕНТ №2: при preserveSize=true (загрузка HTML)
+   НЕ трогаем ни inline-размер, ни HTML-атрибуты width/height.
+   Раньше функция удаляла их безусловно, из-за чего DOM после
+   autofit отличался от initialClean — ProjectManager считал это
+   «правкой пользователя» и автосейв перезаписывал файл. */
+    Canvas.prototype._fitUserComponentToContent = function (el, attempt, preserveSize) {
+        if (!el || el.nodeType !== 1) return;
+        if (!el.getAttribute) return;
+        if (!el.getAttribute('data-wb-user-comp')) return;
 
-        if (rt === 'component' && global.componentTab && global.componentTab.getFormData) {
-            try { cd = global.componentTab.getFormData(); }
-            catch (e) { cd = null; }
-            if (!cd) cd = {};
-        } else {
-            cd = this.current.componentData
-                ? this._cloneObj(this.current.componentData)
-                : {};
+        attempt = attempt || 1;
 
-            if (!cd.cmptype) {
-                var ct = prompt('cmptype нового компонента:', 'my.component');
-                if (!ct) return;
-                cd.cmptype = String(ct).trim();
-                if (!cd.cmptype) return;
+        var wrap = el.querySelector('.wb-user-comp-preview[data-wb-preview="1"]');
+        if (!wrap) {
+            if (attempt < 8) {
+                var s1 = this;
+                setTimeout(function () {
+                    s1._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
             }
-            if (!cd.name) {
-                var nm = prompt('Имя компонента:', this.current.name || 'Component');
-                if (!nm) return;
-                cd.name = String(nm).trim();
-                if (!cd.name) return;
-            }
-            if (!cd.tagName) cd.tagName = 'div';
-        }
-
-        if (!cd || !cd.cmptype) {
-            alert('Не удалось определить cmptype компонента.');
             return;
         }
 
-        /* ← ИЗМЕНЕНО: если previewIdeHtml пуст ИЛИ равен дефолтной
-           заготовке ComponentTab — подставляем HTML сцены. Раньше
-           проверка была только на пустую строку, и placeholder
-           «My Component» уезжал в палитру как «настоящий» HTML. */
-        var previewIsDefault = !global.ComponentTab
-            || typeof global.ComponentTab.isDefaultPreview !== 'function'
-            || global.ComponentTab.isDefaultPreview(cd.previewIdeHtml);
+        /* 1. Снимаем предыдущий transform и размеры обёртки — иначе
+              замер идёт по искажённому состоянию. */
+        wrap.style.transform = '';
+        wrap.style.transformOrigin = '';
+        wrap.style.marginLeft = '';
+        wrap.style.marginTop  = '';
+        wrap.style.width  = '';
+        wrap.style.height = '';
 
-        if ((!cd.previewIdeHtml || previewIsDefault) && canvas && canvas.cleanHtml) {
-            try {
-                var codeHtml = canvas.cleanHtml();
-                if (codeHtml && codeHtml.replace(/\s+/g, '')) {
-                    cd.previewIdeHtml = codeHtml;
-                }
-            } catch (e) { /* ignore */ }
-        }
-        if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+        /* 2. Временно обнуляем размер контейнера; сохраняем и
+              left/top, чтобы гарантированно вернуть их в исходное
+              состояние (обнуление вызывает reflow, и если что-то
+              побочное попытается пересчитать позицию абсолютного
+              элемента — это может испортить сохранённые left/top). */
+        var savedW   = el.style.width;
+        var savedH   = el.style.height;
+        var savedL   = el.style.left;
+        var savedT   = el.style.top;
+        var savedPos = el.style.position;
 
-        if (!cd.js || !cd.css) {
-            var libData = this._readComponentLibraries(this.current);
-            if (libData) {
-                if (!cd.js  && libData.js)  cd.js  = libData.js;
-                if (!cd.css && libData.css) cd.css = libData.css;
+        el.style.width  = '0px';
+        el.style.height = '0px';
+
+        void el.offsetWidth;   /* форсим layout */
+
+        var wrapRect = wrap.getBoundingClientRect();
+        if (!wrapRect || (wrapRect.width === 0 && wrapRect.height === 0)) {
+            el.style.width = savedW; el.style.height = savedH;
+            el.style.left  = savedL; el.style.top    = savedT;
+            el.style.position = savedPos;
+            if (attempt < 8) {
+                var s2 = this;
+                setTimeout(function () {
+                    s2._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
             }
+            return;
         }
 
-        cd.name        = cd.name        || cd.cmptype;
-        cd.tagName     = cd.tagName     || 'div';
-        cd.description = cd.description || '';
-        cd.jsLibs      = normalizeLibs(cd.jsLibs  || []);
-        cd.cssLibs     = normalizeLibs(cd.cssLibs || []);
-        cd.customProperties = Array.isArray(cd.customProperties) ? cd.customProperties : [];
-        cd.customEvents     = Array.isArray(cd.customEvents)     ? cd.customEvents     : [];
-        cd.nestingMode      = cd.nestingMode  || 'all';
-        cd.nestingRules     = Array.isArray(cd.nestingRules) ? cd.nestingRules : [];
-        cd.js               = cd.js  || '';
-        cd.css              = cd.css || '';
-
-        var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
-        if (existing) {
-            var ok = confirm(
-                'Компонент с cmptype="' + cd.cmptype + '" уже есть в палитре (' +
-                existing.name + ').\n\nПерезаписать его?');
-            if (!ok) return;
-            global.ComponentStorage.updateComponent(existing.id, cd);
-            alert('Компонент "' + cd.name + '" обновлён в палитре.');
-        } else {
-            global.ComponentStorage.createComponent(cd);
-            alert('Компонент "' + cd.name + '" сохранён в палитру.');
+        var minLeft = Infinity, minTop = Infinity;
+        var maxRight = 0, maxBottom = 0;
+        var kids = wrap.querySelectorAll('*');
+        for (var i = 0; i < kids.length; i++) {
+            var kr = kids[i].getBoundingClientRect();
+            if (kr.width === 0 && kr.height === 0) continue;
+            var left   = kr.left   - wrapRect.left;
+            var top    = kr.top    - wrapRect.top;
+            var right  = kr.right  - wrapRect.left;
+            var bottom = kr.bottom - wrapRect.top;
+            if (left   < minLeft)   minLeft   = left;
+            if (top    < minTop)    minTop    = top;
+            if (right  > maxRight)  maxRight  = right;
+            if (bottom > maxBottom) maxBottom = bottom;
         }
 
-        bus.emit('palette:refresh');
+        if (!isFinite(minLeft)) minLeft = 0;
+        if (!isFinite(minTop))  minTop  = 0;
+
+        if (maxRight < 8 || maxBottom < 8) {
+            el.style.width = savedW; el.style.height = savedH;
+            el.style.left  = savedL; el.style.top    = savedT;
+            el.style.position = savedPos;
+            if (attempt < 8) {
+                var s3 = this;
+                setTimeout(function () {
+                    s3._fitUserComponentToContent(el, attempt + 1, preserveSize);
+                }, 60);
+            }
+            return;
+        }
+
+        /* 3. Восстанавливаем размеры и позицию контейнера. */
+        el.style.width  = savedW;
+        el.style.height = savedH;
+        el.style.left   = savedL;
+        el.style.top    = savedT;
+        el.style.position = savedPos;
+
+        var newW = Math.max(50, Math.ceil(maxRight  - minLeft));
+        var newH = Math.max(30, Math.ceil(maxBottom - minTop));
+
+        el.__wbNaturalW    = newW;
+        el.__wbNaturalH    = newH;
+        el.__wbNaturalLeft = minLeft;
+        el.__wbNaturalTop  = minTop;
+
+        /* ← ИЗМЕНЕНО: только при preserveSize=false перезаписываем
+              размер и удаляем HTML-атрибуты width/height. При
+              preserveSize=true DOM должен остаться идентичным тому,
+              каким был до autofit — иначе ProjectManager подумает,
+              что пользователь правил файл, и сработает автосейв. */
+        if (!preserveSize) {
+            el.style.width  = newW + 'px';
+            el.style.height = newH + 'px';
+            el.removeAttribute('width');
+            el.removeAttribute('height');
+        }
+
+        this._applyUserComponentTransform(el);
+
+        if (typeof this._positionResizeHandles === 'function') {
+            this._positionResizeHandles(el);
+        }
     };
 
     /* Хелпер: нормализует список lib-ов к [{type,value}]. */

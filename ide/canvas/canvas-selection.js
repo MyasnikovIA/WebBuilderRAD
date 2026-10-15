@@ -35,17 +35,22 @@
         el.style.width  = width  + 'px';
         el.style.height = height + 'px';
 
-        if (setAttrs && el.getAttribute &&
+        /* ← ИЗМЕНЕНО: для user-компонентов НЕ пишем HTML-атрибуты
+              width/height. Иначе они попадают в сохранённый файл, и
+              при следующей загрузке размер будет «вычисляться» дважды
+              (один раз из атрибута, другой — из inline style). Атрибут
+              в этом случае избыточен, а inline style достаточно. */
+        var isUserComp = el.getAttribute && el.getAttribute('data-wb-user-comp') != null;
+
+        if (!isUserComp && setAttrs && el.getAttribute &&
             (el.getAttribute('data-wb-tag') || el.getAttribute('cmptype'))) {
             el.setAttribute('width',  Math.round(width)  + 'px');
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
-        /* Для user-компонента — не меняем размер preview напрямую.
-           Вместо этого применяем transform: scale() к обёртке, чтобы
-           содержимое визуально масштабировалось вместе с контейнером.
-           См. Canvas._applyUserComponentTransform (canvas-insert.js). */
-        if (el.getAttribute && el.getAttribute('data-wb-user-comp') &&
+        /* Для user-компонента — transform: scale() на обёртку, чтобы
+           содержимое визуально масштабировалось вместе с контейнером. */
+        if (isUserComp &&
             typeof this._applyUserComponentTransform === 'function' &&
             el.__wbNaturalW && el.__wbNaturalH) {
             this._applyUserComponentTransform(el);
