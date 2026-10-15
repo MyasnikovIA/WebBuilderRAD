@@ -78,8 +78,32 @@
             self._handlers.push({ type: type, fn: fn, capture: capture });
         }
 
+        /* ------------------------------------------------------------------
+           mousedown
+
+           Обрабатывает:
+             • вставку из палитры (pending);
+             • выделение элемента и запуск drag-move.
+
+           ВАЖНО: focus() выставляется вручную. Раньше обработчик вызывал
+           e.preventDefault() (нужно, чтобы браузер не начинал свой drag
+           содержимого и не сбрасывал выделение), но побочный эффект
+           preventDefault — БЛОКИРОВКА передачи фокуса в iframe. В итоге
+           keyboard-события после клика по сцене продолжали уходить в
+           родительский документ, где стрелок никто не слушал, и «сцена не
+           реагировала на стрелки / Shift+стрелки».
+
+           Явный contentWindow.focus() возвращает фокус внутрь iframe, и
+           дальнейшие keydown начинают приходить в наш обработчик ниже. */
         on('mousedown', function (e) {
             bus.emit('contextmenu:hide');
+
+            /* Фокус в iframe — обязательно ДО preventDefault, иначе
+               фокус уйдёт в родительский документ и стрелки потеряются. */
+            try {
+                if (self.iframe.contentWindow) self.iframe.contentWindow.focus();
+            } catch (ex) { /* ignore */ }
+
             if (self.designMode) return;
 
             if (self.pending) {
@@ -120,18 +144,44 @@
             }
         }, true);
 
+        /* ------------------------------------------------------------------
+           keydown
+
+           Стрелки ←→↑↓ — сдвиг выделенного элемента на 1 px;
+           Shift+стрелка (или Ctrl+стрелка) — изменение размера на 1 px.
+
+           Обрабатываем и keyCode, и e.key — некоторые браузеры в contenteditable
+           iframe отдают keyCode = 0.
+
+           preventDefault обязателен: иначе стрелка прокрутит iframe по
+           горизонтали/вертикали, и элемент «уедет» относительно viewport. */
         on('keydown', function (e) {
             if (self.designMode) return;
-            if (e.keyCode === 46) { bus.emit('command:delete'); e.preventDefault(); }
-            else if (e.keyCode >= 37 && e.keyCode <= 40) {
+
+            var code = e.keyCode;
+            var key  = e.key || '';
+
+            /* Delete / Backspace */
+            if (code === 46) { bus.emit('command:delete'); e.preventDefault(); return; }
+
+            var dx = 0, dy = 0;
+            if (code === 37 || key === 'ArrowLeft')  dx = -1;
+            else if (code === 39 || key === 'ArrowRight') dx = 1;
+            else if (code === 38 || key === 'ArrowUp')    dy = -1;
+            else if (code === 40 || key === 'ArrowDown')  dy = 1;
+
+            if (dx !== 0 || dy !== 0) {
                 bus.emit('command:move', {
-                    dx: e.keyCode === 37 ? -1 : e.keyCode === 39 ? 1 : 0,
-                    dy: e.keyCode === 38 ? -1 : e.keyCode === 40 ? 1 : 0,
-                    resize: e.ctrlKey || e.shiftKey
+                    dx: dx,
+                    dy: dy,
+                    resize: e.shiftKey || e.ctrlKey
                 });
                 e.preventDefault();
-            } else if (e.ctrlKey && e.keyCode === 90) { bus.emit('command:undo'); e.preventDefault(); }
-            else if (e.ctrlKey && e.keyCode === 89) { bus.emit('command:redo'); e.preventDefault(); }
+                return;
+            }
+
+            if (e.ctrlKey && code === 90) { bus.emit('command:undo'); e.preventDefault(); }
+            else if (e.ctrlKey && code === 89) { bus.emit('command:redo'); e.preventDefault(); }
         });
 
         on('contextmenu', function (e) {

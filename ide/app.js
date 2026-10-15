@@ -261,12 +261,37 @@
             else if (e.keyCode === 121) { App.cmd('runProject'); e.preventDefault(); }
         });
 
+        /* ------------------------------------------------------------------
+           moveSel
+
+           Обрабатывает команду 'command:move' — сдвиг / изменение размера
+           выделенного элемента стрелками клавиатуры (фокус — внутри iframe
+           сцены, см. canvas-events.js → on('keydown', …)).
+
+           e.dx, e.dy — смещение в пикселях (−1 / 0 / +1 на одно нажатие);
+           e.resize  — true, если зажат Shift или Ctrl (Shift+стрелка).
+
+           Для обычных элементов правим inline-стиль напрямую.
+           Для user-компонентов — идём через Canvas._applyBox: она
+           устанавливает left/top/width/height на контейнере и (см.
+           canvas-selection.js) автоматически вызывает
+           _applyUserComponentTransform — тогда transform: scale() на обёртке
+           .wb-user-comp-preview пересчитывается, и содержимое тянется вслед
+           за контейнером. Это устраняет ситуацию «рамка выросла — кнопка
+           осталась прежнего размера».
+
+           Минимальный размер контейнера — 8 px (как и при drag-resize). */
         function moveSel(dx, dy, resize) {
-            var el = canvas.getSelected();
+            var el   = canvas.getSelected();
             var body = canvas.getBody();
             if (!el || !body || el === body) return;
+
+            var isUserComp = el.getAttribute && el.getAttribute('data-wb-user-comp') != null;
             var st = el.style;
 
+            /* Позиция static → переводим в absolute, сохраняя текущую
+               визуальную геометрию в inline-стиль. Это делается один раз —
+               при первом нажатии стрелки на свежевставленном элементе. */
             if (!st.position || st.position === 'static') {
                 var op = canvas._getOffsetParent
                     ? (canvas._getOffsetParent(el) || body)
@@ -279,13 +304,36 @@
                 st.width  = Math.round(r.width)  + 'px';
                 st.height = Math.round(r.height) + 'px';
             }
+
+            var curLeft   = parseFloat(st.left)   || 0;
+            var curTop    = parseFloat(st.top)    || 0;
+            var curWidth  = parseFloat(st.width)  || el.offsetWidth  || 0;
+            var curHeight = parseFloat(st.height) || el.offsetHeight || 0;
+
             if (resize) {
-                st.width  = ((parseFloat(st.width)  || 0) + dx) + 'px';
-                st.height = ((parseFloat(st.height) || 0) + dy) + 'px';
+                /* --- Shift+стрелка: изменение размера --- */
+                var nw = Math.max(8, curWidth  + dx);
+                var nh = Math.max(8, curHeight + dy);
+
+                if (isUserComp && typeof canvas._applyBox === 'function') {
+                    canvas._applyBox(el, curLeft, curTop, nw, nh, false);
+                } else {
+                    st.width  = nw + 'px';
+                    st.height = nh + 'px';
+                }
             } else {
-                st.left = ((parseFloat(st.left) || 0) + dx) + 'px';
-                st.top  = ((parseFloat(st.top)  || 0) + dy) + 'px';
+                /* --- обычная стрелка: перемещение --- */
+                var nl = curLeft + dx;
+                var nt = curTop  + dy;
+
+                if (isUserComp && typeof canvas._applyBox === 'function') {
+                    canvas._applyBox(el, nl, nt, curWidth, curHeight, false);
+                } else {
+                    st.left = nl + 'px';
+                    st.top  = nt + 'px';
+                }
             }
+
             if (canvas._positionResizeHandles) canvas._positionResizeHandles(el);
             EventBus.emit('canvas:changed');
             EventBus.emit('selection:changed', { element: el });
