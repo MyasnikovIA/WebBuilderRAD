@@ -160,8 +160,22 @@
             }
             if (f.name === 'className') cleanClass(el);
         } else if (tab === 'styles') {
+            /* Присваивание el.style[<camelCase>] = '' — канонический
+               способ снять inline-свойство. CSSStyleDeclaration.setProperty
+               и removeProperty ожидают hyphenated-имя ('max-width'), а
+               f.name в CommonSchema.STYLE_FIELDS — camelCase ('maxWidth').
+               Раньше вызов removeProperty(f.name) для многословных
+               свойств (maxWidth, backgroundColor, fontSize, …) молча
+               ничего не делал: исключения не бросалось, catch не
+               срабатывал, и fallback-присваивание не выполнялось.
+               Однословные свойства (width, height, color) удалялись,
+               потому что их camelCase совпадает с CSS-именем. */
             if (v === '' || v == null) {
-                try { el.style.removeProperty(f.name); } catch (e) { el.style[f.name] = ''; }
+                try {
+                    el.style[f.name] = '';
+                } catch (e) {
+                    try { el.style.removeProperty(f.name); } catch (e2) {}
+                }
             } else {
                 el.style[f.name] = v;
             }
@@ -178,6 +192,11 @@
             } else if (canvas.refreshPreview) {
                 canvas.refreshPreview(el);
             }
+        }
+
+        if (el.getAttribute && el.getAttribute('data-wb-user-comp') &&
+            canvas && typeof canvas._fitUserComponentToContent === 'function') {
+            canvas._fitUserComponentToContent(el, 1, true);
         }
 
         this._internalChange = true;
@@ -209,8 +228,17 @@
                 else el.removeAttribute('class');
             }
         } else if (tab === 'styles') {
-            try { el.style.removeProperty(f.name); }
-            catch (e) { el.style[f.name] = ''; }
+            /* Здесь тоже нельзя использовать removeProperty(f.name):
+               для camelCase-имён (maxWidth, minHeight, backgroundColor,
+               fontSize, …) он ничего не делает. Присваивание = ''
+               работает для любого корректного camelCase-имени и
+               снимает inline-свойство — это и есть то, что делает
+               кнопка «×». */
+            try {
+                el.style[f.name] = '';
+            } catch (e) {
+                try { el.style.removeProperty(f.name); } catch (e2) {}
+            }
         } else if (tab === 'events') {
             el.removeAttribute(f.name);
         }
@@ -224,6 +252,11 @@
             } else if (canvas.refreshPreview) {
                 canvas.refreshPreview(el);
             }
+        }
+
+        if (el.getAttribute && el.getAttribute('data-wb-user-comp') &&
+            canvas && typeof canvas._fitUserComponentToContent === 'function') {
+            canvas._fitUserComponentToContent(el, 1, true);
         }
 
         this._internalChange = true;

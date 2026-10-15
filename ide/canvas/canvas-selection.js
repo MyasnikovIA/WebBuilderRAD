@@ -35,11 +35,23 @@
         el.style.width  = width  + 'px';
         el.style.height = height + 'px';
 
-        /* ← ИЗМЕНЕНО: для user-компонентов НЕ пишем HTML-атрибуты
-              width/height. Иначе они попадают в сохранённый файл, и
-              при следующей загрузке размер будет «вычисляться» дважды
-              (один раз из атрибута, другой — из inline style). Атрибут
-              в этом случае избыточен, а inline style достаточно. */
+        /* Форсируем reflow немедленно.
+
+           Без этого следующее чтение el.offsetWidth / el.offsetHeight
+           могло вернуть значение из ПРЕДЫДУЩЕГО кадра — особенно
+           заметно в iframe при быстром mousemove. Тогда _applyUserComponentTransform
+           считал sx по старому размеру, и ширина визуально не росла,
+           хотя inline style уже был установлен.
+
+           void el.offsetWidth заставляет браузер синхронно пересчитать
+           layout — все последующие чтения геометрии (offsetWidth,
+           getBoundingClientRect, offsetParent) отдают актуальные
+           значения. */
+        void el.offsetWidth;
+
+        /* Для user-компонентов НЕ пишем HTML-атрибуты width/height:
+           иначе они попадают в сохранённый файл, и при следующей загрузке
+           размер будет «вычисляться» дважды. Inline style достаточно. */
         var isUserComp = el.getAttribute && el.getAttribute('data-wb-user-comp') != null;
 
         if (!isUserComp && setAttrs && el.getAttribute &&
@@ -48,12 +60,29 @@
             el.setAttribute('height', Math.round(height) + 'px');
         }
 
-        /* Для user-компонента — transform: scale() на обёртку, чтобы
-           содержимое визуально масштабировалось вместе с контейнером. */
-        if (isUserComp &&
-            typeof this._applyUserComponentTransform === 'function' &&
-            el.__wbNaturalW && el.__wbNaturalH) {
-            this._applyUserComponentTransform(el);
+        /* ============================================================
+           User-component.
+
+           Быстрый путь: natural-размер уже посчитан → только
+           _applyUserComponentTransform. Она мгновенно пересчитает
+           scale(sx, sy) по фактическому размеру контейнера.
+           Никаких обнулений / повторных замеров / reflow — при
+           перетаскивании мышкой это критично для плавности.
+
+           Если natural-размер ещё не посчитан (первый resize до
+           первого замера) — один раз вызываем
+           _fitUserComponentToContent; она замерит содержимое,
+           закэширует __wbNaturalW/H/Left/Top и применит transform.
+           ============================================================ */
+        if (isUserComp) {
+            if (el.__wbNaturalW && el.__wbNaturalH &&
+                typeof this._applyUserComponentTransform === 'function') {
+                this._applyUserComponentTransform(el);
+            } else if (typeof this._fitUserComponentToContent === 'function') {
+                this._fitUserComponentToContent(el, 1, true);
+            } else if (typeof this._applyUserComponentTransform === 'function') {
+                this._applyUserComponentTransform(el);
+            }
             return;
         }
 

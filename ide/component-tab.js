@@ -871,24 +871,29 @@
     };
 
     /* ------------------------------------------------------------------
-       _buildDefaultJs
+   _buildDefaultJs
 
-       Автогенерация шаблона JS для только что созданного компонента.
+   Автогенерация шаблона JS для только что созданного компонента.
 
-       Если visible = true — генерируется ResizeObserver-обвязка:
-       она следит за изменением размеров контейнеров [data-wb-user-comp]
-       и при каждом изменении вызывает пользовательскую функцию
-       on<ComponentName>Resize({ component, el, width, height }).
+   При visible=true — генерируются два обработчика:
+     • on<ComponentName>Resize        — по ResizeObserver;
+     • on<ComponentName>PositionChange — по MutationObserver(['style']).
 
-       Имя функции берётся от form.name (или cmptype), чтобы
-       несколько разных компонентов на одной странице не конфликтовали.
-       ------------------------------------------------------------------ */
+   Ядро WbComponent (core.js в рантайме) применяет transform: scale
+   к обёртке контента при изменении размера контейнера, так что
+   визуально содержимое уже «тянется» за контейнером. Эти же
+   обработчики — точка расширения для пользовательской логики.
+
+   Имя функции берётся от form.name (или cmptype), чтобы несколько
+   разных компонентов на одной странице не конфликтовали.
+   ------------------------------------------------------------------ */
     ComponentTab.prototype._buildDefaultJs = function (visible) {
         var cName = safeIdent(this._form.name.val() || 'Component');
         var cType = String(this._form.cmptype.val() || 'my.component')
             .replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-        var fnName = 'on' + capitalize(cName) + 'Resize';
+        var fnResize = 'on' + capitalize(cName) + 'Resize';
+        var fnPos    = 'on' + capitalize(cName) + 'PositionChange';
 
         var lines = [
             '// JS',
@@ -897,42 +902,101 @@
 
         if (visible) {
             lines.push(
-                '/* Автогенерация: обработчик изменения размера контейнера',
-                '   [data-wb-user-comp]. Использует ResizeObserver — если он',
-                '   отсутствует в браузере (IE), слежение просто не работает. */',
                 '(function (g) {',
                 "    'use strict';",
                 '',
-                '    function initAll() {',
-                '        var els = document.querySelectorAll(\'[data-wb-user-comp][cmptype="' + cType + '"]\');',
-                '        if (!g.ResizeObserver) return;',
-                '        for (var i = 0; i < els.length; i++) {',
-                '            (function (el) {',
-                '                if (el.__wbResizeObserver) return;',
-                '                var ro = new g.ResizeObserver(function (entries) {',
-                '                    for (var j = 0; j < entries.length; j++) {',
-                '                        var r = entries[j].contentRect;',
-                '                        if (typeof g.' + fnName + ' === "function") {',
-                '                            g.' + fnName + '({',
-                '                                component: el._wbComponent || null,',
-                '                                el: el,',
-                '                                width: Math.round(r.width),',
-                '                                height: Math.round(r.height)',
-                '                            });',
-                '                        }',
-                '                    }',
-                '                });',
-                '                ro.observe(el);',
-                '                el.__wbResizeObserver = ro;',
-                '            })(els[i]);',
-                '        }',
+                '    var CMPTYPE = "' + cType + '";',
+                '',
+                '    /* --- утилита: пройтись по всем экземплярам компонента --- */',
+                '    function eachComponent(fn) {',
+                '        var els = document.querySelectorAll(',
+                '            \'[data-wb-user-comp][cmptype="\' + CMPTYPE + \'"]\'',
+                '        );',
+                '        for (var i = 0; i < els.length; i++) fn(els[i], i);',
                 '    }',
                 '',
-                '    g.' + fnName + ' = function (ctx) {',
-                '        // ctx.width  — новая ширина',
-                '        // ctx.height — новая высота',
+                '    /* -------------------------------------------------------------',
+                '       ResizeObserver — изменение размера контейнера.',
+                '       Core.js уже применил transform: scale к обёртке;',
+                '       здесь — только уведомление пользовательского кода.',
+                '       ------------------------------------------------------------- */',
+                '    function initResize() {',
+                '        if (!g.ResizeObserver) return;',
+                '        eachComponent(function (el) {',
+                '            if (el.__wbResizeObserver) return;',
+                '            var ro = new g.ResizeObserver(function (entries) {',
+                '                for (var i = 0; i < entries.length; i++) {',
+                '                    var r = entries[i].contentRect;',
+                '                    if (typeof g.' + fnResize + ' === "function") {',
+                '                        g.' + fnResize + '({',
+                '                            component: el._wbComponent || null,',
+                '                            el: el,',
+                '                            width:  Math.round(r.width),',
+                '                            height: Math.round(r.height)',
+                '                        });',
+                '                    }',
+                '                }',
+                '            });',
+                '            ro.observe(el);',
+                '            el.__wbResizeObserver = ro;',
+                '        });',
+                '    }',
+                '',
+                '    /* -------------------------------------------------------------',
+                '       MutationObserver — изменение inline-стилей (left / top /',
+                '       width / height). Core.js пересчитал transform, здесь —',
+                '       уведомление пользовательского кода о новой позиции.',
+                '       ------------------------------------------------------------- */',
+                '    function initAttrWatch() {',
+                '        if (!g.MutationObserver) return;',
+                '        eachComponent(function (el) {',
+                '            if (el.__wbAttrObserver) return;',
+                '            var mo = new g.MutationObserver(function (muts) {',
+                '                for (var i = 0; i < muts.length; i++) {',
+                '                    var mu = muts[i];',
+                '                    if (mu.type !== "attributes") continue;',
+                '                    if (mu.attributeName !== "style") continue;',
+                '                    var cs = g.getComputedStyle ? g.getComputedStyle(el) : null;',
+                '                    if (typeof g.' + fnPos + ' === "function") {',
+                '                        g.' + fnPos + '({',
+                '                            component: el._wbComponent || null,',
+                '                            el: el,',
+                '                            left: cs ? parseFloat(cs.left) || 0 : 0,',
+                '                            top:  cs ? parseFloat(cs.top)  || 0 : 0,',
+                '                            oldValue: mu.oldValue',
+                '                        });',
+                '                    }',
+                '                }',
+                '            });',
+                '            mo.observe(el, {',
+                '                attributes: true,',
+                '                attributeFilter: ["style"],',
+                '                attributeOldValue: true',
+                '            });',
+                '            el.__wbAttrObserver = mo;',
+                '        });',
+                '    }',
+                '',
+                '    /* -------------------------------------------------------------',
+                '       Пользовательские обработчики (точки расширения).',
+                '       Переопределите их содержимое под свою логику.',
+                '       ------------------------------------------------------------- */',
+                '    g.' + fnResize + ' = function (ctx) {',
+                '        // ctx.width  — новая ширина контейнера',
+                '        // ctx.height — новая высота контейнера',
                 '        // ctx.el     — корневой DOM-элемент компонента',
                 '    };',
+                '',
+                '    g.' + fnPos + ' = function (ctx) {',
+                '        // ctx.left — новая позиция по X',
+                '        // ctx.top  — новая позиция по Y',
+                '        // ctx.el   — корневой DOM-элемент компонента',
+                '    };',
+                '',
+                '    function initAll() {',
+                '        initResize();',
+                '        initAttrWatch();',
+                '    }',
                 '',
                 "    if (document.readyState === 'loading') {",
                 "        document.addEventListener('DOMContentLoaded', initAll, false);",

@@ -73,13 +73,20 @@
    transform: scale() к обёртке (preserveSize=true — при загрузке
    HTML, где размер уже задан пользователем).
 
-   КЛЮЧЕВОЙ МОМЕНТ: перед замером размеры el временно обнуляются.
+   КЛЮЧЕВОЙ МОМЕНТ №1: перед замером размеры el временно обнуляются.
    Без этого .wb-user-comp-preview (width:100%/height:100%) и
    .formBackground (width:100%) растянутся по текущему — большому —
    размеру контейнера, и замер вернёт extents родителя, а не
-   фактический размер содержимого. Обнуление заставляет обёртку
-   сжаться до контента, position:absolute кнопки дают корректные
-   extents. */
+   фактический размер содержимого.
+
+   КЛЮЧЕВОЙ МОМЕНТ №2: wrapRect сам по себе часто получается 0×0,
+   потому что обёртка имеет width:100%/height:100% от обнулённого
+   el. Это НЕ значит, что замер невозможен: если содержимое
+   позиционировано (position: absolute), его extents от размеров
+   обёртки не зависят. Мы используем wrapRect.left/top как начало
+   координат и считаем union bbox детей. Раньше здесь стояла
+   проверка `wrapRect.width === 0 && wrapRect.height === 0` — она
+   как раз и блокировала этот рабочий случай. */
     Canvas.prototype._fitUserComponentToContent = function (el, attempt, preserveSize) {
         if (!el || el.nodeType !== 1) return;
         if (!el.getAttribute) return;
@@ -107,27 +114,26 @@
         wrap.style.width  = '';
         wrap.style.height = '';
 
-        /* 2. ← НОВОЕ: временно обнуляем размер контейнера. См. шапку. */
-        var savedW = el.style.width;
-        var savedH = el.style.height;
+        /* 2. Временно обнуляем размер контейнера. Сохраняем и
+              left/top/position, чтобы гарантированно вернуть их в
+              исходное состояние (обнуление вызывает reflow, и если
+              что-то побочное попытается пересчитать позицию
+              абсолютного элемента — это может испортить left/top). */
+        var savedW   = el.style.width;
+        var savedH   = el.style.height;
+        var savedL   = el.style.left;
+        var savedT   = el.style.top;
+        var savedPos = el.style.position;
+
         el.style.width  = '0px';
         el.style.height = '0px';
 
         void el.offsetWidth;   /* форсим layout */
 
+        /* Origin обёртки. width/height здесь могут быть 0 — это нормально
+           (обёртка с width:100% от обнулённого el); нам нужны только
+           left/top для привязки координат детей. */
         var wrapRect = wrap.getBoundingClientRect();
-        if (!wrapRect || (wrapRect.width === 0 && wrapRect.height === 0)) {
-            /* Не удалось обнулить — восстанавливаем и ретраим. */
-            el.style.width  = savedW;
-            el.style.height = savedH;
-            if (attempt < 8) {
-                var s2 = this;
-                setTimeout(function () {
-                    s2._fitUserComponentToContent(el, attempt + 1, preserveSize);
-                }, 60);
-            }
-            return;
-        }
 
         var minLeft = Infinity, minTop = Infinity;
         var maxRight = 0, maxBottom = 0;
@@ -148,10 +154,13 @@
         if (!isFinite(minLeft)) minLeft = 0;
         if (!isFinite(minTop))  minTop  = 0;
 
+        /* Ничего не нашли — восстанавливаем состояние и ретраим. */
         if (maxRight < 8 || maxBottom < 8) {
-            /* Ничего не нашли — восстанавливаем и ретраим. */
             el.style.width  = savedW;
             el.style.height = savedH;
+            el.style.left   = savedL;
+            el.style.top    = savedT;
+            el.style.position = savedPos;
             if (attempt < 8) {
                 var s3 = this;
                 setTimeout(function () {
@@ -161,10 +170,12 @@
             return;
         }
 
-        /* 3. Восстанавливаем размеры контейнера — дальше перезапишем
-              их правильно или оставим как было (preserveSize=true). */
+        /* 3. Восстанавливаем размеры и позицию контейнера. */
         el.style.width  = savedW;
         el.style.height = savedH;
+        el.style.left   = savedL;
+        el.style.top    = savedT;
+        el.style.position = savedPos;
 
         var newW = Math.max(50, Math.ceil(maxRight  - minLeft));
         var newH = Math.max(30, Math.ceil(maxBottom - minTop));
@@ -174,12 +185,17 @@
         el.__wbNaturalLeft = minLeft;
         el.__wbNaturalTop  = minTop;
 
+        /* Только при preserveSize=false перезаписываем размер и удаляем
+           HTML-атрибуты width/height. При preserveSize=true DOM должен
+           остаться идентичным тому, каким был до autofit — иначе
+           ProjectManager подумает, что пользователь правил файл, и
+           сработает автосейв. */
         if (!preserveSize) {
             el.style.width  = newW + 'px';
             el.style.height = newH + 'px';
+            el.removeAttribute('width');
+            el.removeAttribute('height');
         }
-        el.removeAttribute('width');
-        el.removeAttribute('height');
 
         this._applyUserComponentTransform(el);
 
@@ -189,38 +205,59 @@
     };
 
     /* ------------------------------------------------------------------
-       _applyUserComponentTransform
+   _applyUserComponentTransform
 
-       Ставит preview user-компонента в natural-размер и применяет
-       transform: scale(sx, sy) translate(-minLeft, -minTop), где
-       sx = containerW / naturalW, sy = containerH / naturalH.
+   Ставит preview user-компонента в natural-размер и применяет
+   transform: scale(sx, sy) translate(-minLeft, -minTop), где
+   sx = containerW / naturalW, sy = containerH / naturalH.
 
-       Благодаря transform-origin: 0 0 и порядку операций
-       scale × translate:
+   Размер контейнера читаем из offsetWidth / offsetHeight, а НЕ из
+   строки inline-style. Это важно, когда на элементе есть
+   min-width / max-width: строка может говорить 800px, а браузер
+   реально отрендерит 600px — при расчёте sx = 800/natW получим
+   transform шире контейнера, и overflow: hidden обрежет содержимое.
 
-         точка (minLeft, minTop)  → (0, 0)             — верхний левый угол содержимого
-         точка (naturalW, naturalH) → (containerW, containerH) — нижний правый
+   Перед чтением offsetWidth — принудительный reflow. Дело в том,
+   что _applyBox только что установил el.style.width/height, но
+   layout в iframe может ещё не пересчитаться: чтение offsetWidth
+   без принудительного flush иногда возвращает значение из
+   предыдущего кадра — тогда scale(sx) уходит на старое значение,
+   и ширина визуально не увеличивается.
 
-       То есть содержимое визуально заполняет контейнер и
-       масштабируется вместе с изменением его размера.
-       ------------------------------------------------------------------ */
+   Если natural-размер ещё не посчитан — вызываем
+   _fitUserComponentToContent; она заполнит __wbNaturalW/H и сама
+   же повторно вызовет _applyUserComponentTransform.
+   ------------------------------------------------------------------ */
     Canvas.prototype._applyUserComponentTransform = function (el) {
         if (!el || !el.getAttribute) return;
         if (!el.getAttribute('data-wb-user-comp')) return;
 
         var natW = el.__wbNaturalW;
         var natH = el.__wbNaturalH;
+
+        if (!natW || !natH) {
+            if (typeof this._fitUserComponentToContent === 'function') {
+                this._fitUserComponentToContent(el, 1, true);
+                natW = el.__wbNaturalW;
+                natH = el.__wbNaturalH;
+            }
+            if (!natW || !natH) return;
+        }
+
         var minL = el.__wbNaturalLeft || 0;
         var minT = el.__wbNaturalTop  || 0;
-        if (!natW || !natH) return;
 
         var wrap = el.querySelector('.wb-user-comp-preview[data-wb-preview="1"]');
         if (!wrap) return;
 
-        var w = parseFloat(el.style.width);
-        var h = parseFloat(el.style.height);
-        if (!w) w = el.offsetWidth  || natW;
-        if (!h) h = el.offsetHeight || natH;
+        /* Принудительный reflow ПЕРЕД чтением offsetWidth/Height.
+           Без этого браузер может вернуть старую геометрию
+           (актуально при быстром mousemove в iframe) — тогда ширина
+           перестаёт визуально расти при перетаскивании. */
+        void el.offsetWidth;
+
+        var w = el.offsetWidth  || parseFloat(el.style.width)  || natW;
+        var h = el.offsetHeight || parseFloat(el.style.height) || natH;
 
         var sx = w / natW;
         var sy = h / natH;

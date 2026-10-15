@@ -832,6 +832,110 @@
     };
 
     /* ------------------------------------------------------------------
+   ctxSaveAsComponent
+
+   «Save as Component to Palette…» — сохраняет текущий проект в
+   пользовательскую палитру компонентов (ComponentStorage).
+
+   Источники данных (в порядке приоритета):
+     1. Если открыт режим Root: component И текущий проект — этот
+        же проект → берём живой снимок из ComponentTab.getFormData().
+     2. Иначе — project.componentData.
+     3. Для previewIdeHtml: если пусто или дефолтная заготовка —
+        берём HTML сцены (canvas.cleanHtml()).
+
+   Если компонент с таким cmptype уже есть — предлагаем перезаписать.
+   После сохранения эмитятся события 'component:added' и 'palette:refresh' —
+   палитра перерисовывается автоматически. */
+    ProjectManager.prototype.ctxSaveAsComponent = function () {
+        if (!this.current) {
+            alert('Проект не выбран.');
+            return;
+        }
+
+        var p = this.current;
+        var canvas = global.IDE && global.IDE._canvas;
+        var isComp = !!(global.App && global.App._componentMode)
+            || p.rootType === 'component';
+
+        /* 1. Живой снимок из ComponentTab (если уместно). */
+        var cd = null;
+        if (isComp && global.componentTab && global.componentTab.getFormData) {
+            try { cd = global.componentTab.getFormData() || null; }
+            catch (e) { cd = null; }
+        }
+
+        /* 2. Fallback: сохранённый componentData проекта. */
+        if (!cd && p.componentData) {
+            try { cd = JSON.parse(JSON.stringify(p.componentData)); }
+            catch (e) { cd = p.componentData; }
+        }
+
+        /* 3. Если компонент ещё не заведён — мягко сообщаем об этом. */
+        if (!cd) {
+            alert(
+                'В проекте нет данных компонента.\n\n' +
+                'Чтобы сохранить проект в палитру, переведите его в режим ' +
+                'Root: component (ПКМ по корню в Structure → Root: component), ' +
+                'заполните форму на вкладке Component и повторите.'
+            );
+            return;
+        }
+
+        /* 4. Нормализуем обязательные поля. */
+        if (!cd.name)    cd.name    = p.name || 'Component';
+        if (!cd.cmptype) cd.cmptype = 'my.component';
+        if (!cd.tagName) cd.tagName = 'div';
+        if (!cd.nestingMode) cd.nestingMode = 'all';
+        if (!Array.isArray(cd.jsLibs))   cd.jsLibs   = [];
+        if (!Array.isArray(cd.cssLibs))  cd.cssLibs  = [];
+        if (!Array.isArray(cd.customProperties)) cd.customProperties = [];
+        if (!Array.isArray(cd.customEvents))     cd.customEvents     = [];
+        if (!Array.isArray(cd.nestingRules))     cd.nestingRules     = [];
+
+        /* 5. PreViewIDE — если пусто или дефолтная заготовка, берём
+              HTML сцены. Это важно, когда пользователь собирал виджет
+              на вкладке Scene и не открывал PreViewIDE. */
+        var isDefault = !global.ComponentTab
+            || typeof global.ComponentTab.isDefaultPreview !== 'function'
+            || global.ComponentTab.isDefaultPreview(cd.previewIdeHtml);
+
+        if ((!cd.previewIdeHtml || isDefault) && canvas && canvas.cleanHtml) {
+            try {
+                var sceneHtml = canvas.cleanHtml();
+                if (sceneHtml && sceneHtml.replace(/\s+/g, '')) {
+                    cd.previewIdeHtml = sceneHtml;
+                    cd.html = sceneHtml;
+                }
+            } catch (e) { /* ignore */ }
+        }
+        if (!cd.html && cd.previewIdeHtml) cd.html = cd.previewIdeHtml;
+
+        /* 6. Перезапись / создание. */
+        var existing = global.ComponentStorage.findByCmptype(cd.cmptype);
+
+        if (existing) {
+            var ok = confirm(
+                'Компонент с cmptype="' + cd.cmptype + '" уже существует (' +
+                (existing.name || existing.cmptype) + ').\n\n' +
+                'Перезаписать его?'
+            );
+            if (!ok) return;
+            global.ComponentStorage.updateComponent(existing.id, cd);
+            alert('Компонент перезаписан в палитру: ' +
+                (existing.name || cd.name));
+        } else {
+            var created = global.ComponentStorage.createComponent(cd);
+            alert('Компонент сохранён в палитру: ' +
+                (created.name || cd.name));
+        }
+
+        /* 7. Уведомляем UI. */
+        global.EventBus.emit('component:added', { component: cd });
+        global.EventBus.emit('palette:refresh');
+    };
+
+    /* ------------------------------------------------------------------
    _fitUserComponentToContent
 
    Вычисляет натуральные размеры содержимого user-компонента и
@@ -851,7 +955,14 @@
    НЕ трогаем ни inline-размер, ни HTML-атрибуты width/height.
    Раньше функция удаляла их безусловно, из-за чего DOM после
    autofit отличался от initialClean — ProjectManager считал это
-   «правкой пользователя» и автосейв перезаписывал файл. */
+   «правкой пользователя» и автосейв перезаписывал файл.
+
+   КЛЮЧЕВОЙ МОМЕНТ №3: wrapRect может быть 0×0 (обёртка имеет
+   width:100%/height:100% от обнулённого el). Это НЕ повод бросать
+   замер — для position:absolute детей extents от размера обёртки
+   не зависят, и мы корректно получаем union bbox. Раньше проверка
+   `wrapRect.width === 0 && wrapRect.height === 0` блокировала этот
+   рабочий случай и функция уходила в бесконечный ретрай. */
     Canvas.prototype._fitUserComponentToContent = function (el, attempt, preserveSize) {
         if (!el || el.nodeType !== 1) return;
         if (!el.getAttribute) return;
@@ -895,19 +1006,9 @@
 
         void el.offsetWidth;   /* форсим layout */
 
+        /* Origin обёртки. width/height здесь могут быть 0 — это
+           нормально, нам нужны только left/top для привязки координат. */
         var wrapRect = wrap.getBoundingClientRect();
-        if (!wrapRect || (wrapRect.width === 0 && wrapRect.height === 0)) {
-            el.style.width = savedW; el.style.height = savedH;
-            el.style.left  = savedL; el.style.top    = savedT;
-            el.style.position = savedPos;
-            if (attempt < 8) {
-                var s2 = this;
-                setTimeout(function () {
-                    s2._fitUserComponentToContent(el, attempt + 1, preserveSize);
-                }, 60);
-            }
-            return;
-        }
 
         var minLeft = Infinity, minTop = Infinity;
         var maxRight = 0, maxBottom = 0;
@@ -929,8 +1030,11 @@
         if (!isFinite(minTop))  minTop  = 0;
 
         if (maxRight < 8 || maxBottom < 8) {
-            el.style.width = savedW; el.style.height = savedH;
-            el.style.left  = savedL; el.style.top    = savedT;
+            /* Ничего не нашли — восстанавливаем и ретраим. */
+            el.style.width  = savedW;
+            el.style.height = savedH;
+            el.style.left   = savedL;
+            el.style.top    = savedT;
             el.style.position = savedPos;
             if (attempt < 8) {
                 var s3 = this;
@@ -956,11 +1060,11 @@
         el.__wbNaturalLeft = minLeft;
         el.__wbNaturalTop  = minTop;
 
-        /* ← ИЗМЕНЕНО: только при preserveSize=false перезаписываем
-              размер и удаляем HTML-атрибуты width/height. При
-              preserveSize=true DOM должен остаться идентичным тому,
-              каким был до autofit — иначе ProjectManager подумает,
-              что пользователь правил файл, и сработает автосейв. */
+        /* Только при preserveSize=false перезаписываем размер и
+           удаляем HTML-атрибуты width/height. При preserveSize=true
+           DOM должен остаться идентичным тому, каким был до autofit —
+           иначе ProjectManager подумает, что пользователь правил файл,
+           и сработает автосейв. */
         if (!preserveSize) {
             el.style.width  = newW + 'px';
             el.style.height = newH + 'px';
